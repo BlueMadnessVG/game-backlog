@@ -1,0 +1,21 @@
+{
+  "name": "game-backlog",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun --filter '*' dev",
+    "build": "bun --filter '*' build",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "eslint": "^9.21.0", 
+    "husky": "^9.1.7"
+  },
+  "overrides": {
+    "eslint": "^9.21.0"
+  }
+}
