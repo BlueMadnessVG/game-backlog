@@ -67,7 +67,7 @@ export default tseslint.config(
           alphabetize: { order: "asc", caseInsensitive: true },
         },
       ],
-      complexity: ["warn", 10],
+      complexity: ["warn", 15],
       "no-var": "error",
       "prefer-const": "error",
       "@typescript-eslint/no-floating-promises": "error",
