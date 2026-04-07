@@ -35,14 +35,14 @@ import type { useRequestOptions, useRequestReturn } from './types/useRequest.typ
  * onError: (err) => toast.error(err.message)
  * });
  */
-export function useRequest<TData, TParams = void>({
+export function useRequest<TData, TParams>({
   service,
-  params,
+  params: initialParams,
   enabled = true,
   onSuccess,
   onError,
   onFinally,
-}: useRequestOptions<TData, TParams>): useRequestReturn<TData> {
+}: useRequestOptions<TData, TParams>): useRequestReturn<TData, TParams> {
   const [state, dispatch] = useReducer(requestReducer<TData>, {
     data: null,
     isLoading: false,
@@ -56,35 +56,43 @@ export function useRequest<TData, TParams = void>({
 
   const reset = useCallback(() => dispatch({ type: 'RESET' }), []);
 
-  const execute = useCallback(async () => {
-    if (!enabled) {
-      reset();
-      return;
-    }
-
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    dispatch({ type: 'FETCHING' });
-
-    try {
-      const result = await service(params, controller.signal);
-
-      dispatch({ type: 'SUCCESS', payload: result });
-      callbacks.current.onSuccess?.(result);
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-
-      const errorMessage = err instanceof Error ? err.message : 'Something went wrong';
-      dispatch({ type: 'ERROR', payload: errorMessage });
-      callbacks.current.onError?.(err);
-    } finally {
-      if (abortControllerRef.current === controller) {
-        callbacks.current.onFinally?.();
+  const execute = useCallback(
+    async (overrideParams?: TParams): Promise<TData | undefined> => {
+      if (!enabled) {
+        reset();
+        return undefined;
       }
-    }
-  }, [enabled, params, service, reset]);
+
+      const currentParams = overrideParams ?? initialParams;
+
+      abortControllerRef.current?.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      dispatch({ type: 'FETCHING' });
+
+      try {
+        const result = await service(currentParams, controller.signal);
+
+        dispatch({ type: 'SUCCESS', payload: result });
+
+        callbacks.current.onSuccess?.(result);
+        return result;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return undefined;
+
+        const errorMessage = err instanceof Error ? err.message : 'Something went wrong';
+        dispatch({ type: 'ERROR', payload: errorMessage });
+        callbacks.current.onError?.(err);
+        return undefined;
+      } finally {
+        if (abortControllerRef.current === controller) {
+          callbacks.current.onFinally?.();
+        }
+      }
+    },
+    [enabled, initialParams, service, reset],
+  );
 
   useEffect(() => {
     void execute();
@@ -92,7 +100,10 @@ export function useRequest<TData, TParams = void>({
   }, [execute]);
 
   return {
-    ...state,
+    data: state.data,
+    isLoading: state.isLoading,
+    error: state.error,
+    isSuccess: state.isSuccess,
     isError: !!state.error,
     refetch: execute,
     reset,

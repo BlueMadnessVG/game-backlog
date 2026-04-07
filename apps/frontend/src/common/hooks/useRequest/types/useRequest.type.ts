@@ -20,12 +20,12 @@ export interface useRequestOptions<TData, TParams> {
   onFinally?: () => void;
 }
 
-export interface useRequestReturn<TData> {
+export interface useRequestReturn<TData, TParams> {
   data: TData | null;
   isLoading: boolean;
-  isError: boolean;
   error: string | null;
   isSuccess: boolean;
-  refetch: () => Promise<void>;
+  isError: boolean;
+  refetch: (overrideParams?: TParams) => Promise<TData | undefined>;
   reset: () => void;
 }
