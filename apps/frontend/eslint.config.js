@@ -7,7 +7,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/node_modules/**", "**/build/**"] },
+  { ignores: ["**/dist/**", "**/node_modules/**", "**/build/**", "vite.config.ts"] },
   {
     extends: [
       prettier,
@@ -20,7 +20,10 @@ export default tseslint.config(
       ecmaVersion: 2020,
       globals: globals.browser,
       parserOptions: {
-        projectService: true,
+        projectService: {
+          allowDefaultProject: ['*.ts', '*.tsx'],
+          defaultProject: './tsconfig.app.json',
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -38,6 +41,7 @@ export default tseslint.config(
 
       // --- REGLAS ---
       "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unsafe-assignment": "warn",
       "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
       "@typescript-eslint/no-unused-vars": [
         "error",
