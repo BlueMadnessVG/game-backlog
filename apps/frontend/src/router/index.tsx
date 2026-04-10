@@ -2,7 +2,7 @@ import { createRouter } from '@tanstack/react-router';
 
 import { rootRoute } from './root';
 
-import { libraryRoute } from '@/features/Library/router/Library.route';
+import { libraryRoute } from '@/pages/Library/router/Library.route';
 
 const routeTree = rootRoute.addChildren([libraryRoute]);
 
