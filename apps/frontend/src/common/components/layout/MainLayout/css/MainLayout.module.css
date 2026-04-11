@@ -1,0 +1,46 @@
+.main_layout {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  /* Ensures no accidental scrollbars on the root */
+  overflow: hidden;
+  background-color: #09090b; /* zinc-950 */
+  color: #f4f4f5; /* zinc-100 */
+}
+
+.main_layout main {
+  flex: 1;
+  height: 100%;
+  /* This is the only part of the app that should scroll */
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  /* Modern scrollbar styling for a gaming app */
+  scrollbar-width: thin;
+  scrollbar-color: #27272a transparent;
+}
+
+/* Custom scrollbar for Webkit (Chrome/Edge/Safari) */
+.main_layout main::-webkit-scrollbar {
+  width: 6px;
+}
+
+.main_layout main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.main_layout main::-webkit-scrollbar-thumb {
+  background-color: #27272a;
+  border-radius: 10px;
+}
+
+.main_layout main::-webkit-scrollbar-thumb:hover {
+  background-color: #3f3f46;
+}
+
+/* Optional: Inner container padding so your pages aren't touching the edges */
+.main_layout main > :first-child {
+  padding: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+}
