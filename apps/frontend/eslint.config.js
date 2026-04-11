@@ -45,7 +45,10 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
       "@typescript-eslint/no-unused-vars": [
         "error",
-        { argsIgnorePattern: "^_" },
+        { argsIgnorePattern: "^_",
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_' 
+        },
       ],
       "import/order": [
         "error",
