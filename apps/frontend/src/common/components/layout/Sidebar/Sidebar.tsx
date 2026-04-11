@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { SidebarItem } from './components/SidebarItem/SidebarItem';
+import { SidebarProfile } from './components/SidebarProfile/SidebarProfile';
 import SidebarWave from './components/SidebarWave/SidebarWave';
 import styles from './css/Sidebar.module.css';
 import { useSidebarPulse } from './hooks/useSidebarPulse';
@@ -45,6 +46,7 @@ function Sidebar() {
             />
           ))}
         </nav>
+        <SidebarProfile isExpanded={isHovered} />
       </div>
     </aside>
   );

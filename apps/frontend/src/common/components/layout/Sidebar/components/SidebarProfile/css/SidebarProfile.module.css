@@ -1,0 +1,80 @@
+.profile_container {
+  margin-top: auto; /* Push to bottom */
+  padding: 16px 8px;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.user_card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: background 0.2s ease;
+}
+
+.avatar_wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatar_image {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+}
+
+.status_indicator {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  background: #22c55e; /* Green */
+  border: 2px solid #09090b;
+  border-radius: 50%;
+}
+
+.user_info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.username {
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rank {
+  color: #71717a;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.quick_actions {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.action_btn {
+  background: none;
+  border: none;
+  color: #52525b;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.action_btn:hover {
+  color: #ffffff;
+}
