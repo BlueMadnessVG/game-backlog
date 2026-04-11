@@ -1,5 +1,5 @@
 .sidebar_container {
-  position: fixed; /* Changed from relative to fixed */
+  position: fixed;
   left: 0;
   top: 0;
   bottom: 0;

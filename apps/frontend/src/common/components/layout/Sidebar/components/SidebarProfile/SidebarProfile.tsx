@@ -1,12 +1,18 @@
-import { Settings, LogOut } from 'lucide-react';
+import { Settings, LogOut, Unlock, Lock } from 'lucide-react';
 
 import styles from './css/SidebarProfile.module.css';
 
 interface SidebarProfileProps {
   isExpanded: boolean;
+  toggleSidebarLocked: () => void;
+  sidebarLocked: boolean;
 }
 
-export const SidebarProfile = ({ isExpanded }: SidebarProfileProps) => {
+export const SidebarProfile = ({
+  isExpanded,
+  toggleSidebarLocked,
+  sidebarLocked,
+}: SidebarProfileProps) => {
   return (
     <div className={styles.profile_container}>
       <div className={styles.user_card}>
@@ -30,6 +36,16 @@ export const SidebarProfile = ({ isExpanded }: SidebarProfileProps) => {
           </button>
           <button className={styles.action_btn} title="Logout">
             <LogOut size={16} />
+          </button>
+          <button
+            className={styles.action_btn}
+            title="Lock"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSidebarLocked();
+            }}
+          >
+            {sidebarLocked ? <Lock size={16} /> : <Unlock size={16} />}
           </button>
         </div>
       )}

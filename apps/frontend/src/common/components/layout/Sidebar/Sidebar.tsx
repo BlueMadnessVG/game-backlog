@@ -8,11 +8,17 @@ import { useSidebarPulse } from './hooks/useSidebarPulse';
 import { useSidebarWave } from './hooks/useSidebarWave';
 
 import { SIDEBAR_LINKS } from '@/common/utils/Navigation/navigation.config';
+import { useConfigStore } from '@/store/useConfig.store';
 
 function Sidebar() {
   const [isHovered, setIsHovered] = useState(false);
   const { smoothMouseY, onMouseMove } = useSidebarWave();
   const { pulsY, pulseProgress, triggerPulse } = useSidebarPulse();
+
+  // Configuration storage
+  const sidebarLocked = useConfigStore((state) => state.sidebarLocked);
+  const { toggleSidebarLocked } = useConfigStore((state) => state.actions);
+  const isExpanded = isHovered || sidebarLocked;
 
   return (
     <aside
@@ -20,11 +26,15 @@ function Sidebar() {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={styles.sidebar_container}
-      ata-expanded={isHovered}
+      data-expanded={sidebarLocked}
+      style={{
+        // We can override the clamp slightly if locked
+        width: isExpanded ? 'clamp(280px, 18vw, 300px)' : 'clamp(42px, 4vw, 64px)',
+      }}
     >
       <SidebarWave
         mouseY={smoothMouseY}
-        isVisible={isHovered}
+        isVisible={sidebarLocked || isHovered}
         pulsY={pulsY}
         pulseProgress={pulseProgress}
       />
@@ -41,12 +51,16 @@ function Sidebar() {
               to={item.to}
               label={item.label}
               iconName={item.iconName}
-              isVisible={isHovered}
+              isVisible={sidebarLocked || isHovered}
               onTriggerPulse={triggerPulse}
             />
           ))}
         </nav>
-        <SidebarProfile isExpanded={isHovered} />
+        <SidebarProfile
+          isExpanded={sidebarLocked || isHovered}
+          toggleSidebarLocked={toggleSidebarLocked}
+          sidebarLocked={sidebarLocked}
+        />
       </div>
     </aside>
   );
