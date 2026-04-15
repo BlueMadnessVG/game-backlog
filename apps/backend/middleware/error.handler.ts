@@ -21,6 +21,8 @@ export const errorHandler = async (err: Error, c: Context) => {
   return c.json({
     error: "Internal Command Center Failure",
     message:
-      Bun.env.VITE_APP_ENV === "development" ? err.message : "Unknown Error",
+      process.env.VITE_APP_ENV === "development"
+        ? err.message
+        : "Unknown Error",
   });
 };
