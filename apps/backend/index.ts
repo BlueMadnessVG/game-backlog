@@ -14,7 +14,7 @@ import { errorHandler } from "./middleware/error.handler";
  * 1. Dependency Injection / Composition Root
  * We initialize the entire tree here. This makes testing easy.
  */
-const steamProvider = new SteamProvider(process.env.VITE_STEAM_API_KEY!);
+const steamProvider = new SteamProvider(process.env.STEAM_API_KEY!);
 const steamService = new SteamService(db, steamProvider);
 
 /**
