@@ -52,7 +52,8 @@ export class SteamService {
           steamGamesList.map((g) => ({
             title: g.name,
             platform: "PC",
-            coverUrl: g.iconUrl,
+            iconUrl: g.iconUrl,
+            coverUrl: g.coverUrl,
             // Note: If 'playTime' is global, update it.
             // If it's per-user, this should move to 'userGames'.
             playTime: g.playtimeMinutes,
@@ -63,6 +64,7 @@ export class SteamService {
           set: {
             coverUrl: sql`excluded.cover_url`,
             playTime: sql`excluded.play_time`,
+            iconUrl: sql`excluded.icon_url`,
           },
         })
         .returning();

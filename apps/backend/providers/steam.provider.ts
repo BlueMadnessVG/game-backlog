@@ -8,7 +8,11 @@ const SteamPlayerSchema = v.object({
         personaname: v.string(),
         profileurl: v.string(),
         avatarfull: v.string(),
-        lastlogoff: v.number(),
+        // Use v.optional for fields that might be missing
+        lastlogoff: v.optional(v.number()),
+        // You can also add other fields as optional if you want to use them later
+        realname: v.optional(v.string()),
+        timecreated: v.optional(v.number()),
       }),
     ),
   }),
@@ -58,6 +62,10 @@ export class SteamProvider {
       const result = v.safeParse(SteamPlayerSchema, rawData);
 
       if (!result.success) {
+        console.error(
+          "❌ Valibot Schema Error:",
+          JSON.stringify(v.flatten(result.issues).nested, null, 2),
+        );
         throw new Error("Steam API returned an unexpected data format");
       }
 
@@ -114,6 +122,7 @@ export class SteamProvider {
         iconUrl: game.img_icon_url
           ? `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg`
           : null,
+        coverUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/library_600x900.jpg`,
       }));
     } catch (error) {
       console.error(
