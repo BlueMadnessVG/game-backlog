@@ -37,8 +37,9 @@ export const users = pgTable("user", {
 export const games = pgTable(
   "games",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
-    title: text("title").notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: text("title").notNull().unique(),
+    iconUrl: text("icon_url"),
     coverUrl: text("cover_url"),
     platform: varchar("platform", { length: 50 }).default("PC"),
     status: statusEnum("status").default("backlog"),
