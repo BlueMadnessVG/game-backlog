@@ -71,7 +71,7 @@ export const steamAccounts = pgTable(
     userId: uuid("user_id")
       .references(() => users.id)
       .primaryKey(),
-    steamId: varchar("steam_id", { length: 50 }).notNull().unique(),
+    steamId: varchar("steam_id", { length: 255 }).notNull().unique(),
     lastSync: timestamp("last_sync"),
     isPublic: boolean("is_public").default(true),
   },
@@ -85,5 +85,5 @@ export const steamGames = pgTable("steam_games", {
   gameId: uuid("game_id")
     .references(() => games.id)
     .primaryKey(),
-  steamAppId: integer("steam_app_id").notNull().unique(),
+  steamAppId: varchar("steam_app_id", { length: 255 }).notNull().unique(),
 });

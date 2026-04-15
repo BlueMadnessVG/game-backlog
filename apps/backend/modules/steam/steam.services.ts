@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { users, steamAccounts, steamGames, games } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { SteamProvider } from "../../providers/steam.provider";
@@ -9,6 +9,27 @@ export class SteamService {
     private readonly db: DbClient,
     private readonly provider: SteamProvider,
   ) {}
+
+  async getUserGames(userId: string) {
+    return await this.db
+      .select({
+        id: games.id,
+        title: games.title,
+        playTime: games.playTime,
+        platform: games.platform,
+        iconUrl: games.iconUrl,
+        coverUrl: games.coverUrl,
+        steamAppId: steamGames.steamAppId,
+      })
+      .from(games)
+      // 1. Link the generic game to the Steam mapping
+      .innerJoin(steamGames, eq(games.id, steamGames.gameId))
+      // 2. Link the Steam game to the User's Steam Account
+      // We use steamAppId here because it's the common thread for Steam data
+      .innerJoin(steamAccounts, eq(steamAccounts.userId, userId))
+      .where(eq(steamAccounts.userId, userId))
+      .orderBy(desc(games.playTime));
+  }
 
   async syncUserProfile(localUserId: string, steamId: string) {
     const steamData = await this.provider.getPlayerSummary(steamId);
@@ -75,7 +96,7 @@ export class SteamService {
         );
         return {
           gameId: gameRecord.id,
-          steamAppId: steamGame!.steamAppId,
+          steamAppId: String(steamGame!.steamAppId),
         };
       });
 

@@ -32,6 +32,7 @@ export const GameSchema = v.object({
   status: GameStatusSchema,
 
   // Visuals
+  iconUrl: v.nullable(v.pipe(v.string(), v.url())),
   coverUrl: v.nullable(v.pipe(v.string(), v.url())),
   bannerUrl: v.nullable(v.pipe(v.string(), v.url())),
 

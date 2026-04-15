@@ -116,7 +116,7 @@ export class SteamProvider {
       const games = result.output.response.games ?? [];
 
       return games.map((game) => ({
-        steamAppId: game.appid,
+        steamAppId: String(game.appid),
         name: game.name,
         playtimeMinutes: game.playtime_forever,
         iconUrl: game.img_icon_url

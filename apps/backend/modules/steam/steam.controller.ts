@@ -14,6 +14,34 @@ type Bindings = {
 export const createSteamController = (steamService: SteamService) => {
   const app = new Hono<Bindings>();
 
+  app.get("/games", async (c) => {
+    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+
+    const limit = Number(c.req.query("limit")) || 50;
+    const offset = Number(c.req.query("offset")) || 0;
+
+    try {
+      const library = await steamService.getUserGames(userId);
+      const paginatedLibrary = library.slice(offset, offset + limit);
+
+      return c.json(
+        {
+          status: "SUCCESS",
+          meta: {
+            total: library.length,
+            limit,
+            offset,
+          },
+          data: paginatedLibrary,
+        },
+        200,
+      );
+    } catch (error) {
+      console.error(`[SteamController] Failed to fetch library:`, error);
+      throw error;
+    }
+  });
+
   app.post(
     "/sync",
     /* authMiddleware, */
@@ -21,7 +49,9 @@ export const createSteamController = (steamService: SteamService) => {
     async (c) => {
       const { steamId } = c.req.valid("json");
 
-      const userId = c.get("userId");
+      /* const userId = c.get("userId"); */
+      const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+      console.log("DEBUG: Current User ID is:", userId);
 
       try {
         const [profile, games] = await Promise.all([
