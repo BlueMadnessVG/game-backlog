@@ -1,4 +1,4 @@
-import { useLibrary } from './hooks/useLibrary.context';
+import { useLibrary } from './hooks/useLibrary.hook';
 
 function LibraryManager() {
   const { games, isLoading /* , refetch  */ } = useLibrary();
