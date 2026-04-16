@@ -47,5 +47,5 @@ export const GameSchema = v.object({
 });
 
 export type Platform = v.InferOutput<typeof PlatformSchema>;
-export type GameSchema = v.InferOutput<typeof GameStatusSchema>;
+export type GameStatus = v.InferOutput<typeof GameStatusSchema>;
 export type Game = v.InferOutput<typeof GameSchema>;

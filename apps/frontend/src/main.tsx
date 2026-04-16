@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 
 import { RouterProvider } from '@tanstack/react-router';
+import { TanStackRouterDevtools } from '@tanstack/router-devtools';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 
@@ -11,6 +12,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppProvider>
       <RouterProvider router={router} />
+      <TanStackRouterDevtools router={router} />
     </AppProvider>
   </StrictMode>,
 );

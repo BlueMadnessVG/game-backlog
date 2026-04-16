@@ -48,6 +48,13 @@
   }
 }
 
+html,
+body {
+  height: auto;
+  overflow-x: hidden; /* This is okay */
+  overflow-y: visible; /* CRITICAL: Must be visible */
+}
+
 body {
   margin: 0;
 }
