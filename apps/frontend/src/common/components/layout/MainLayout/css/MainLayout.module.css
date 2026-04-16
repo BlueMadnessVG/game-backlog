@@ -6,6 +6,12 @@
   overflow: hidden;
   background-color: #09090b; /* zinc-950 */
   color: #f4f4f5; /* zinc-100 */
+  margin-left: 64px;
+}
+
+.content_wrapper {
+  position: relative; /* Fixes the 'non-static position' warning */
+  width: 100%;
 }
 
 .main_layout main {
@@ -40,7 +46,6 @@
 
 /* Optional: Inner container padding so your pages aren't touching the edges */
 .main_layout main > :first-child {
-  padding: 2rem;
   max-width: 1600px;
   margin: 0 auto;
 }
