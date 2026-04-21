@@ -53,6 +53,8 @@ export function useRequest<TData, TParams>({
   const abortControllerRef = useRef<AbortController | null>(null);
   const callbacks = useRef({ onSuccess, onError, onFinally });
   callbacks.current = { onSuccess, onError, onFinally };
+  const serviceRef = useRef(service);
+  serviceRef.current = service;
 
   const reset = useCallback(() => dispatch({ type: 'RESET' }), []);
 
@@ -72,7 +74,7 @@ export function useRequest<TData, TParams>({
       dispatch({ type: 'FETCHING' });
 
       try {
-        const result = await service(currentParams, controller.signal);
+        const result = await serviceRef.current(currentParams, controller.signal);
 
         dispatch({ type: 'SUCCESS', payload: result });
 
@@ -91,13 +93,14 @@ export function useRequest<TData, TParams>({
         }
       }
     },
-    [enabled, initialParams, service, reset],
+    [enabled, initialParams, reset],
   );
 
   useEffect(() => {
+    if (!enabled) return;
     void execute();
     return () => abortControllerRef.current?.abort();
-  }, [execute]);
+  }, [execute, enabled]);
 
   return {
     data: state.data,
