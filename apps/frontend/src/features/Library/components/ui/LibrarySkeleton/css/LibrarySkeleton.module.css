@@ -1,0 +1,7 @@
+.librarySkeleton_grid {
+  display: grid;
+  /* repeat(auto-fill) fills the row with as many cards as fit */
+  /* minmax(160px, 1fr) ensures cards are at least 160px but grow to fill space */
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem; /* gap-4 = 16px */
+}
