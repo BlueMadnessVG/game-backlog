@@ -1,18 +1,22 @@
 import { useMemo, type ReactNode } from 'react';
 
+import { useQuery } from '@tanstack/react-query';
+
 import { LibraryContext } from './types/LibraryContext.types';
 
 import type { Game } from '@repo/shared';
 
 import { steamService } from '@/api/steam/steam.service';
-import { useAPI } from '@/common/hooks/useAPI/useAPI';
 
 export function LibraryProvider({ children }: { children: ReactNode }) {
   const {
     data: games,
     isLoading,
     refetch,
-  } = useAPI<Game[], void>(steamService.getGames, undefined);
+  } = useQuery<Game[]>({
+    queryKey: ['library', 'games'],
+    queryFn: ({ signal }) => steamService.getGames(undefined, signal),
+  });
 
   const value = useMemo(
     () => ({

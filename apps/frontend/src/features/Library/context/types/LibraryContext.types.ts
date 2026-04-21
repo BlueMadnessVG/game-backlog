@@ -3,7 +3,7 @@ import { createContext } from 'react';
 import type { Game } from '@repo/shared';
 
 export interface LibraryContextType {
-  games: Game[] | null;
+  games: Game[] | undefined;
   isLoading: boolean;
   refetch: () => Promise<unknown>;
 }
