@@ -1,17 +1,13 @@
+import { LibraryEmptyState } from './components/ui/LibraryEmptyState/LibraryEmptyState';
+import LibrarySkeleton from './components/ui/LibrarySkeleton/LibrarySkeleton';
 import { useLibrary } from './hooks/useLibrary.hook';
 
 function LibraryManager() {
   const { games, isLoading /* , refetch  */ } = useLibrary();
 
-  if (isLoading) return <> isLoading </>;
+  if (isLoading) return <LibrarySkeleton />;
 
-  if (isLoading && !games) {
-    return <div className="p-8 text-center text-zinc-500">Scanning sector for games...</div>;
-  }
-
-  if (!games || games.length === 0) {
-    return <> no games </>;
-  }
+  if (!games?.length) <LibraryEmptyState />;
 
   return <div>nothing for the moment</div>;
 }
