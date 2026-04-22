@@ -18,6 +18,11 @@ export const SIDEBAR_LINKS: NavItem[] = [
     iconName: 'Library',
   },
   {
+    to: '/hero',
+    label: 'Hero',
+    iconName: 'BarChart3',
+  },
+  {
     to: '/timeline',
     label: 'History',
     iconName: 'History',
