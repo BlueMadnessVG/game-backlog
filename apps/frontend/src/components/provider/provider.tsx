@@ -3,7 +3,6 @@ import { Suspense, type ReactNode } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ErrorBoundary } from 'react-error-boundary';
-import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 
 import { queryClient } from '@/api/queryClient/queryClient';
@@ -35,15 +34,13 @@ export const AppProvider = ({ children }: AppProviderProps) => {
   };
 
   return (
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <ErrorBoundary FallbackComponent={GlobalErrorFallback} onReset={handleReset}>
-          <Suspense fallback={<GlobalLoadingFallback />}>{children}</Suspense>
-        </ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <ErrorBoundary FallbackComponent={GlobalErrorFallback} onReset={handleReset}>
+        <Suspense fallback={<GlobalLoadingFallback />}>{children}</Suspense>
+      </ErrorBoundary>
 
-        <Toaster position="bottom-right" expand={false} richColors theme="dark" closeButton />
-        <ReactQueryDevtools initialIsOpen={false} />
-      </QueryClientProvider>
-    </BrowserRouter>
+      <Toaster position="bottom-right" expand={false} richColors theme="dark" closeButton />
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 };
