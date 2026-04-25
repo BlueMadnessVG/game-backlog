@@ -80,5 +80,40 @@ export const createSteamController = (steamService: SteamService) => {
     },
   );
 
+  app.post("/sync-achievements", async (c) => {
+    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+
+    try {
+      const result = await steamService.syncAllGameAchievements(userId);
+      return c.json(
+        {
+          status: "SUCCESS",
+          message: `Synced ${result.synced} games, skipped ${result.skipped} (no achievements)`,
+          data: result,
+        },
+        200,
+      );
+    } catch (error) {
+      console.error(`[SteamController] Full achievement sync failed:`, error);
+      throw error;
+    }
+  });
+
+  app.post("/games/:gameId/sync-achievements", async (c) => {
+    const userId = "8234858e-0f4b-4860-9f5e-26f633355462"; // swap with authMiddleware later
+    const gameId = c.req.param("gameId");
+
+    try {
+      const result = await steamService.syncGameAchievements(userId, gameId);
+      return c.json({ status: "SUCCESS", data: result }, 200);
+    } catch (error) {
+      console.error(
+        `[SteamController] Achievement sync failed for game ${gameId}:`,
+        error,
+      );
+      throw error;
+    }
+  });
+
   return app;
 };

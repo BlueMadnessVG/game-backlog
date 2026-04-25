@@ -3,6 +3,8 @@ import { users, steamAccounts, steamGames, games } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { SteamProvider } from "../../providers/steam.provider";
 import { sql } from "drizzle-orm";
+import type { Game } from "@repo/shared";
+import { chunk } from "../../lib/chunk";
 
 export class SteamService {
   constructor(
@@ -10,25 +12,44 @@ export class SteamService {
     private readonly provider: SteamProvider,
   ) {}
 
-  async getUserGames(userId: string) {
-    return await this.db
+  async getUserGames(userId: string): Promise<Game[]> {
+    const rows = await this.db
       .select({
         id: games.id,
         title: games.title,
-        playTime: games.playTime,
         platform: games.platform,
+        status: games.status,
         iconUrl: games.iconUrl,
         coverUrl: games.coverUrl,
+        bannerUrl: games.bannerUrl,
+        playTime: games.playTime,
+        completionPercentage: games.completionPercentage,
+        lastPlayedAt: games.lastPlayedAt,
+        addedAt: games.createdAt,
+        updatedAt: games.updatedAt,
         steamAppId: steamGames.steamAppId,
       })
       .from(games)
-      // 1. Link the generic game to the Steam mapping
       .innerJoin(steamGames, eq(games.id, steamGames.gameId))
-      // 2. Link the Steam game to the User's Steam Account
-      // We use steamAppId here because it's the common thread for Steam data
       .innerJoin(steamAccounts, eq(steamAccounts.userId, userId))
       .where(eq(steamAccounts.userId, userId))
       .orderBy(desc(games.playTime));
+
+    return rows.map((row) => ({
+      id: row.id,
+      externalId: row.steamAppId,
+      title: row.title,
+      platform: row.platform ?? "steam",
+      status: row.status ?? "backlog",
+      iconUrl: row.iconUrl ?? null,
+      coverUrl: row.coverUrl ?? null,
+      bannerUrl: row.bannerUrl ?? null,
+      playTime: row.playTime ?? 0,
+      completionPercentage: row.completionPercentage ?? 0,
+      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
+      addedAt: row.addedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    }));
   }
 
   async syncUserProfile(localUserId: string, steamId: string) {
@@ -72,20 +93,20 @@ export class SteamService {
         .values(
           steamGamesList.map((g) => ({
             title: g.name,
-            platform: "PC",
+            platform: "steam" as const,
             iconUrl: g.iconUrl,
             coverUrl: g.coverUrl,
-            // Note: If 'playTime' is global, update it.
-            // If it's per-user, this should move to 'userGames'.
             playTime: g.playtimeMinutes,
+            lastPlayedAt: g.lastPlayedAt,
           })),
         )
         .onConflictDoUpdate({
           target: [games.title],
           set: {
             coverUrl: sql`excluded.cover_url`,
-            playTime: sql`excluded.play_time`,
             iconUrl: sql`excluded.icon_url`,
+            playTime: sql`excluded.play_time`,
+            lastPlayedAt: sql`excluded.last_played_at`,
           },
         })
         .returning();
@@ -112,5 +133,106 @@ export class SteamService {
 
       return insertedGames;
     });
+  }
+
+  async syncAllGameAchievements(localUserId: string) {
+    // Get the user's steamId + all their games with steamAppIds in one query
+    const [accountRow] = await this.db
+      .select({ steamId: steamAccounts.steamId })
+      .from(steamAccounts)
+      .where(eq(steamAccounts.userId, localUserId))
+      .limit(1);
+
+    if (!accountRow)
+      throw new Error(`No Steam account linked for user ${localUserId}`);
+
+    const userGames = await this.db
+      .select({ gameId: games.id, steamAppId: steamGames.steamAppId })
+      .from(games)
+      .innerJoin(steamGames, eq(steamGames.gameId, games.id))
+      .innerJoin(steamAccounts, eq(steamAccounts.userId, localUserId));
+
+    if (!userGames.length) return { synced: 0, skipped: 0 };
+
+    const BATCH_SIZE = 5;
+    const batches = chunk(userGames, BATCH_SIZE);
+
+    let synced = 0;
+    let skipped = 0;
+
+    for (const batch of batches) {
+      const results = await Promise.all(
+        batch.map(async ({ gameId, steamAppId }) => {
+          try {
+            const data = await this.provider.getGameAchievements(
+              accountRow.steamId,
+              steamAppId,
+            );
+            return {
+              gameId,
+              completionPercentage: data?.completionPercentage ?? 0,
+              ok: true,
+            };
+          } catch (error) {
+            console.warn(
+              `[SteamService] Skipping achievements for appId ${steamAppId}:`,
+              error,
+            );
+            return { gameId, completionPercentage: 0, ok: false };
+          }
+        }),
+      );
+
+      const toUpdate = results.filter((r) => r.ok);
+
+      await this.db.transaction(async (tx) => {
+        for (const { gameId, completionPercentage } of toUpdate) {
+          await tx
+            .update(games)
+            .set({ completionPercentage })
+            .where(eq(games.id, gameId));
+
+          completionPercentage !== null ? synced++ : skipped++;
+        }
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    return { synced, skipped };
+  }
+
+  async syncGameAchievements(localUserId: string, gameId: string) {
+    const [row] = await this.db
+      .select({
+        steamAppId: steamGames.steamAppId,
+        steamId: steamAccounts.steamId,
+      })
+      .from(steamGames)
+      .innerJoin(steamAccounts, eq(steamAccounts.userId, localUserId))
+      .where(eq(steamGames.gameId, gameId))
+      .limit(1);
+
+    if (!row) throw new Error(`No Steam mapping found for game ${gameId}`);
+
+    const data = await this.provider.getGameAchievements(
+      row.steamId,
+      row.steamAppId,
+    );
+
+    if (data === null) {
+      await this.db
+        .update(games)
+        .set({ completionPercentage: 0 })
+        .where(eq(games.id, gameId));
+      return { completionPercentage: 0, achievedCount: 0, totalCount: 0 };
+    }
+
+    await this.db
+      .update(games)
+      .set({ completionPercentage: data.completionPercentage })
+      .where(eq(games.id, gameId));
+
+    return data;
   }
 }

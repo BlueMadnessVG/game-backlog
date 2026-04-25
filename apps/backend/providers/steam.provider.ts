@@ -30,9 +30,39 @@ const SteamOwnedGamesResponse = v.object({
           playtime_forever: v.number(),
           img_icon_url: v.optional(v.string()), // Optional because some games lack icons
           has_community_visible_stats: v.optional(v.boolean()),
+          rtime_last_played: v.optional(v.number(), 0),
         }),
       ),
       [],
+    ),
+  }),
+});
+
+const SteamRecentlyPlayedSchema = v.object({
+  response: v.object({
+    total_count: v.optional(v.number(), 0),
+    games: v.optional(
+      v.array(
+        v.object({
+          appid: v.number(),
+          rtime_last_played: v.number(),
+        }),
+      ),
+      [],
+    ),
+  }),
+});
+
+const SteamAchievementsSchema = v.object({
+  playerstats: v.object({
+    // Steam returns this field absent (not just empty) when a game has no achievements,
+    // so we need to handle both cases
+    achievements: v.optional(
+      v.array(
+        v.object({
+          achieved: v.number(), // 1 = achieved, 0 = not
+        }),
+      ),
     ),
   }),
 });
@@ -123,6 +153,9 @@ export class SteamProvider {
           ? `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg`
           : null,
         coverUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/library_600x900.jpg`,
+        lastPlayedAt: game.rtime_last_played // <-- add this
+          ? new Date(game.rtime_last_played * 1000)
+          : null,
       }));
     } catch (error) {
       console.error(
@@ -131,5 +164,68 @@ export class SteamProvider {
       );
       throw error;
     }
+  }
+
+  async getRecentlyPlayedGames(steamId: string) {
+    const url = new URL(
+      `${this.baseUrl}/IPlayerService/GetRecentlyPlayedGames/v0001/`,
+    );
+    url.searchParams.append("key", this.apiKey);
+    url.searchParams.append("steamid", steamId);
+    url.searchParams.append("count", "0"); // 0 = return all (up to 500)
+
+    const response = await fetch(url.toString());
+    if (!response.ok)
+      throw new Error(`Steam API error: ${response.statusText}`);
+
+    const rawData = await response.json();
+    const result = v.safeParse(SteamRecentlyPlayedSchema, rawData);
+
+    if (!result.success) {
+      console.error(
+        "[SteamProvider] RecentlyPlayed schema error",
+        v.flatten(result.issues),
+      );
+      return new Map<string, Date>();
+    }
+    return new Map(
+      result.output.response.games.map((g) => [
+        String(g.appid),
+        new Date(g.rtime_last_played * 1000),
+      ]),
+    );
+  }
+
+  async getGameAchievements(steamId: string, appId: string) {
+    const url = new URL(
+      `${this.baseUrl}/ISteamUserStats/GetPlayerAchievements/v0001/`,
+    );
+    url.searchParams.append("key", this.apiKey);
+    url.searchParams.append("steamid", steamId);
+    url.searchParams.append("appid", appId);
+
+    const response = await fetch(url.toString());
+
+    // Steam returns 400 when a game has no achievement system at all
+    if (response.status === 400 || response.status === 500) return null;
+    if (!response.ok)
+      throw new Error(`Steam API error: ${response.statusText}`);
+
+    const rawData = await response.json();
+    const result = v.safeParse(SteamAchievementsSchema, rawData);
+
+    if (!result.success || !result.output.playerstats.achievements) {
+      return null; // game has no achievements
+    }
+
+    const achievements = result.output.playerstats.achievements;
+    const total = achievements.length;
+    const achieved = achievements.filter((a) => a.achieved === 1).length;
+
+    return {
+      completionPercentage: total > 0 ? (achieved / total) * 100 : 0,
+      achievedCount: achieved,
+      totalCount: total,
+    };
   }
 }
