@@ -10,6 +10,7 @@ import {
   index,
   uniqueIndex,
   unique,
+  real,
 } from "drizzle-orm/pg-core";
 
 export const statusEnum = pgEnum("game_status", [
@@ -17,6 +18,15 @@ export const statusEnum = pgEnum("game_status", [
   "in-progress",
   "completed",
   "retired",
+]);
+
+export const platformEnum = pgEnum("platform", [
+  "steam",
+  "epic",
+  "xbox",
+  "playstation",
+  "gog",
+  "manual",
 ]);
 
 const timestamps = {
@@ -27,7 +37,7 @@ const timestamps = {
     .$onUpdate(() => new Date()),
 };
 
-export const users = pgTable("user", {
+export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   username: text("username").notNull(),
   email: text("email").notNull().unique(),
@@ -39,11 +49,15 @@ export const games = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     title: text("title").notNull().unique(),
+    platform: platformEnum("platform").default("steam"),
+    status: statusEnum("status").default("backlog"),
     iconUrl: text("icon_url"),
     coverUrl: text("cover_url"),
-    platform: varchar("platform", { length: 50 }).default("PC"),
-    status: statusEnum("status").default("backlog"),
-    playTime: integer("play_time").default(0), // Total minutes
+    bannerUrl: text("banner_url"),
+    playTime: integer("play_time").default(0),
+    completionPercentage: real("completion_percentage").default(0),
+    lastPlayedAt: timestamp("last_played_at"),
+    ...timestamps, // gives you createdAt + updatedAt
   },
   (table) => ({
     titleIdx: index("title_idx").on(table.title),

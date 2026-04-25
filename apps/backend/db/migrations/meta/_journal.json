@@ -15,6 +15,20 @@
       "when": 1776216691341,
       "tag": "0001_petite_angel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777083836300,
+      "tag": "0002_deep_lady_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777084468007,
+      "tag": "0003_omniscient_gauntlet",
+      "breakpoints": true
     }
   ]
 }
