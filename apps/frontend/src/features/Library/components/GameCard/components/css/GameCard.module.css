@@ -73,19 +73,32 @@
   bottom: 0;
   left: 0;
   width: 100%;
-  height: var(--progress, 0%);
-  background: linear-gradient(to top, rgba(0, 255, 255, 0.25) 0%, rgba(0, 255, 255, 0.05) 100%);
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
+  background: rgba(0, 255, 255, 0.2);
+  backdrop-filter: blur(4px);
   z-index: 2;
-  border-top: 1px solid var(--color-hud-accent-border);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .water_fill {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
+.wave_container {
+  position: absolute;
+  top: -25px;
+  left: 0;
+  width: 100%;
+  height: 28px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wave_svg {
+  position: absolute;
+  width: 200%;
+  height: 100%;
+  fill: rgba(0, 255, 255, 0.2);
+}
+
+.wave_secondary {
+  fill: rgba(0, 255, 255, 0.1);
+  top: 2px;
+  opacity: 0.5;
 }
 
 /* === HUD overlay === */
@@ -139,6 +152,53 @@
   font-size: 0.6rem;
   color: var(--color-platform-tag);
   text-transform: uppercase;
+  font-weight: bold;
+}
+
+/* === METADATA === */
+.stats_container {
+  /* Positioned at the bottom of the HUD flexbox */
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(0, 0, 0, 0.7) 60%,
+    transparent 100%
+  );
+  margin: -10px; /* Pull back to hit the container edges */
+  padding: 30px 10px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.game_title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  /* Ensure long titles don't break the layout */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+
+.playtime {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: #666;
+  letter-spacing: 0.5px;
+}
+
+.playtime span {
+  color: #00ffff; /* The "Command Center" cyan accent */
+}
+
+.platform_tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.3);
   font-weight: bold;
 }
 
