@@ -7,7 +7,7 @@ import styles from './css/GameCard.module.css';
 interface GameCardPosterProps {
   src: string | null;
   alt: string;
-  isHovered: boolean;
+  isHovered?: boolean;
 }
 
 const posterVariants = {
@@ -23,7 +23,7 @@ const fallbackVariants = {
   exit: { opacity: 0 },
 };
 
-function GameCardPoster({ src, alt, isHovered }: GameCardPosterProps) {
+function GameCardPoster({ src, alt, isHovered = false }: GameCardPosterProps) {
   const [hasError, setHasError] = useState(!src);
   const animateState = isHovered ? 'hover' : 'animate';
 
