@@ -8,6 +8,7 @@ interface GameCardPosterProps {
   src: string | null;
   alt: string;
   isHovered?: boolean;
+  onLoad?: () => void;
 }
 
 const posterVariants = {
@@ -23,7 +24,7 @@ const fallbackVariants = {
   exit: { opacity: 0 },
 };
 
-function GameCardPoster({ src, alt, isHovered = false }: GameCardPosterProps) {
+function GameCardPoster({ src, alt, isHovered = false, onLoad }: GameCardPosterProps) {
   const [hasError, setHasError] = useState(!src);
   const animateState = isHovered ? 'hover' : 'animate';
 
@@ -42,6 +43,7 @@ function GameCardPoster({ src, alt, isHovered = false }: GameCardPosterProps) {
             exit="exit"
             onError={() => setHasError(true)}
             loading="lazy"
+            onLoad={onLoad}
           />
         ) : (
           <motion.div
