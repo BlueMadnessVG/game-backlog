@@ -46,6 +46,21 @@ export const GameSchema = v.object({
   updatedAt: v.pipe(v.string(), v.isoDateTime()),
 });
 
+export const PaginationMetaSchema = v.object({
+  total: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  limit: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  offset: v.pipe(v.number(), v.integer(), v.minValue(0)),
+});
+
+export const GamesResponseSchema = v.object({
+  status: v.picklist(["SUCCESS", "ERROR"]),
+  meta: PaginationMetaSchema,
+  data: v.array(GameSchema),
+});
+
+export type PaginationMeta = v.InferOutput<typeof PaginationMetaSchema>;
+export type GamesResponse = v.InferOutput<typeof GamesResponseSchema>;
+
 export type Platform = v.InferOutput<typeof PlatformSchema>;
 export type GameStatus = v.InferOutput<typeof GameStatusSchema>;
 export type Game = v.InferOutput<typeof GameSchema>;
