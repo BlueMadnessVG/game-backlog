@@ -1,4 +1,3 @@
-import GameCard from './components/GameCard/GameCard';
 import LibraryGrid from './components/LibraryGrid/LibraryGrid';
 import { LibraryEmptyState } from './components/ui/LibraryEmptyState/LibraryEmptyState';
 import LibrarySkeleton from './components/ui/LibrarySkeleton/LibrarySkeleton';
@@ -13,11 +12,7 @@ function LibraryManager() {
 
   return (
     <div>
-      <LibraryGrid>
-        {games.map((game) => (
-          <GameCard key={game.id} game={game} />
-        ))}
-      </LibraryGrid>
+      <LibraryGrid games={games} />
     </div>
   );
 }
