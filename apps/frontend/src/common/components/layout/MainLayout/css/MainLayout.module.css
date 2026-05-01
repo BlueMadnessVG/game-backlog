@@ -43,3 +43,16 @@
 .main_layout main > :first-child {
   margin: 0 auto;
 }
+
+.main_horizontal {
+  overflow-y: hidden;
+  overflow-x: auto;
+  display: flex; /* children lay out horizontally */
+  flex-direction: row;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none; /* hide scrollbar — scroll driven by JS or wheel */
+}
+
+.main_horizontal::-webkit-scrollbar {
+  display: none;
+}
