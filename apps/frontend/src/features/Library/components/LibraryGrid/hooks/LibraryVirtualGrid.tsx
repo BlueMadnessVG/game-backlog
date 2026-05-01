@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-const CARD_HEIGHT = 250;
-const COLUMNS = 5;
+const CARD_HEIGHT = 320;
+const COLUMNS = 4;
 const GAP = 20;
 
 interface UseLibraryVirtualGridOptions {

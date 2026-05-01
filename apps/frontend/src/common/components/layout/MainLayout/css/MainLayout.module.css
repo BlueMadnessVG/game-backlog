@@ -1,6 +1,6 @@
 .main_layout {
   display: flex;
-  width: 100vw;
+  width: auto;
   height: 100vh;
   /* Ensures no accidental scrollbars on the root */
   overflow: hidden;
@@ -46,6 +46,5 @@
 
 /* Optional: Inner container padding so your pages aren't touching the edges */
 .main_layout main > :first-child {
-  max-width: 1600px;
   margin: 0 auto;
 }
