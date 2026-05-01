@@ -56,3 +56,13 @@
 .main_horizontal::-webkit-scrollbar {
   display: none;
 }
+
+.main_game_detail {
+  overflow: hidden;
+  padding: 0;
+}
+
+.main_game_detail .content_wrapper {
+  height: 100%;
+  padding: 0;
+}
