@@ -1,5 +1,7 @@
+import GameDetailManager from '@/features/GameDetail/GameDetailManager';
+
 function GameDetail() {
-  return <div>NOTHING FOR THE MOMENT</div>;
+  return <GameDetailManager />;
 }
 
 export default GameDetail;
