@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import { HoloCardRoot } from 'holo-card';
 
 import styles from './components/css/GameCard.module.css';
@@ -15,19 +16,21 @@ function GameCard({ game }: GameCardProps) {
   const tier = getHoloTier(game.completionPercentage ?? 0);
 
   return (
-    <HoloCardRoot className={styles.card_root} dataSet={tier}>
-      {({ onFoilLoad }) => (
-        <>
-          <GameCardPoster src={game.coverUrl} alt={game.title} onLoad={onFoilLoad} />
-          <GameCardHUD
-            title={game.title}
-            percentage={game.completionPercentage}
-            playtime={game.playTime}
-            platform={game.platform}
-          />
-        </>
-      )}
-    </HoloCardRoot>
+    <Link to="/games/$id" params={{ id: game.id }} className={styles.card_link}>
+      <HoloCardRoot className={styles.card_root} dataSet={tier}>
+        {({ onFoilLoad }) => (
+          <>
+            <GameCardPoster src={game.coverUrl} alt={game.title} onLoad={onFoilLoad} />
+            <GameCardHUD
+              title={game.title}
+              percentage={game.completionPercentage}
+              playtime={game.playTime}
+              platform={game.platform}
+            />
+          </>
+        )}
+      </HoloCardRoot>
+    </Link>
   );
 }
 

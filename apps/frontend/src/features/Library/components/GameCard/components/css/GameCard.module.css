@@ -11,6 +11,14 @@
   --font-hud: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
+/* === Card Link === */
+.card_link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+}
+
 /* === Card root === */
 .card_root {
   position: relative;
