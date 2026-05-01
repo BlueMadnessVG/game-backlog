@@ -3,11 +3,9 @@ import LibraryManager from '@/features/Library/LibraryManager';
 
 function Library() {
   return (
-    <div>
-      <LibraryProvider>
-        <LibraryManager />
-      </LibraryProvider>
-    </div>
+    <LibraryProvider>
+      <LibraryManager />
+    </LibraryProvider>
   );
 }
 

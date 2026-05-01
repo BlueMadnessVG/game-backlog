@@ -2,31 +2,27 @@
   display: flex;
   width: auto;
   height: 100vh;
-  /* Ensures no accidental scrollbars on the root */
   overflow: hidden;
-  background-color: #09090b; /* zinc-950 */
-  color: #f4f4f5; /* zinc-100 */
+  background-color: #09090b;
+  color: #f4f4f5;
   margin-left: 64px;
 }
 
 .content_wrapper {
-  position: relative; /* Fixes the 'non-static position' warning */
+  position: relative;
   width: 100%;
 }
 
 .main_layout main {
   flex: 1;
   height: 100%;
-  /* This is the only part of the app that should scroll */
   overflow-y: auto;
   overflow-x: hidden;
 
-  /* Modern scrollbar styling for a gaming app */
   scrollbar-width: thin;
   scrollbar-color: #27272a transparent;
 }
 
-/* Custom scrollbar for Webkit (Chrome/Edge/Safari) */
 .main_layout main::-webkit-scrollbar {
   width: 6px;
 }
@@ -44,7 +40,6 @@
   background-color: #3f3f46;
 }
 
-/* Optional: Inner container padding so your pages aren't touching the edges */
 .main_layout main > :first-child {
   margin: 0 auto;
 }
