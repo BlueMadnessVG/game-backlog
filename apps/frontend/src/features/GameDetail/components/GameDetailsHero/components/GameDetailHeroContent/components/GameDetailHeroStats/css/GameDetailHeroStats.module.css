@@ -1,0 +1,41 @@
+.stats_root {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.stat_label {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.stat_value {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Status color coding */
+.stat_value[data-status='backlog'] {
+  color: rgba(255, 255, 255, 0.4);
+}
+.stat_value[data-status='in-progress'] {
+  color: #00ffff;
+}
+.stat_value[data-status='completed'] {
+  color: #ffd700;
+}
+.stat_value[data-status='retired'] {
+  color: #ff4444;
+}
