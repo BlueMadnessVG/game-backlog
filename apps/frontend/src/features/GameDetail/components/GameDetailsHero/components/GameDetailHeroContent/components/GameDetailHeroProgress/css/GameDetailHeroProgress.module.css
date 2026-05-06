@@ -1,0 +1,54 @@
+.progress_root {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.progress_track {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 99px;
+  overflow: visible;
+}
+
+.progress_fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(to right, rgba(0, 255, 255, 0.4) 0%, #00ffff 100%);
+  border-radius: 99px;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+}
+
+/* Glowing dot at the tip of the fill */
+.progress_tip {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00ffff;
+  box-shadow:
+    0 0 6px rgba(0, 255, 255, 0.8),
+    0 0 12px rgba(0, 255, 255, 0.4);
+}
+
+.progress_label {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #00ffff;
+  white-space: nowrap;
+  min-width: 3.5ch;
+  text-align: right;
+}
+
+.progress_unit {
+  font-size: 0.6rem;
+  color: rgba(0, 255, 255, 0.6);
+  margin-left: 1px;
+}
