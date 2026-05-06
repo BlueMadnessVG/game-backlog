@@ -1,0 +1,61 @@
+.banner_root {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.banner_image_wrap {
+  position: absolute;
+  inset: 0;
+  width: 130%;
+  height: 100%;
+  will-change: transform;
+}
+
+.banner_image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  filter: brightness(0.55) saturate(0.8);
+  display: block;
+  pointer-events: none;
+}
+
+.banner_gradient_bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 75%;
+  background: linear-gradient(
+    to top,
+    #09090b 0%,
+    rgba(9, 9, 11, 0.85) 40%,
+    rgba(9, 9, 11, 0.4) 70%,
+    transparent 100%
+  );
+  z-index: 2;
+}
+
+.banner_gradient_sides {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, #09090b 0%, transparent 15%, transparent 85%, #09090b 100%);
+  z-index: 2;
+}
+
+.banner_scanline_overlay {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.08) 3px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  z-index: 3;
+  pointer-events: none;
+}
