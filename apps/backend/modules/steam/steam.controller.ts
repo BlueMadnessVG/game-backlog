@@ -42,6 +42,27 @@ export const createSteamController = (steamService: SteamService) => {
     }
   });
 
+  app.get("/games/:id", async (c) => {
+    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const gameId = c.req.param("id");
+
+    try {
+      const game = await steamService.getUserGame(userId, gameId);
+
+      if (!game) {
+        return c.json(
+          { status: "NOT_FOUND", message: `Game ${gameId} not found` },
+          404,
+        );
+      }
+
+      return c.json({ status: "SUCCESS", data: game }, 200);
+    } catch (error) {
+      console.error(`[SteamController] Failed to fetch game ${gameId}:`, error);
+      throw error;
+    }
+  });
+
   app.post(
     "/sync",
     /* authMiddleware, */
