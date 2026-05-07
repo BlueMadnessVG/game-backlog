@@ -1,71 +1,12 @@
 import * as v from "valibot";
-
-const SteamPlayerSchema = v.object({
-  response: v.object({
-    players: v.array(
-      v.object({
-        steamid: v.string(),
-        personaname: v.string(),
-        profileurl: v.string(),
-        avatarfull: v.string(),
-        // Use v.optional for fields that might be missing
-        lastlogoff: v.optional(v.number()),
-        // You can also add other fields as optional if you want to use them later
-        realname: v.optional(v.string()),
-        timecreated: v.optional(v.number()),
-      }),
-    ),
-  }),
-});
-
-const SteamOwnedGamesResponse = v.object({
-  response: v.object({
-    game_count: v.optional(v.number(), 0), // Sometimes missing if 0
-    games: v.optional(
-      v.array(
-        // MUST be v.array
-        v.object({
-          appid: v.number(),
-          name: v.string(),
-          playtime_forever: v.number(),
-          img_icon_url: v.optional(v.string()), // Optional because some games lack icons
-          has_community_visible_stats: v.optional(v.boolean()),
-          rtime_last_played: v.optional(v.number(), 0),
-        }),
-      ),
-      [],
-    ),
-  }),
-});
-
-const SteamRecentlyPlayedSchema = v.object({
-  response: v.object({
-    total_count: v.optional(v.number(), 0),
-    games: v.optional(
-      v.array(
-        v.object({
-          appid: v.number(),
-          rtime_last_played: v.number(),
-        }),
-      ),
-      [],
-    ),
-  }),
-});
-
-const SteamAchievementsSchema = v.object({
-  playerstats: v.object({
-    // Steam returns this field absent (not just empty) when a game has no achievements,
-    // so we need to handle both cases
-    achievements: v.optional(
-      v.array(
-        v.object({
-          achieved: v.number(), // 1 = achieved, 0 = not
-        }),
-      ),
-    ),
-  }),
-});
+import {
+  SteamGameSchemaSchema,
+  SteamGlobalAchievementSchema,
+  SteamOwnedGamesResponse,
+  SteamPlayerAchievementsSchema,
+  SteamPlayerSchema,
+  SteamRecentlyPlayedSchema,
+} from "./schemas/steam.schemas";
 
 export class SteamProvider {
   private readonly apiKey: string;
@@ -172,7 +113,7 @@ export class SteamProvider {
     );
     url.searchParams.append("key", this.apiKey);
     url.searchParams.append("steamid", steamId);
-    url.searchParams.append("count", "0"); // 0 = return all (up to 500)
+    url.searchParams.append("count", "0");
 
     const response = await fetch(url.toString());
     if (!response.ok)
@@ -196,36 +137,82 @@ export class SteamProvider {
     );
   }
 
-  async getGameAchievements(steamId: string, appId: string) {
+  async getPlayerAchievements(steamId: string, appId: string) {
     const url = new URL(
       `${this.baseUrl}/ISteamUserStats/GetPlayerAchievements/v0001/`,
     );
     url.searchParams.append("key", this.apiKey);
     url.searchParams.append("steamid", steamId);
     url.searchParams.append("appid", appId);
+    url.searchParams.append("l", "english");
 
     const response = await fetch(url.toString());
 
-    // Steam returns 400 when a game has no achievement system at all
     if (response.status === 400 || response.status === 500) return null;
     if (!response.ok)
       throw new Error(`Steam API error: ${response.statusText}`);
 
     const rawData = await response.json();
-    const result = v.safeParse(SteamAchievementsSchema, rawData);
+    const result = v.safeParse(SteamPlayerAchievementsSchema, rawData);
 
     if (!result.success || !result.output.playerstats.achievements) {
-      return null; // game has no achievements
+      if (!result.success) {
+        console.error(
+          "[SteamProvider] PlayerAchievements schema error",
+          v.flatten(result.issues),
+        );
+      }
+      return null;
     }
 
-    const achievements = result.output.playerstats.achievements;
-    const total = achievements.length;
-    const achieved = achievements.filter((a) => a.achieved === 1).length;
+    return result.output.playerstats.achievements.map((a) => ({
+      apiName: a.apiname,
+      achieved: a.achieved === 1,
+      unlockedAt: a.unlocktime > 0 ? new Date(a.unlocktime * 1000) : null,
+      name: a.name ?? a.apiname,
+      description: a.description ?? null,
+    }));
+  }
 
-    return {
-      completionPercentage: total > 0 ? (achieved / total) * 100 : 0,
-      achievedCount: achieved,
-      totalCount: total,
-    };
+  async getGameSchema(appId: string) {
+    const [schemaRes, globalRes] = await Promise.all([
+      fetch(
+        `${this.baseUrl}/ISteamUserStats/GetSchemaForGame/v2/?key=${this.apiKey}&appid=${appId}&l=english`,
+      ),
+      fetch(
+        `${this.baseUrl}/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/?gameid=${appId}`,
+      ),
+    ]);
+
+    const schemaData = await schemaRes.json();
+    const schemaResult = v.safeParse(SteamGameSchemaSchema, schemaData);
+    const schemaDefs = schemaResult.success
+      ? (schemaResult.output.game.availableGameStats?.achievements ?? [])
+      : [];
+
+    const globalData = await globalRes.json();
+    const globalResult = v.safeParse(SteamGlobalAchievementSchema, globalData);
+    const globalMap = new Map(
+      globalResult.success
+        ? globalResult.output.achievementpercentages.achievements.map((a) => [
+            a.name,
+            a.percent,
+          ])
+        : [],
+    );
+
+    return new Map(
+      schemaDefs.map((def) => [
+        def.name,
+        {
+          displayName: def.displayName,
+          description: def.description ?? null,
+          hidden: def.hidden === 1,
+          iconUrl: def.icon,
+          iconGrayUrl: def.icongray,
+          globalPercentage: globalMap.get(def.name) ?? null,
+        },
+      ]),
+    );
   }
 }
