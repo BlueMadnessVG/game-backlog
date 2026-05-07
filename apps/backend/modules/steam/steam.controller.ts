@@ -1,7 +1,13 @@
 import { Hono } from "hono";
 import { vValidator } from "@hono/valibot-validator";
-import { SteamSyncSchema } from "@repo/shared";
+import {
+  AchievementFilterSchema,
+  AchievementSortSchema,
+  SteamSyncSchema,
+} from "@repo/shared";
 import { SteamService } from "./steam.services";
+import * as v from "valibot";
+
 import { authMiddleware } from "../../middleware/auth.middleware";
 
 type Bindings = {
@@ -101,35 +107,75 @@ export const createSteamController = (steamService: SteamService) => {
     },
   );
 
-  app.post("/sync-achievements", async (c) => {
+  app.post("/games/:gameId/sync-achievements", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const gameId = c.req.param("gameId");
 
     try {
-      const result = await steamService.syncAllGameAchievements(userId);
-      return c.json(
-        {
-          status: "SUCCESS",
-          message: `Synced ${result.synced} games, skipped ${result.skipped} (no achievements)`,
-          data: result,
-        },
-        200,
-      );
+      await steamService.syncGameAchievements(userId, gameId);
+      return c.json({ status: "SUCCESS", message: "Achievements synced" }, 200);
     } catch (error) {
-      console.error(`[SteamController] Full achievement sync failed:`, error);
+      console.error(
+        `[SteamController] Achievement sync failed for game ${gameId}:`,
+        error,
+      );
       throw error;
     }
   });
 
-  app.post("/games/:gameId/sync-achievements", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462"; // swap with authMiddleware later
+  app.post("/games/:gameId/achievements", async (c) => {
+    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
     const gameId = c.req.param("gameId");
 
+    const filterResult = v.safeParse(
+      AchievementFilterSchema,
+      c.req.query("filter") ?? "all",
+    );
+    const sortResult = v.safeParse(
+      AchievementSortSchema,
+      c.req.query("sort") ?? "rarity",
+    );
+    const limit = Math.min(Number(c.req.query("limit")) || 50, 100);
+    const offset = Number(c.req.query("offset")) || 0;
+
+    if (!filterResult.success || !sortResult.success) {
+      return c.json(
+        {
+          status: "ERROR",
+          message: "Invalid filter or sort value",
+        },
+        400,
+      );
+    }
+
     try {
-      const result = await steamService.syncGameAchievements(userId, gameId);
-      return c.json({ status: "SUCCESS", data: result }, 200);
+      const { data, total, unlocked } = await steamService.getGameAchievements(
+        userId,
+        gameId,
+        {
+          filter: filterResult.output,
+          sort: sortResult.output,
+          limit,
+          offset,
+        },
+      );
+
+      return c.json(
+        {
+          status: "SUCCESS",
+          meta: {
+            total,
+            unlocked,
+            limit,
+            offset,
+          },
+          data,
+        },
+        200,
+      );
     } catch (error) {
       console.error(
-        `[SteamController] Achievement sync failed for game ${gameId}:`,
+        `[SteamController] Failed to fetch achievements for game ${gameId}:`,
         error,
       );
       throw error;
