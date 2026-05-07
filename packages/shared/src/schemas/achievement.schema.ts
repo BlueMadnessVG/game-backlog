@@ -60,6 +60,7 @@ export const AchievementsResponseSchema = v.object({
     total: v.pipe(v.number(), v.integer(), v.minValue(0)),
     limit: v.pipe(v.number(), v.integer(), v.minValue(1)),
     offset: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    unlocked: v.pipe(v.number(), v.integer(), v.minValue(0)),
   }),
   data: v.array(AchievementSchema),
 });
