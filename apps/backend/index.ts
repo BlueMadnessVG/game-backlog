@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { timeout } from "hono/timeout";
-import { cors } from "hono/cors"; // Use Hono's native cors if possible
-import { requestId } from "hono/request-id"; // Hono has a built-in one!
+import { cors } from "hono/cors";
+import { requestId } from "hono/request-id";
 
 import { db } from "./db";
 import { SteamProvider } from "./providers/steam.provider";
