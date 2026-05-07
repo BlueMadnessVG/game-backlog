@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { users, steamAccounts, steamGames, games } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { SteamProvider } from "../../providers/steam.provider";
@@ -50,6 +50,48 @@ export class SteamService {
       addedAt: row.addedAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     }));
+  }
+
+  async getUserGame(userId: string, gameId: string): Promise<Game | null> {
+    const [row] = await this.db
+      .select({
+        id: games.id,
+        title: games.title,
+        platform: games.platform,
+        status: games.status,
+        iconUrl: games.iconUrl,
+        coverUrl: games.coverUrl,
+        bannerUrl: games.bannerUrl,
+        playTime: games.playTime,
+        completionPercentage: games.completionPercentage,
+        lastPlayedAt: games.lastPlayedAt,
+        addedAt: games.createdAt,
+        updatedAt: games.updatedAt,
+        steamAppId: steamGames.steamAppId,
+      })
+      .from(games)
+      .innerJoin(steamGames, eq(games.id, steamGames.gameId))
+      .innerJoin(steamAccounts, eq(steamAccounts.userId, userId))
+      .where(and(eq(steamAccounts.userId, userId), eq(games.id, gameId)))
+      .limit(1);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      externalId: row.steamAppId,
+      title: row.title,
+      platform: row.platform ?? "steam",
+      status: row.status ?? "backlog",
+      iconUrl: row.iconUrl ?? null,
+      coverUrl: row.coverUrl ?? null,
+      bannerUrl: row.bannerUrl ?? null,
+      playTime: row.playTime ?? 0,
+      completionPercentage: row.completionPercentage ?? 0,
+      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
+      addedAt: row.addedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
   }
 
   async syncUserProfile(localUserId: string, steamId: string) {

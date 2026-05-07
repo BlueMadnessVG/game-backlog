@@ -1,4 +1,4 @@
-import { type GamesResponse } from '@repo/shared';
+import { type Game, type GamesResponse } from '@repo/shared';
 
 import { apiClient } from '../api.client.';
 
@@ -21,6 +21,13 @@ export const steamService = {
     });
 
     return data;
+  },
+
+  getGameById: async (id: string, signal?: AbortSignal): Promise<Game> => {
+    const { data } = await apiClient.get<{ status: string; data: Game }>(`/steam/games/${id}`, {
+      signal,
+    });
+    return data.data;
   },
 
   sync: async (steamId: string, signal?: AbortSignal): Promise<ApiResponse<unknown>> => {
