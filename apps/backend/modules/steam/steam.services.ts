@@ -1,10 +1,21 @@
-import { eq, desc, and } from "drizzle-orm";
-import { users, steamAccounts, steamGames, games } from "../../db/schema";
+import { eq, desc, and, asc } from "drizzle-orm";
+import {
+  users,
+  steamAccounts,
+  steamGames,
+  games,
+  achievements,
+  userAchievements,
+} from "../../db/schema";
 import type { DbClient } from "../../db";
 import { SteamProvider } from "../../providers/steam.provider";
 import { sql } from "drizzle-orm";
-import type { Game } from "@repo/shared";
-import { chunk } from "../../lib/chunk";
+import type {
+  Achievement,
+  AchievementFilter,
+  AchievementSort,
+  Game,
+} from "@repo/shared";
 
 export class SteamService {
   constructor(
@@ -177,73 +188,6 @@ export class SteamService {
     });
   }
 
-  async syncAllGameAchievements(localUserId: string) {
-    // Get the user's steamId + all their games with steamAppIds in one query
-    const [accountRow] = await this.db
-      .select({ steamId: steamAccounts.steamId })
-      .from(steamAccounts)
-      .where(eq(steamAccounts.userId, localUserId))
-      .limit(1);
-
-    if (!accountRow)
-      throw new Error(`No Steam account linked for user ${localUserId}`);
-
-    const userGames = await this.db
-      .select({ gameId: games.id, steamAppId: steamGames.steamAppId })
-      .from(games)
-      .innerJoin(steamGames, eq(steamGames.gameId, games.id))
-      .innerJoin(steamAccounts, eq(steamAccounts.userId, localUserId));
-
-    if (!userGames.length) return { synced: 0, skipped: 0 };
-
-    const BATCH_SIZE = 5;
-    const batches = chunk(userGames, BATCH_SIZE);
-
-    let synced = 0;
-    let skipped = 0;
-
-    for (const batch of batches) {
-      const results = await Promise.all(
-        batch.map(async ({ gameId, steamAppId }) => {
-          try {
-            const data = await this.provider.getGameAchievements(
-              accountRow.steamId,
-              steamAppId,
-            );
-            return {
-              gameId,
-              completionPercentage: data?.completionPercentage ?? 0,
-              ok: true,
-            };
-          } catch (error) {
-            console.warn(
-              `[SteamService] Skipping achievements for appId ${steamAppId}:`,
-              error,
-            );
-            return { gameId, completionPercentage: 0, ok: false };
-          }
-        }),
-      );
-
-      const toUpdate = results.filter((r) => r.ok);
-
-      await this.db.transaction(async (tx) => {
-        for (const { gameId, completionPercentage } of toUpdate) {
-          await tx
-            .update(games)
-            .set({ completionPercentage })
-            .where(eq(games.id, gameId));
-
-          completionPercentage !== null ? synced++ : skipped++;
-        }
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-
-    return { synced, skipped };
-  }
-
   async syncGameAchievements(localUserId: string, gameId: string) {
     const [row] = await this.db
       .select({
@@ -255,26 +199,212 @@ export class SteamService {
       .where(eq(steamGames.gameId, gameId))
       .limit(1);
 
-    if (!row) throw new Error(`No Steam mapping found for game ${gameId}`);
+    if (!row)
+      throw new Error(
+        `No Steam mapping found for game ${gameId} / user ${localUserId}`,
+      );
 
-    const data = await this.provider.getGameAchievements(
-      row.steamId,
-      row.steamAppId,
-    );
+    const [playerAchievements, schemaMap] = await Promise.all([
+      this.provider.getPlayerAchievements(row.steamId, row.steamAppId),
+      this.provider.getGameSchema(row.steamAppId),
+    ]);
 
-    if (data === null) {
-      await this.db
+    if (!playerAchievements) return [];
+
+    return await this.db.transaction(async (tx) => {
+      const achievementValues = playerAchievements.map((a) => {
+        const meta = schemaMap.get(a.apiName);
+        return {
+          steamAppId: row.steamAppId,
+          apiName: a.apiName,
+          name: meta?.displayName ?? a.name,
+          description: meta?.description ?? a.description ?? null,
+          hidden: meta?.hidden ?? false,
+          iconUrl: meta?.iconUrl ?? null,
+          iconGrayUrl: meta?.iconGrayUrl ?? null,
+          globalPercentage: meta?.globalPercentage ?? null,
+        };
+      });
+
+      const upsertedAchievements = await tx
+        .insert(achievements)
+        .values(achievementValues)
+        .onConflictDoUpdate({
+          target: [achievements.steamAppId, achievements.apiName],
+          set: {
+            name: sql`excluded.name`,
+            description: sql`excluded.description`,
+            hidden: sql`excluded.hidden`,
+            iconUrl: sql`excluded.icon_url`,
+            iconGrayUrl: sql`excluded.icon_gray_url`,
+            globalPercentage: sql`excluded.global_percentage`,
+          },
+        })
+        .returning();
+
+      const apiNameToId = new Map(
+        upsertedAchievements.map((a) => [a.apiName, a.id]),
+      );
+
+      const userAchievementValues = playerAchievements
+        .map((a) => {
+          const achievementId = apiNameToId.get(a.apiName);
+          if (!achievementId) return null;
+          return {
+            userId: localUserId,
+            achievementId,
+            achieved: a.achieved,
+            unlockedAt: a.unlockedAt,
+          };
+        })
+        .filter(Boolean) as {
+        userId: string;
+        achievementId: string;
+        achieved: boolean;
+        unlockedAt: Date | null;
+      }[];
+
+      await tx
+        .insert(userAchievements)
+        .values(userAchievementValues)
+        .onConflictDoUpdate({
+          target: [userAchievements.userId, userAchievements.achievementId],
+          set: {
+            achieved: sql`excluded.achieved`,
+            unlockedAt: sql`excluded.unlocked_at`,
+          },
+        });
+
+      const totalCount = playerAchievements.length;
+      const achievedCount = playerAchievements.filter((a) => a.achieved).length;
+      const completionPercentage =
+        totalCount > 0 ? (achievedCount / totalCount) * 100 : 0;
+
+      await tx
         .update(games)
-        .set({ completionPercentage: 0 })
+        .set({ completionPercentage })
         .where(eq(games.id, gameId));
-      return { completionPercentage: 0, achievedCount: 0, totalCount: 0 };
+
+      return upsertedAchievements;
+    });
+  }
+
+  async getGameAchievements(
+    userId: string,
+    gameId: string,
+    options: {
+      filter?: AchievementFilter;
+      sort?: AchievementSort;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
+    const { filter = "all", sort = "rarity", limit = 50, offset = 0 } = options;
+
+    const [existing] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(userAchievements)
+      .innerJoin(
+        achievements,
+        eq(achievements.id, userAchievements.achievementId),
+      )
+      .where(
+        and(
+          eq(userAchievements.userId, userId),
+          eq(
+            achievements.steamAppId,
+            sql`(
+            select steam_app_id from steam_games where game_id = ${gameId}
+          )`,
+          ),
+        ),
+      );
+
+    if (!existing || existing.count === 0) {
+      await this.syncGameAchievements(userId, gameId);
     }
 
-    await this.db
-      .update(games)
-      .set({ completionPercentage: data.completionPercentage })
-      .where(eq(games.id, gameId));
+    const filterConditions = and(
+      eq(userAchievements.userId, userId),
+      eq(
+        achievements.steamAppId,
+        sql`(
+        select steam_app_id from steam_games where game_id = ${gameId}
+      )`,
+      ),
+      filter === "unlocked" ? eq(userAchievements.achieved, true) : undefined,
+      filter === "locked" ? eq(userAchievements.achieved, false) : undefined,
+    );
 
-    return data;
+    const sortOrder =
+      sort === "rarity"
+        ? desc(achievements.globalPercentage)
+        : sort === "unlock-date"
+          ? desc(userAchievements.unlockedAt)
+          : asc(achievements.name);
+
+    const [rows, totals] = await Promise.all([
+      this.db
+        .select({
+          id: achievements.id,
+          apiName: achievements.apiName,
+          gameId: steamGames.gameId,
+          name: achievements.name,
+          description: achievements.description,
+          hidden: achievements.hidden,
+          iconUrl: achievements.iconUrl,
+          iconGrayUrl: achievements.iconGrayUrl,
+          achieved: userAchievements.achieved,
+          unlockedAt: userAchievements.unlockedAt,
+          globalPercentage: achievements.globalPercentage,
+          addedAt: achievements.createdAt,
+          updatedAt: achievements.updatedAt,
+        })
+        .from(userAchievements)
+        .innerJoin(
+          achievements,
+          eq(achievements.id, userAchievements.achievementId),
+        )
+        .innerJoin(
+          steamGames,
+          eq(steamGames.steamAppId, achievements.steamAppId),
+        )
+        .where(filterConditions)
+        .orderBy(sortOrder)
+        .limit(limit)
+        .offset(offset),
+
+      this.db
+        .select({
+          total: sql<number>`count(*)::int`,
+          unlocked: sql<number>`sum(case when ${userAchievements.achieved} then 1 else 0 end)::int`,
+        })
+        .from(userAchievements)
+        .innerJoin(
+          achievements,
+          eq(achievements.id, userAchievements.achievementId),
+        )
+        .where(filterConditions),
+    ]);
+
+    const { total, unlocked } = totals[0] ?? { total: 0, unlocked: 0 };
+
+    const data: Achievement[] = rows.map((row) => ({
+      id: row.id,
+      externalId: row.apiName,
+      gameId: row.gameId,
+      name: row.name,
+      description: row.description ?? null,
+      hidden: row.hidden ?? false,
+      iconUrl: row.iconUrl ?? null,
+      iconGrayUrl: row.iconGrayUrl ?? null,
+      achieved: row.achieved ?? false,
+      unlockedAt: row.unlockedAt?.toISOString() ?? null,
+      globalPercentage: row.globalPercentage ?? null,
+      addedAt: row.addedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    }));
+
+    return { data, total, unlocked };
   }
 }
