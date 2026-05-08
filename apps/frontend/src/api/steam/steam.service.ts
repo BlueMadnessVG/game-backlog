@@ -1,4 +1,4 @@
-import { type Game, type GamesResponse } from '@repo/shared';
+import { type AchievementsResponse, type Game, type GamesResponse } from '@repo/shared';
 
 import { apiClient } from '../api.client.';
 
@@ -9,6 +9,11 @@ interface ApiResponse<T> {
 }
 
 interface GamesParams {
+  limit?: number;
+  offset?: number;
+}
+
+interface AchievementParams {
   limit?: number;
   offset?: number;
 }
@@ -35,6 +40,26 @@ export const steamService = {
       '/steam/sync',
       { steamId },
       { signal },
+    );
+    return data;
+  },
+
+  getAchievements: async (
+    gameId: string,
+    params?: AchievementParams,
+    signal?: AbortSignal,
+  ): Promise<AchievementsResponse> => {
+    const { data } = await apiClient.get<AchievementsResponse>(`/games/${gameId}/achievements`, {
+      signal,
+      params: { limit: params?.limit ?? 50, offset: params?.offset ?? 0 },
+    });
+    return data;
+  },
+
+  syncAchievements: async (gameId: string): Promise<AchievementsResponse> => {
+    const { data } = await apiClient.post<AchievementsResponse>(
+      `/games/${gameId}/sync-achievements`,
+      null,
     );
     return data;
   },
