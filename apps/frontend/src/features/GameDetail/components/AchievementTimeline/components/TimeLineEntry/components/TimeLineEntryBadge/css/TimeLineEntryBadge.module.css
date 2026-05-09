@@ -1,0 +1,62 @@
+.badge_root {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.badge_image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  filter: saturate(0.6) brightness(0.7);
+  transition: filter 0.3s ease;
+}
+
+/* Unlocked icons get full color */
+.badge_image[data-unlocked='true'] {
+  filter: saturate(1) brightness(0.75);
+}
+
+.entry_root:hover .badge_image {
+  filter: saturate(1) brightness(0.9);
+}
+
+/* Bottom gradient — content reads over the icon */
+.badge_gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(0, 0, 0, 0.5) 40%,
+    transparent 100%
+  );
+  z-index: 2;
+}
+
+/* Hidden state */
+.badge_hidden {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.03) 0%, transparent 70%);
+}
+
+.badge_hidden_text {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.08);
+  letter-spacing: 0.2em;
+  user-select: none;
+}
+
+.badge_fallback {
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.02);
+}
