@@ -49,16 +49,19 @@ export const steamService = {
     params?: AchievementParams,
     signal?: AbortSignal,
   ): Promise<AchievementsResponse> => {
-    const { data } = await apiClient.get<AchievementsResponse>(`/games/${gameId}/achievements`, {
-      signal,
-      params: { limit: params?.limit ?? 50, offset: params?.offset ?? 0 },
-    });
+    const { data } = await apiClient.post<AchievementsResponse>(
+      `/steam/games/${gameId}/achievements`,
+      {
+        signal,
+        params: { limit: params?.limit ?? 50, offset: params?.offset ?? 0 },
+      },
+    );
     return data;
   },
 
   syncAchievements: async (gameId: string): Promise<AchievementsResponse> => {
     const { data } = await apiClient.post<AchievementsResponse>(
-      `/games/${gameId}/sync-achievements`,
+      `/steam/games/${gameId}/sync-achievements`,
       null,
     );
     return data;
