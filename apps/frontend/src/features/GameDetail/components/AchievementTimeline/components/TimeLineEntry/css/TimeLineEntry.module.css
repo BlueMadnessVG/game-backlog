@@ -1,0 +1,33 @@
+.entry_root {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: default;
+
+  /* Variable size — unlocked larger than locked */
+  width: 120px;
+  height: 160px;
+
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #0a0a0a;
+
+  transition: border-color 0.2s ease;
+}
+
+/* Unlocked cards are larger */
+.entry_root[data-unlocked='true'] {
+  width: 200px;
+  height: 240px;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Hidden locked cards get a distinct dark treatment */
+.entry_root[data-hidden='true'] {
+  border-color: rgba(255, 255, 255, 0.04);
+  background: #070709;
+}
+
+.entry_root:hover {
+  border-color: rgba(0, 255, 255, 0.25);
+}
