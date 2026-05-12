@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 import styles from './css/GameCard.module.css';
 
@@ -30,37 +30,35 @@ function GameCardPoster({ src, alt, isHovered = false, onLoad }: GameCardPosterP
 
   return (
     <div className={styles.poster_container}>
-      <AnimatePresence mode="wait">
-        {src && !hasError ? (
-          <motion.img
-            key="image"
-            src={src}
-            alt={alt}
-            className={styles.poster_image}
-            variants={posterVariants}
-            initial="initial"
-            animate={animateState}
-            exit="exit"
-            onError={() => setHasError(true)}
-            loading="lazy"
-            onLoad={onLoad}
-          />
-        ) : (
-          <motion.div
-            key="fallback"
-            className={styles.poster_fallback}
-            variants={fallbackVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-          >
-            <div className={styles.fallback_content}>
-              <span className={styles.fallback_icon}>[ ! ]</span>
-              <p className={styles.fallback_text}>{alt}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {src && !hasError ? (
+        <motion.img
+          key="image"
+          src={src}
+          alt={alt}
+          className={styles.poster_image}
+          variants={posterVariants}
+          initial="initial"
+          animate={animateState}
+          exit="exit"
+          onError={() => setHasError(true)}
+          loading="lazy"
+          onLoad={onLoad}
+        />
+      ) : (
+        <motion.div
+          key="fallback"
+          className={styles.poster_fallback}
+          variants={fallbackVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+        >
+          <div className={styles.fallback_content}>
+            <span className={styles.fallback_icon}>[ ! ]</span>
+            <p className={styles.fallback_text}>{alt}</p>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }
