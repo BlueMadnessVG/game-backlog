@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 import styles from './css/TimelineEntryContent.module.css';
 
@@ -45,20 +45,19 @@ function TimeLineEntryContent({
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Rarity badge — appears on hover */}
-      <AnimatePresence>
-        {isHovered && globalPercentage !== null && !isHidden && (
-          <motion.div
-            className={styles.rarity_badge}
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.2 }}
-          >
-            <span className={styles.rarity_pct}>{globalPercentage.toFixed(1)}%</span>
-            <span className={styles.rarity_label}>{getRarityLabel(globalPercentage)}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+      {isHovered && globalPercentage !== null && !isHidden && (
+        <motion.div
+          className={styles.rarity_badge}
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.2 }}
+        >
+          <span className={styles.rarity_pct}>{globalPercentage.toFixed(1)}%</span>
+          <span className={styles.rarity_label}>{getRarityLabel(globalPercentage)}</span>
+        </motion.div>
+      )}
 
       {/* Name */}
       <p className={styles.content_name} data-hidden={isHidden}>

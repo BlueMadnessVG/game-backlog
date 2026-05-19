@@ -19,11 +19,14 @@
   flex-shrink: 0;
   height: 280px;
   width: 100%;
+  position: relative;
+  z-index: 2;
 }
 
 .scroll_track {
   padding-top: 5rem;
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: row;
   overflow-x: auto;

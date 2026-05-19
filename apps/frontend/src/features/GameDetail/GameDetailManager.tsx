@@ -1,12 +1,13 @@
-import { useRef } from 'react';
+/* import { useRef } from 'react'; */
 
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 
-import AchievementTimeline from './components/AchievementTimeline/AchievementTimeline';
-import GameDetailsCanvas from './components/GameDetailsCanvas/GameDetailsCanvas';
-import GameDetailsHero from './components/GameDetailsHero/GameDetailsHero';
-import styles from './css/GameDetails.module.css';
+/* import AchievementTimeline from './components/AchievementTimeline/AchievementTimeline';
+ */ import { useAchievementTimeline } from './components/AchievementTimeline/hooks/useAchievementTimeline';
+import { MapCanvas } from './components/GameDetailsCanvas/GameDetailsCanvas';
+/* import GameDetailsHero from './components/GameDetailsHero/GameDetailsHero';
+ */ import styles from './css/GameDetails.module.css';
 
 import { steamService } from '@/api/steam/steam.service';
 
@@ -30,8 +31,8 @@ import { steamService } from '@/api/steam/steam.service';
 }; */
 
 function GameDetailManager() {
-  const scrollTrackRef = useRef<HTMLDivElement>(null!);
-
+  /*   const scrollTrackRef = useRef<HTMLDivElement>(null!);
+   */
   const { id } = useParams({ from: '/games/$id' });
 
   const { data: game, isLoading } = useQuery({
@@ -40,23 +41,27 @@ function GameDetailManager() {
     enabled: !!id,
   });
 
-  if (isLoading) return null;
+  const { achievements, isLoading: achievementsLoading } = useAchievementTimeline({
+    gameId: id,
+  });
+
+  if (isLoading || achievementsLoading) return null;
   if (!game) return null;
 
   return (
     <div className={styles.page_root}>
-      <GameDetailsCanvas />
+      <MapCanvas achievements={achievements} />
 
-      <div className={styles.content_root}>
+      {/*       <div className={styles.content_root}>
         <section className={styles.hero_panel}>
           <GameDetailsHero game={game} scrollRef={scrollTrackRef} />
         </section>
 
         <div ref={scrollTrackRef} className={styles.scroll_track}>
           {/* AchievementTimeline, Stats etc go here as panels */}
-          <AchievementTimeline gameId={id} />
+      {/*          <AchievementTimeline gameId={id} />
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }
