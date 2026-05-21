@@ -5,9 +5,10 @@ import { useParams } from '@tanstack/react-router';
 
 /* import AchievementTimeline from './components/AchievementTimeline/AchievementTimeline';
  */ import { useAchievementTimeline } from './components/AchievementTimeline/hooks/useAchievementTimeline';
-import { MapCanvas } from './components/GameDetailsCanvas/GameDetailsCanvas';
-/* import GameDetailsHero from './components/GameDetailsHero/GameDetailsHero';
- */ import styles from './css/GameDetails.module.css';
+/* import { MapCanvas } from './components/GameDetailsCanvas/GameDetailsCanvas';
+ *//* import GameDetailsHero from './components/GameDetailsHero/GameDetailsHero';
+ */ import { Stage } from './components/TryGame/components/3d/Stage';
+import styles from './css/GameDetails.module.css';
 
 import { steamService } from '@/api/steam/steam.service';
 
@@ -41,7 +42,7 @@ function GameDetailManager() {
     enabled: !!id,
   });
 
-  const { achievements, isLoading: achievementsLoading } = useAchievementTimeline({
+  const { isLoading: achievementsLoading } = useAchievementTimeline({
     gameId: id,
   });
 
@@ -50,7 +51,10 @@ function GameDetailManager() {
 
   return (
     <div className={styles.page_root}>
-      <MapCanvas achievements={achievements} />
+      {/*       <MapCanvas achievements={achievements} />
+       */}
+
+      <Stage />
 
       {/*       <div className={styles.content_root}>
         <section className={styles.hero_panel}>
