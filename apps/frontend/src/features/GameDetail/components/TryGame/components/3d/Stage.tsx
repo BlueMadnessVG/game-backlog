@@ -5,16 +5,18 @@ import { Grid } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 
+import { Billboards3D } from './Billboard/3d/Billboards3D';
 import { CameraController } from './CameraControlller';
 import { Car } from './Car';
+import { useGamesByCategory } from '../../hooks/useGamesByCategory';
 
 export const Stage: React.FC = () => {
-  // Master references to share transform telemetry with the camera without triggers re-renders
   const carRootRef = useRef<THREE.Group>(null);
   const carSpeedRef = useRef<number>(0);
+  const { games: gamesByCategory } = useGamesByCategory();
 
   return (
-    <div className="w-screen h-screen bg-slate-900">
+    <div style={{ width: '100vw', height: '100vh', background: '#0f172a', position: 'relative' }}>
       <Canvas camera={{ position: [0, 10, -15], fov: 45 }} shadows>
         <ambientLight intensity={0.5} />
         <directionalLight
@@ -23,7 +25,6 @@ export const Stage: React.FC = () => {
           castShadow
           shadow-mapSize={[2048, 2048]}
         />
-
         <Grid
           infiniteGrid
           cellSize={1}
@@ -34,12 +35,10 @@ export const Stage: React.FC = () => {
           sectionColor="#334155"
           fadeDistance={60}
         />
-
-        {/* The Car updates shared mutable ref counters internally every frame */}
         <Car sharedRootRef={carRootRef} sharedSpeedRef={carSpeedRef} />
-
-        {/* The Camera monitors those values passively and snaps the viewport smoothly */}
         <CameraController targetRef={carRootRef} currentSpeedRef={carSpeedRef} />
+        {/* All billboard UI now lives inside the Canvas */}
+        <Billboards3D carPositionRef={carRootRef} gamesByCategory={gamesByCategory} />
       </Canvas>
     </div>
   );
