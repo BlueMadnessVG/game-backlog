@@ -8,13 +8,9 @@ type MutableKeyboardControls = {
 
 const KEY_MAP: Record<string, keyof KeyboardControls> = {
   KeyW: 'forward',
-  ArrowUp: 'forward',
   KeyS: 'backward',
-  ArrowDown: 'backward',
   KeyA: 'left',
-  ArrowLeft: 'left',
   KeyD: 'right',
-  ArrowRight: 'right',
   Space: 'brake',
 };
 
