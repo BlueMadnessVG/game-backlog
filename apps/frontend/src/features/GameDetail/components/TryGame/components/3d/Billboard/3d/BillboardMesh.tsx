@@ -4,6 +4,7 @@ import { Html } from '@react-three/drei';
 
 import BillboardScreen from './BillboardScreen';
 import { GAME_CATEGORY_CONFIG } from '../../../../types/billboard';
+import { CollisionBoxHelper } from '../../debug/CollisionBoxHelper';
 
 import type { BillboardConfig } from '../../../../types/billboard';
 import type { Game } from '@repo/shared';
@@ -160,6 +161,13 @@ export const Billboard: React.FC<BillboardProps> = ({
           />
         </mesh>
       )}
+
+      {/* Caja de asistencia visual de colisión (Debug) */}
+      <CollisionBoxHelper
+        position={[0, 0, 0]} // Relativo al grupo del Billboard
+        size={[width + frameThickness * 2, height + frameThickness * 2, frameDepth]}
+        color="#38bdf8" // Azul cielo para los anuncios
+      />
     </group>
   );
 };

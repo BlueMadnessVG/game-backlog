@@ -10,6 +10,33 @@ import { CameraController } from './CameraControlller';
 import { Car } from './Car';
 import { useGamesByCategory } from '../../hooks/useGamesByCategory';
 
+import type { BillboardConfig } from '../../types/billboard';
+
+// Configuración estática compartida expuesta con tipado estricto
+const DEFAULT_BILLBOARDS: readonly BillboardConfig[] = [
+  {
+    position: [-20, 0, -15] as const,
+    width: 8,
+    height: 6,
+    rotation: [0, -Math.PI / 8, 0] as const,
+    category: 'playing' as const,
+  },
+  {
+    position: [20, 0, -15] as const,
+    width: 8,
+    height: 6,
+    rotation: [0, Math.PI / 8, 0] as const,
+    category: 'completed' as const,
+  },
+  {
+    position: [0, 0, 30] as const,
+    width: 8,
+    height: 6,
+    rotation: [0, 0, 0] as const,
+    category: 'backlog' as const,
+  },
+];
+
 export const Stage: React.FC = () => {
   const carRootRef = useRef<THREE.Group>(null);
   const carSpeedRef = useRef<number>(0);
@@ -25,6 +52,7 @@ export const Stage: React.FC = () => {
           castShadow
           shadow-mapSize={[2048, 2048]}
         />
+
         <Grid
           infiniteGrid
           cellSize={1}
@@ -35,9 +63,17 @@ export const Stage: React.FC = () => {
           sectionColor="#334155"
           fadeDistance={60}
         />
-        <Car sharedRootRef={carRootRef} sharedSpeedRef={carSpeedRef} />
+
+        {/* El Auto ahora recibe la configuración para calcular colisiones de forma interna */}
+        <Car
+          sharedRootRef={carRootRef}
+          sharedSpeedRef={carSpeedRef}
+          billboardsConfig={DEFAULT_BILLBOARDS}
+        />
+
         <CameraController targetRef={carRootRef} currentSpeedRef={carSpeedRef} />
-        {/* All billboard UI now lives inside the Canvas */}
+
+        {/* Renderizado de Mallas de Interacción */}
         <Billboards3D carPositionRef={carRootRef} gamesByCategory={gamesByCategory} />
       </Canvas>
     </div>
