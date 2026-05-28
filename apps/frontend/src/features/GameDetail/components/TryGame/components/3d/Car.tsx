@@ -4,7 +4,6 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-import { CollisionBoxHelper } from './debug/CollisionBoxHelper';
 import { useKeyboardControls } from '../../hooks/useKeyboardControls';
 import { DEFAULT_PHYSICS_CONFIG, PHYSICS_CONSTANTS } from '../../types/vehicle';
 import { createBillboardOBB, resolveCollision } from '../../utils/collisionDetection';
@@ -30,11 +29,9 @@ export const Car: React.FC<CarProps> = ({
   const keyboardRef = useKeyboardControls();
   const currentRotationRef = useRef<number>(0);
 
-  // 1. Memorizar las OBB estáticas para optimizar el rendimiento por frame
   const billboardOBBs = useMemo(() => {
     const frameThickness = 0.15;
     const frameDepth = 0.1;
-
     return billboardsConfig.map((config) => createBillboardOBB(config, frameThickness, frameDepth));
   }, [billboardsConfig]);
 
@@ -42,12 +39,11 @@ export const Car: React.FC<CarProps> = ({
     const chassis = sharedRootRef.current;
     const controls = keyboardRef.current;
 
-    // Early return estricto si los componentes no están listos
     if (!chassis || !controls) return;
 
     const safeDelta = Math.min(delta, PHYSICS_CONSTANTS.MAX_DELTA_TIME);
 
-    // 2. Calcular el estado cinemático del vehículo según la entrada del teclado
+    // 1. Obtener físicas del teclado
     const { speed, steeringAngle } = calculateNextVehicleState(
       sharedSpeedRef.current,
       controls,
@@ -59,7 +55,7 @@ export const Car: React.FC<CarProps> = ({
     currentRotationRef.current += steeringAngle * safeDelta;
     chassis.rotation.y = currentRotationRef.current;
 
-    // 3. Proyectar la posición tentativa hacia la que se quiere mover el coche
+    // 2. Mover temporalmente a la posición proyectada
     const tentativePosition = calculateCarPosition(
       chassis.position,
       currentRotationRef.current,
@@ -67,35 +63,35 @@ export const Car: React.FC<CarProps> = ({
       safeDelta,
     );
 
-    // Aplicamos la posición de manera tentativa para evaluar la colisión
     chassis.position.copy(tentativePosition);
     chassis.updateMatrixWorld();
 
-    // 4. Evaluar colisiones iterando sobre las OBBs memorizadas
+    // 3. Resolver colisión usando el algoritmo MTV (Eje de separación)
     let collisionDetected = false;
 
     for (const obb of billboardOBBs) {
       const resolvedPosition = resolveCollision(chassis, obb);
 
-      // Si la posición devuelta es diferente, hubo intersección y fue expulsado por el buffer
       if (!resolvedPosition.equals(chassis.position)) {
         chassis.position.copy(resolvedPosition);
         collisionDetected = true;
       }
     }
 
-    // 5. SOLUCIÓN AL BUG: Rebote físico controlado para liberar el estado cinemático
+    // 4. Romper el enganche magnético: Invertimos y penalizamos la inercia drásticamente
     if (collisionDetected) {
       if (sharedSpeedRef.current > 0) {
-        // Impacto frontal: Invertimos a una velocidad negativa pequeña (reversa automática)
-        // Esto lo despega del anuncio instantáneamente rompiendo el umbral muerto de la física
-        sharedSpeedRef.current = -physicsConfig.maxSpeed * 0.15;
+        // Detiene el avance y le da un pequeño empuje de despegue inverso hacia atrás
+        sharedSpeedRef.current = -physicsConfig.maxSpeed * 0.2;
       } else if (sharedSpeedRef.current < 0) {
-        // Impacto trasero: Pequeño empuje hacia adelante
-        sharedSpeedRef.current = physicsConfig.maxSpeed * 0.15;
+        // Empuje hacia adelante si chocó retrocediendo
+        sharedSpeedRef.current = physicsConfig.maxSpeed * 0.2;
       } else {
         sharedSpeedRef.current = 0;
       }
+
+      // Forzar actualización final de la matriz para que el renderer sepa el despegue exacto
+      chassis.updateMatrixWorld();
     }
   });
 
@@ -105,13 +101,6 @@ export const Car: React.FC<CarProps> = ({
         <boxGeometry args={[1.6, 0.6, 3]} />
         <meshStandardMaterial color="#ef4444" roughness={0.2} metalness={0.8} />
       </mesh>
-
-      {/* Caja de asistencia visual de colisión (Debug) */}
-      <CollisionBoxHelper
-        position={[0, 0, 0]} // Centrado con respecto al chasis
-        size={[1.6, 0.6, 3]}
-        color="#22c55e" // Verde para el coche
-      />
     </group>
   );
 };
