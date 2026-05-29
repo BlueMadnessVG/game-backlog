@@ -12,16 +12,6 @@ import { useGamesByCategory } from '../../../../hooks/useGamesByCategory';
 import { BILLBOARD_INTERACTION_DISTANCE } from '../../../../types/billboard';
 
 import type { BillboardConfig } from '../../../../types/billboard';
-import type { Game } from '@repo/shared';
-
-interface Billboards3DProps {
-  readonly carPositionRef: React.RefObject<THREE.Group | null>;
-  readonly gamesByCategory?: {
-    playing: readonly Game[];
-    completed: readonly Game[];
-    backlog: readonly Game[];
-  };
-}
 
 const DEFAULT_BILLBOARDS: readonly BillboardConfig[] = [
   {
@@ -38,8 +28,18 @@ const DEFAULT_BILLBOARDS: readonly BillboardConfig[] = [
     rotation: [0, Math.PI / 8, 0],
     category: 'completed',
   },
-  { position: [0, 0, 30], width: 8, height: 6, rotation: [0, 0, 0], category: 'backlog' },
+  {
+    position: [0, 0, 30],
+    width: 8,
+    height: 6,
+    rotation: [0, 0, 0],
+    category: 'backlog',
+  },
 ];
+
+interface Billboards3DProps {
+  readonly carPositionRef: React.RefObject<THREE.Group | null>;
+}
 
 export const Billboards3D: React.FC<Billboards3DProps> = ({ carPositionRef }) => {
   const { isLoading, getGamesByCategory } = useGamesByCategory();
@@ -48,7 +48,6 @@ export const Billboards3D: React.FC<Billboards3DProps> = ({ carPositionRef }) =>
   const proximity = useBillboardProximity(carPositionRef, DEFAULT_BILLBOARDS);
   const keyHandledRef = useRef(false);
 
-  // E / Enter → open closest billboard
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
       if (
@@ -85,20 +84,23 @@ export const Billboards3D: React.FC<Billboards3DProps> = ({ carPositionRef }) =>
   return (
     <>
       {DEFAULT_BILLBOARDS.map((billboard) => {
+        const gamesList = getGamesByCategory(billboard.category);
         const selected =
           isClosest(billboard) && proximity.closestDistance < BILLBOARD_INTERACTION_DISTANCE;
         const open = isModalOpen && selectedCategory === billboard.category;
+
         return (
           <Billboard
             key={billboard.category}
             {...billboard}
             isNearby={isNearby(billboard)}
             isSelected={selected}
-            games={getGamesByCategory(billboard.category)}
+            games={gamesList}
             isLoading={isLoading}
             isOpen={open}
             onOpen={() => openBillboard(billboard.category)}
             onClose={closeBillboard}
+            showPrompt={selected} // Controls nested indicator mesh visibility cleanly
           />
         );
       })}

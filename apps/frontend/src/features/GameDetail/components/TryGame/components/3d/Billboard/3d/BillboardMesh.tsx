@@ -1,6 +1,8 @@
-import React, { useMemo, useCallback, useEffect, useState } from 'react';
+// components/3d/Billboard/3d/BillboardMesh.tsx
+import React, { useMemo } from 'react';
 
 import { Html } from '@react-three/drei';
+import { Zap } from 'lucide-react';
 
 import BillboardScreen from './BillboardScreen';
 import { GAME_CATEGORY_CONFIG } from '../../../../types/billboard';
@@ -17,6 +19,7 @@ interface BillboardProps extends BillboardConfig {
   readonly isOpen?: boolean;
   readonly onOpen?: () => void;
   readonly onClose?: () => void;
+  readonly showPrompt?: boolean; // Added to easily toggle prompt visibility from parent
 }
 
 export const Billboard: React.FC<BillboardProps> = ({
@@ -32,9 +35,9 @@ export const Billboard: React.FC<BillboardProps> = ({
   isOpen = false,
   onOpen,
   onClose,
+  showPrompt = false,
 }) => {
   const config = GAME_CATEGORY_CONFIG[category];
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   const frameColor = useMemo(() => {
     if (isSelected) return '#fbbf24';
@@ -54,40 +57,12 @@ export const Billboard: React.FC<BillboardProps> = ({
   const frameDepth = 0.1;
   const displayScale = 0.95;
 
-  // px dimensions for the Html portal (drei maps 1 unit → 100px by default)
   const htmlW = width * displayScale * 100;
   const htmlH = height * displayScale * 100;
 
-  const selectedGame = games[selectedIndex];
-
-  const prev = useCallback(
-    () => setSelectedIndex((i) => (i === 0 ? games.length - 1 : i - 1)),
-    [games.length],
-  );
-  const next = useCallback(
-    () => setSelectedIndex((i) => (i === games.length - 1 ? 0 : i + 1)),
-    [games.length],
-  );
-
-  // Reset index when category/games change
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => setSelectedIndex(0), [category, games.length]);
-
-  // Keyboard navigation when open
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') prev();
-      if (e.key === 'ArrowRight') next();
-      if (e.key === 'Escape') onClose?.();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [isOpen, prev, next, onClose]);
-
   return (
     <group position={position} rotation={groupRotationArray}>
-      {/* Frame */}
+      {/* ── Main Structural Frame ── */}
       <mesh castShadow receiveShadow>
         <boxGeometry args={[width + frameThickness * 2, height + frameThickness * 2, frameDepth]} />
         <meshStandardMaterial
@@ -99,13 +74,13 @@ export const Billboard: React.FC<BillboardProps> = ({
         />
       </mesh>
 
-      {/* Display Surface (dark backing) */}
+      {/* Display Surface Backing */}
       <mesh position={[0, 0, frameDepth / 2 + 0.01]} receiveShadow>
         <boxGeometry args={[width * displayScale, height * displayScale, 0.02]} />
         <meshStandardMaterial color="#0d1117" metalness={0.1} roughness={0.8} />
       </mesh>
 
-      {/* ── HTML UI rendered ON the display surface ── */}
+      {/* Screen Interface */}
       <Html
         position={[0, 0, frameDepth / 2 + 0.03]}
         transform
@@ -122,19 +97,17 @@ export const Billboard: React.FC<BillboardProps> = ({
           games={games}
           isLoading={isLoading}
           isOpen={isOpen}
-          selectedGame={selectedGame}
-          selectedIndex={selectedIndex}
-          onPrev={prev}
-          onNext={next}
-          onOpen={onOpen}
-          onClose={onClose}
+          selectedGame={games[0]} // Pass base index state or active logic depending on screen mapping
+          selectedIndex={0}
           isSelected={isSelected}
           screenW={htmlW}
           screenH={htmlH}
+          onOpen={onOpen}
+          onClose={onClose}
         />
       </Html>
 
-      {/* Category label strip */}
+      {/* Category Header Strip */}
       <group position={[0, height / 2 + frameThickness * 1.2, frameDepth / 2 + 0.05]}>
         <mesh>
           <planeGeometry args={[width * displayScale, frameThickness]} />
@@ -146,7 +119,56 @@ export const Billboard: React.FC<BillboardProps> = ({
         </mesh>
       </group>
 
-      {/* Glow when nearby */}
+      {/* ── Dynamic Floating Interaction Prompt Mesh ── */}
+      {showPrompt && games.length > 0 && (
+        <group position={[0, -height / 2 - 1.0, frameDepth / 2 + 0.2]}>
+          {/* Visual Technical Frame Anchor */}
+          <mesh castShadow>
+            <boxGeometry args={[3.2, 0.5, 0.04]} />
+            <meshStandardMaterial
+              color="#0f172a"
+              metalness={0.6}
+              roughness={0.2}
+              transparent
+              opacity={0.9}
+            />
+          </mesh>
+
+          {/* HTML Controller / Key Indicator Overlay */}
+          <Html
+            position={[0, 0, 0.03]}
+            transform
+            occlude
+            pointerEvents="none"
+            style={{
+              width: '300px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              userSelect: 'none',
+            }}
+          >
+            <div
+              className="flex items-center gap-2.5 px-4 py-1.5 rounded-full border-2 border-current backdrop-blur-md shadow-lg"
+              style={{
+                backgroundColor: `${config.color}15`,
+                color: config.color,
+              }}
+            >
+              <Zap size={14} className="animate-pulse flex-shrink-0" />
+              <span className="font-bold text-xs tracking-wider uppercase whitespace-nowrap">
+                Press E or Enter
+              </span>
+            </div>
+            <div className="text-center mt-1 text-[10px] font-medium text-slate-400 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-800">
+              {config.label} • {games.length} {games.length === 1 ? 'game' : 'games'}
+            </div>
+          </Html>
+        </group>
+      )}
+
+      {/* Proximity Ambient Background Glow */}
       {isNearby && (
         <mesh position={[0, 0, -0.1]}>
           <boxGeometry
@@ -155,18 +177,18 @@ export const Billboard: React.FC<BillboardProps> = ({
           <meshStandardMaterial
             color="#60a5fa"
             transparent
-            opacity={0.2}
+            opacity={0.15}
             emissive="#60a5fa"
-            emissiveIntensity={0.3}
+            emissiveIntensity={0.2}
           />
         </mesh>
       )}
 
-      {/* Caja de asistencia visual de colisión (Debug) */}
+      {/* Debug Bounds */}
       <CollisionBoxHelper
-        position={[0, 0, 0]} // Relativo al grupo del Billboard
+        position={[0, 0, 0]}
         size={[width + frameThickness * 2, height + frameThickness * 2, frameDepth]}
-        color="#38bdf8" // Azul cielo para los anuncios
+        color="#38bdf8"
       />
     </group>
   );
