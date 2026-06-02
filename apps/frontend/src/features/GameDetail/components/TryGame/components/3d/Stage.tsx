@@ -7,8 +7,7 @@ import * as THREE from 'three';
 
 import { Billboards3D } from './Billboard/3d/Billboards3D';
 import { CameraController } from './CameraControlller';
-import { Car } from './Car';
-import { useGamesByCategory } from '../../hooks/useGamesByCategory';
+import { Car } from './Car/Car';
 
 import type { BillboardConfig } from '../../types/billboard';
 
@@ -40,7 +39,6 @@ const DEFAULT_BILLBOARDS: readonly BillboardConfig[] = [
 export const Stage: React.FC = () => {
   const carRootRef = useRef<THREE.Group>(null);
   const carSpeedRef = useRef<number>(0);
-  const { games: gamesByCategory } = useGamesByCategory();
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#0f172a', position: 'relative' }}>
@@ -74,7 +72,7 @@ export const Stage: React.FC = () => {
         <CameraController targetRef={carRootRef} currentSpeedRef={carSpeedRef} />
 
         {/* Renderizado de Mallas de Interacción */}
-        <Billboards3D carPositionRef={carRootRef} gamesByCategory={gamesByCategory} />
+        <Billboards3D carPositionRef={carRootRef} />
       </Canvas>
     </div>
   );
