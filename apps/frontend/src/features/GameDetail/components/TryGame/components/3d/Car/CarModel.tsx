@@ -444,6 +444,7 @@ export const CarModel: React.FC<CarModelProps> = ({
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function preloadCarModel(url: string): void {
   useGLTF.preload(url);
 }
