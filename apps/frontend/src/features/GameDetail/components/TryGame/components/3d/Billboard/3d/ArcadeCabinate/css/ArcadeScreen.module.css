@@ -1,0 +1,273 @@
+.screenRoot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #070d14;
+  overflow: hidden;
+  border-radius: 4px;
+  font-family: 'Press Start 2P', 'Courier New', monospace;
+  color: #e2e8f0;
+}
+
+.scanlineStyle {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.18) 2px,
+    rgba(0, 0, 0, 0.18) 4px
+  );
+  pointer-events: none;
+  z-index: 10;
+}
+
+.centeredFlex {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.loadingText {
+  color: #f97316;
+  font-size: 8px;
+  letter-spacing: 2px;
+}
+
+.viewContainer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.tickerBar {
+  background: #0f172a;
+  border-bottom: 1px solid rgba(249, 115, 22, 0.25);
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.tickerText {
+  color: #f97316;
+  font-size: 7px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 6px #f97316;
+}
+
+.carouselContainer {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.coverImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(1.2) contrast(1.05);
+}
+
+.placeholderImage {
+  background: #0f172a;
+}
+
+.placeholderEmoji {
+  font-size: 28px;
+}
+
+.placeholderEmojiOpen {
+  font-size: 22px;
+}
+
+.coverTitleOverlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: 'linear-gradient(transparent, rgba(0,0,0,0.85))';
+  padding: 8px 6px 4px;
+}
+
+.coverTitleText {
+  font-size: 7px;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.dotRow {
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  transition: background 0.3s;
+}
+
+.dotActive {
+  background: #f97316;
+}
+
+.dotDim {
+  background: #7c3a10;
+}
+
+.bottomBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #0f172a;
+  border-top: 1px solid rgba(249, 115, 22, 0.18);
+}
+
+.gameCountText {
+  color: #94a3b8;
+  font-size: 7px;
+}
+
+.openButton {
+  background: transparent;
+  border: 1px solid #f97316;
+  color: #f97316;
+  font-size: 7px;
+  padding: 2px 6px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  font-family: 'Press Start 2P', 'Courier New', monospace;
+}
+
+.headerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #0f172a;
+  border-bottom: 1px solid rgba(249, 115, 22, 0.25);
+}
+
+.headerTitle {
+  color: #f97316;
+  font-size: 7px;
+  letter-spacing: 1px;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.openBody {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.openCoverWrapper {
+  width: 45%;
+  position: relative;
+  overflow: hidden;
+}
+
+.infoPanel {
+  flex: 1;
+  padding: 8px 6px;
+  background: #0c1420;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.infoTitle {
+  font-size: 7px;
+  color: #e2e8f0;
+  line-height: 1.5;
+}
+
+.playTimeSection {
+  margin-top: 8px;
+}
+
+.playTimeLabel {
+  font-size: 6px;
+  color: #94a3b8;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.playTimeBlocks {
+  display: flex;
+  gap: 2px;
+}
+
+.timeBlock {
+  width: 10px;
+  height: 6px;
+  border-radius: 1px;
+}
+
+.blockActive {
+  background: #f97316;
+}
+
+.blockDim {
+  background: #7c3a10;
+}
+
+.hoursText {
+  font-size: 6px;
+  color: #64748b;
+  margin-top: 2px;
+  display: block;
+}
+
+.navBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 8px;
+  background: #0f172a;
+  border-top: 1px solid rgba(249, 115, 22, 0.18);
+}
+
+.navProgress {
+  font-size: 7px;
+  color: #94a3b8;
+}
+
+.navBtn {
+  background: transparent;
+  border: 1px solid rgba(249, 115, 22, 0.38);
+  color: #f97316;
+  font-size: 14px;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: monospace;
+}
+
+.emptyText {
+  font-size: 7px;
+  color: #475569;
+  letter-spacing: 1px;
+}
