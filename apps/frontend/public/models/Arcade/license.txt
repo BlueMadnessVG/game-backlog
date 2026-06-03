@@ -1,0 +1,11 @@
+Model Information:
+* title:	Arcade Machine
+* source:	https://sketchfab.com/3d-models/arcade-machine-ccb3867144af4c40991f23b011736fae
+* author:	DIWAD (https://sketchfab.com/DIWAD)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Arcade Machine" (https://sketchfab.com/3d-models/arcade-machine-ccb3867144af4c40991f23b011736fae) by DIWAD (https://sketchfab.com/DIWAD) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

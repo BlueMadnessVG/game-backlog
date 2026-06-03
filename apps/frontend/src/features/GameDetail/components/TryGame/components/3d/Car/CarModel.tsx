@@ -1,3 +1,4 @@
+// components/3d/CarModel.tsx
 /**
  * Low-poly truck (car "Drifter") — adapted from the auto-generated JSX at
  * https://gltf.pmnd.rs
@@ -6,14 +7,29 @@
  * License: CC-BY-NC-4.0  http://creativecommons.org/licenses/by-nc/4.0/
  * Source:  https://sketchfab.com/3d-models/low-poly-truck-car-drifter-f3750246b6564607afbefc61cb1683b1
  *
- * SRP : renders the visual model only — no physics, no controls.
- * ISP : accepts CarModelProps extending strict references configuration hooks.
+ * Animation architecture — two layers running simultaneously:
+ *
+ *   Layer A — GLTF clip (useCarAnimation)
+ *     Drives the smoke particles and any bone/morph animations baked
+ *     into the asset (suspension travel, exhaust puffs, etc.).
+ *     Completely independent of speed or input.
+ *
+ *   Layer B — Procedural (useCarProceduralAnimation)
+ *     Drives wheel spin (speed-scaled), front-wheel steer articulation
+ *     (input-driven), chassis idle float (constant), and chassis motion
+ *     suspension (speed-gated).  These cannot come from a clip because
+ *     they must react to live physics values every frame.
+ *
+ * The two layers target different nodes so they never conflict:
+ *   GLTF clip  → smoke groups, bone tracks
+ *   Procedural → wheel groups, chassisIdleRef, chassisMotionRef
  */
 
 import React, { useRef } from 'react';
 
 import { useGLTF } from '@react-three/drei';
 
+import { useCarAnimation } from '../../../hooks/useCarAnimation';
 import { useCarProceduralAnimation } from '../../../hooks/useCarProceduralAnimation';
 import { DEFAULT_CAR_MODEL_CONFIG } from '../../../types/carModel';
 
@@ -21,7 +37,7 @@ import type { CarModelConfig } from '../../../types/carModel';
 import type { KeyboardControls } from '../../../types/vehicle';
 import type * as THREE from 'three';
 
-// ── Strict types for the nodes / materials this specific model exposes ────
+// ── Node / material strict types ──────────────────────────────────────────
 
 interface DrifterNodes extends Record<string, THREE.Object3D> {
   Front_wheel_Black_0: THREE.Mesh;
@@ -78,37 +94,49 @@ interface DrifterMaterials extends Record<string, THREE.Material> {
   Brown: THREE.Material;
 }
 
+// ── Props ─────────────────────────────────────────────────────────────────
+
 export interface CarModelProps {
   readonly config?: Readonly<CarModelConfig>;
-  /** Shared mutable pointer tracing current scalar linear tracking vectors */
   readonly sharedSpeedRef: React.MutableRefObject<number>;
-  /** Reference tracing keyboard/input tracking context states */
   readonly controlsRef: React.RefObject<KeyboardControls>;
 }
+
+// ── Component ─────────────────────────────────────────────────────────────
 
 export const CarModel: React.FC<CarModelProps> = ({
   config = DEFAULT_CAR_MODEL_CONFIG,
   sharedSpeedRef,
   controlsRef,
 }) => {
+  // Root ref — passed to useCarAnimation so the mixer is bound to the
+  // correct scene graph root (required by useAnimations / drei).
   const rootGroupRef = useRef<THREE.Group>(null);
 
-  // Specific wheel node references to apply structural animations
+  // Wheel refs — procedural hook writes spin + steer to these every frame.
   const flWheelRef = useRef<THREE.Group>(null);
   const rlWheelRef = useRef<THREE.Group>(null);
   const frWheelRef = useRef<THREE.Group>(null);
   const rrWheelRef = useRef<THREE.Group>(null);
 
-  // Decoupled chassis layers to protect continuous idle from speed fluctuations
+  // Chassis layer refs — idle float and motion suspension targets.
   const chassisIdleGroupRef = useRef<THREE.Group>(null);
   const chassisMotionGroupRef = useRef<THREE.Group>(null);
 
-  const { nodes, materials } = useGLTF(config.url) as unknown as {
+  const { nodes, materials, animations } = useGLTF(config.url) as unknown as {
     nodes: DrifterNodes;
     materials: DrifterMaterials;
+    animations: THREE.AnimationClip[];
   };
 
-  // Bind procedural transformation layers loop
+  // ── Layer A: GLTF clip ─────────────────────────────────────────────────
+  // Plays the first clip in the asset (smoke puff / suspension bounce).
+  // Targets rootGroupRef — drei's useAnimations finds named nodes from here.
+  useCarAnimation(animations, rootGroupRef, sharedSpeedRef);
+
+  // ── Layer B: Procedural ────────────────────────────────────────────────
+  // Wheel spin, steer articulation, idle bob, motion suspension.
+  // Targets wheel refs and chassis layer refs — never touches smoke nodes.
   useCarProceduralAnimation(
     {
       frontLeftWheelRef: flWheelRef,
@@ -135,7 +163,9 @@ export const CarModel: React.FC<CarModelProps> = ({
           <group name="7f09d404031140d78a7bb6db74b81fa4fbx" rotation={[Math.PI / 2, 0, 0]}>
             <group name="Object_2">
               <group name="RootNode">
-                {/* ── Front-left wheel ───────────────────────────────── */}
+                {/* ── Front-left wheel ─────────────────────────────────
+                    ref on outer group — procedural hook sets .rotation.z
+                    (spin + baked tilt) and .rotation.y (steer) directly. */}
                 <group
                   ref={flWheelRef}
                   name="Front_wheel"
@@ -157,7 +187,7 @@ export const CarModel: React.FC<CarModelProps> = ({
                   />
                 </group>
 
-                {/* ── Rear-left wheel ────────────────────────────────── */}
+                {/* ── Rear-left wheel ──────────────────────────────────── */}
                 <group
                   ref={rlWheelRef}
                   name="Rear_wheel"
@@ -179,7 +209,7 @@ export const CarModel: React.FC<CarModelProps> = ({
                   />
                 </group>
 
-                {/* ── Front-right wheel ──────────────────────────────── */}
+                {/* ── Front-right wheel ────────────────────────────────── */}
                 <group
                   ref={frWheelRef}
                   name="Front_wheel001"
@@ -201,7 +231,7 @@ export const CarModel: React.FC<CarModelProps> = ({
                   />
                 </group>
 
-                {/* ── Rear-right wheel ───────────────────────────────── */}
+                {/* ── Rear-right wheel ─────────────────────────────────── */}
                 <group
                   ref={rrWheelRef}
                   name="Rear_wheel001"
@@ -223,7 +253,7 @@ export const CarModel: React.FC<CarModelProps> = ({
                   />
                 </group>
 
-                {/* ── Suspension springs ─────────────────────────────── */}
+                {/* ── Suspension springs ───────────────────────────────── */}
                 <group
                   name="Spring"
                   position={[155.621, 20.722, -81.958]}
@@ -301,62 +331,35 @@ export const CarModel: React.FC<CarModelProps> = ({
                   />
                 </group>
 
-                {/* ── Exhaust smoke particles ────────────────────────── */}
-                {[
-                  {
-                    name: 'Smoke001',
-                    position: [70.408, 165.259, 94.261] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke002',
-                    position: [74.602, 165.67, 92.365] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke003',
-                    position: [72.18, 166.534, 95.135] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke004',
-                    position: [73.14, 165.638, 93.102] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke005',
-                    position: [75.198, 166.038, 95.17] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke006',
-                    position: [75.865, 167.365, 89.869] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke007',
-                    position: [74.987, 167.942, 90.928] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke008',
-                    position: [73.567, 166.392, 94.528] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke009',
-                    position: [70.765, 159.593, 95.076] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke010',
-                    position: [72.875, 163.489, 92.993] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke011',
-                    position: [75.049, 162.613, 91.645] as [number, number, number],
-                  },
-                  {
-                    name: 'Smoke012',
-                    position: [73.821, 161.817, 89.947] as [number, number, number],
-                  },
-                ].map(({ name, position }) => {
-                  const meshKey = `${name}_Smoke_0` as keyof DrifterNodes;
-                  const mesh = nodes[meshKey] as THREE.Mesh | undefined;
+                {/* ── Exhaust smoke particles ───────────────────────────
+                    scale=0 at rest; the GLTF clip animates scale up/down. */}
+                {(
+                  [
+                    { name: 'Smoke001', pos: [70.408, 165.259, 94.261] },
+                    { name: 'Smoke002', pos: [74.602, 165.67, 92.365] },
+                    { name: 'Smoke003', pos: [72.18, 166.534, 95.135] },
+                    { name: 'Smoke004', pos: [73.14, 165.638, 93.102] },
+                    { name: 'Smoke005', pos: [75.198, 166.038, 95.17] },
+                    { name: 'Smoke006', pos: [75.865, 167.365, 89.869] },
+                    { name: 'Smoke007', pos: [74.987, 167.942, 90.928] },
+                    { name: 'Smoke008', pos: [73.567, 166.392, 94.528] },
+                    { name: 'Smoke009', pos: [70.765, 159.593, 95.076] },
+                    { name: 'Smoke010', pos: [72.875, 163.489, 92.993] },
+                    { name: 'Smoke011', pos: [75.049, 162.613, 91.645] },
+                    { name: 'Smoke012', pos: [73.821, 161.817, 89.947] },
+                  ] as const
+                ).map(({ name, pos }) => {
+                  const mesh = nodes[`${name}_Smoke_0` as keyof DrifterNodes] as
+                    | THREE.Mesh
+                    | undefined;
                   if (!mesh) return null;
                   return (
-                    <group key={name} name={name} position={position} scale={0}>
+                    <group
+                      key={name}
+                      name={name}
+                      position={pos as [number, number, number]}
+                      scale={0}
+                    >
                       <mesh
                         castShadow
                         receiveShadow
@@ -367,7 +370,10 @@ export const CarModel: React.FC<CarModelProps> = ({
                   );
                 })}
 
-                {/* ── LayerED Chassis Structure (Idle + Motion isolation) ── */}
+                {/* ── Layered chassis structure ─────────────────────────
+                    chassisIdleGroupRef   — idle engine float (always on)
+                    chassisMotionGroupRef — road suspension (speed-gated)
+                    Both are driven by useCarProceduralAnimation.           */}
                 <group ref={chassisIdleGroupRef} name="Chassis_Idle_Layer">
                   <group ref={chassisMotionGroupRef} name="Chassis_Motion_Layer">
                     <group name="Frame" rotation={[-Math.PI / 2, 0, 0]} scale={[300, 100, 50]}>
@@ -434,7 +440,6 @@ export const CarModel: React.FC<CarModelProps> = ({
                     </group>
                   </group>
                 </group>
-                {/* ──────────────────────────────────────────────────────── */}
               </group>
             </group>
           </group>

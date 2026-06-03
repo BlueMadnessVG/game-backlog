@@ -21,15 +21,9 @@ export interface CameraFollowConfig {
   readonly speedZoomFactor: number;
 }
 
-/**
- * Chase camera — sits 11 units behind, 6 above; looks 4 units ahead.
- *
- *  offset       (0,  6, +11)  →  behind and above the car
- *  lookAtOffset (0,  1,  −4)  →  slightly ahead of the car's nose
- */
 export const DEFAULT_CAMERA_CONFIG: Readonly<CameraFollowConfig> = {
   offset: new THREE.Vector3(0, 4, -11),
-  lookAtOffset: new THREE.Vector3(0, 2, -5),
+  lookAtOffset: new THREE.Vector3(0, 2, -6),
   positionLerpFactor: 4.5,
   lookAtLerpFactor: 10.0,
   speedZoomFactor: -0.15,
