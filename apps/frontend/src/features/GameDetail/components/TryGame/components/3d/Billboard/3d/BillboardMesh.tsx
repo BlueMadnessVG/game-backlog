@@ -1,4 +1,3 @@
-// components/3d/Billboard/3d/BillboardMesh.tsx
 /**
  * Category-aware billboard dispatcher.
  *

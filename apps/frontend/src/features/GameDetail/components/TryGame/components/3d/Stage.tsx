@@ -1,4 +1,3 @@
-// components/3d/Stage.tsx
 import React, { useRef } from 'react';
 
 import { Grid } from '@react-three/drei';
@@ -8,37 +7,40 @@ import * as THREE from 'three';
 import { Billboards3D } from './Billboard/3d/Billboards3D';
 import { CameraController } from './CameraControlller';
 import { Car } from './Car/Car';
+import { useCameraMode } from '../../hooks/useCameraMode'; // 1. Import the hook
 
 import type { BillboardConfig } from '../../types/billboard';
 
-// Configuración estática compartida expuesta con tipado estricto
 const DEFAULT_BILLBOARDS: readonly BillboardConfig[] = [
   {
-    position: [-20, 0, -15] as const,
+    position: [-20, 0, -15],
     width: 8,
     height: 6,
-    rotation: [0, -Math.PI / 8, 0] as const,
-    category: 'playing' as const,
+    rotation: [0, -Math.PI / 8, 0],
+    category: 'playing',
   },
   {
-    position: [20, 0, -15] as const,
+    position: [20, 0, -15],
     width: 8,
     height: 6,
-    rotation: [0, Math.PI / 8, 0] as const,
-    category: 'completed' as const,
+    rotation: [0, Math.PI / 8, 0],
+    category: 'completed',
   },
   {
-    position: [0, 0, 30] as const,
+    position: [0, 0, 30],
     width: 8,
     height: 6,
-    rotation: [0, 0, 0] as const,
-    category: 'backlog' as const,
+    rotation: [0, 0, 0],
+    category: 'backlog',
   },
 ];
 
 export const Stage: React.FC = () => {
   const carRootRef = useRef<THREE.Group>(null);
   const carSpeedRef = useRef<number>(0);
+
+  // 2. Instantiate the camera tracking machine at the root level
+  const cameraModeControls = useCameraMode();
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#0f172a', position: 'relative' }}>
@@ -62,17 +64,21 @@ export const Stage: React.FC = () => {
           fadeDistance={60}
         />
 
-        {/* El Auto ahora recibe la configuración para calcular colisiones de forma interna */}
         <Car
           sharedRootRef={carRootRef}
           sharedSpeedRef={carSpeedRef}
           billboardsConfig={DEFAULT_BILLBOARDS}
         />
 
-        <CameraController targetRef={carRootRef} currentSpeedRef={carSpeedRef} />
+        {/* 3. Pass shared references directly into the processing engine */}
+        <CameraController
+          targetRef={carRootRef}
+          currentSpeedRef={carSpeedRef}
+          modeControls={cameraModeControls}
+        />
 
-        {/* Renderizado de Mallas de Interacción */}
-        <Billboards3D carPositionRef={carRootRef} />
+        {/* 4. Feed the matching camera tracking handles down to interaction layer loops */}
+        <Billboards3D carPositionRef={carRootRef} cameraControls={cameraModeControls} />
       </Canvas>
     </div>
   );
