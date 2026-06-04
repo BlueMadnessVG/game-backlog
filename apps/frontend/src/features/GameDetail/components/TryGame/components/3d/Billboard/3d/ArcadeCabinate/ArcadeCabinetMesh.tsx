@@ -1,6 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 
 import { Html, useGLTF } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 
 import { ArcadeScreen } from './ArcadeScreen';
 import styles from './css/ArcadeCabinetMesh.module.css';
@@ -8,11 +10,8 @@ import { CollisionBoxHelper } from '../../../debug/CollisionBoxHelper';
 
 import type { BillboardConfig } from '../../../../../types/billboard';
 import type { Game } from '@repo/shared';
-import type * as THREE from 'three';
 
 const CABINET_SCALE = 0.5;
-/* const SCREEN_OFFSET = { x: 0, y: 0.18, z: 0.36 } as const;
-const SCREEN_TILT_X = -0.14; */
 const MARQUEE_OFFSET = { x: 0, y: 0.72, z: 0.29 } as const;
 const PROMPT_OFFSET = { x: 0, y: -0.55, z: 0.38 } as const;
 const COLLISION_SIZE: [number, number, number] = [0.85, 1.9, 0.75];
@@ -60,6 +59,39 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
   };
 
   const rotationArray = useMemo(() => rotation as [number, number, number], [rotation]);
+
+  // ── Backface Vector Pruning Infrastructure ─────────────────────────────────
+  const [isFrontVisible, setIsFrontVisible] = useState(true);
+  const screenGroupRef = useRef<THREE.Group>(null);
+
+  // Instantiated once via useMemo to avoid GC allocation thrashing inside useFrame
+  const cameraPosition = useMemo(() => new THREE.Vector3(), []);
+  const screenPosition = useMemo(() => new THREE.Vector3(), []);
+  const cameraDirection = useMemo(() => new THREE.Vector3(), []);
+  const cabinetForward = useMemo(() => new THREE.Vector3(), []);
+
+  useFrame((state) => {
+    if (!screenGroupRef.current) return;
+
+    // 1. Get world positions
+    cameraPosition.setFromMatrixPosition(state.camera.matrixWorld);
+    screenGroupRef.current.getWorldPosition(screenPosition);
+
+    // 2. Vector heading from screen pointing to camera
+    cameraDirection.subVectors(cameraPosition, screenPosition).normalize();
+
+    // 3. Extract the direction vector the model cabinet is facing
+    // For this GLTF setup, the screen container object's local forward angle is +X
+    screenGroupRef.current.getWorldDirection(cabinetForward);
+
+    // 4. Compute dot product alignment threshold
+    const dot = cameraDirection.dot(cabinetForward);
+    const visibleThreshold = dot > -0.15; // Small buffer window to avoid edge flickering
+
+    if (visibleThreshold !== isFrontVisible) {
+      setIsFrontVisible(visibleThreshold);
+    }
+  });
 
   return (
     <group
@@ -270,55 +302,58 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
           material={materials.tv_plastic}
         />
 
-        {/* ADAPTED FOR NEW MESH:
-          - scale: Counter-balances the parent's non-uniform stretching to achieve a crisp 4:3 area.
-          - position: [0.03, 0, 0] brings the panel slightly forward off the interior base logic to stop z-fighting.
-          - distanceFactor: Lowered to 1.35 to sharply scale down the HTML DOM size to sit inside the monitor housing.
-        */}
-        <group scale={[1, 1, 1]} rotation={[0, Math.PI / 2, 0]} position={[0.03, 0, 0]}>
-          <Html
-            transform
-            occlude="blending"
-            distanceFactor={2.35}
-            style={{
-              width: '360px',
-              height: '320px',
-              pointerEvents: isOpen ? 'auto' : 'none',
-            }}
-          >
-            <ArcadeScreen
-              games={games}
-              isLoading={isLoading}
-              isOpen={isOpen}
-              isSelected={isSelected}
-              onOpen={onOpen}
-              onClose={onClose}
-            />
-          </Html>
+        <group
+          ref={screenGroupRef}
+          scale={[1, 1, 1]}
+          rotation={[0, Math.PI / 2, 0]}
+          position={[0.03, 0, 0]}
+        >
+          {isFrontVisible && (
+            <Html
+              transform
+              distanceFactor={2.35}
+              style={{
+                width: '360px',
+                height: '320px',
+                pointerEvents: isOpen ? 'auto' : 'none',
+              }}
+            >
+              <ArcadeScreen
+                games={games}
+                isLoading={isLoading}
+                isOpen={isOpen}
+                isSelected={isSelected}
+                onOpen={onOpen}
+                onClose={onClose}
+              />
+            </Html>
+          )}
         </group>
       </group>
 
-      <Html
-        position={[MARQUEE_OFFSET.x, MARQUEE_OFFSET.y, MARQUEE_OFFSET.z]}
-        transform
-        occlude
-        className={styles.marqueeHtmlWrapper}
-      >
-        <div className={styles.marquee}>NOW PLAYING</div>
-      </Html>
+      {isFrontVisible && (
+        <>
+          <Html
+            position={[MARQUEE_OFFSET.x, MARQUEE_OFFSET.y, MARQUEE_OFFSET.z]}
+            transform
+            className={styles.marqueeHtmlWrapper}
+          >
+            <div className={styles.marquee}>NOW PLAYING</div>
+          </Html>
 
-      {showPrompt && games.length > 0 && (
-        <Html
-          position={[PROMPT_OFFSET.x, PROMPT_OFFSET.y, PROMPT_OFFSET.z]}
-          transform
-          occlude
-          className={styles.promptHtmlWrapper}
-        >
-          <div className={styles.prompt}>
-            <span className={styles.pulseIcon}>⚡</span>
-            Press E · View
-          </div>
-        </Html>
+          {showPrompt && games.length > 0 && (
+            <Html
+              position={[PROMPT_OFFSET.x, PROMPT_OFFSET.y, PROMPT_OFFSET.z]}
+              transform
+              className={styles.promptHtmlWrapper}
+            >
+              <div className={styles.prompt}>
+                <span className={styles.pulseIcon}>⚡</span>
+                Press E · View
+              </div>
+            </Html>
+          )}
+        </>
       )}
 
       {isNearby && (
