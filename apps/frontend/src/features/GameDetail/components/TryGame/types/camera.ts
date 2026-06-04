@@ -12,11 +12,11 @@ export interface CameraFollowConfig {
 }
 
 export const DEFAULT_CAMERA_CONFIG: Readonly<CameraFollowConfig> = {
-  offset: new THREE.Vector3(0, 6, 11),
-  lookAtOffset: new THREE.Vector3(0, 1, -4),
+  offset: new THREE.Vector3(0, 5, -11),
+  lookAtOffset: new THREE.Vector3(0, 2, -4),
   positionLerpFactor: 4.5,
   lookAtLerpFactor: 6.0,
-  speedZoomFactor: 0.15,
+  speedZoomFactor: -0.15,
 } as const;
 
 // ── Arcade zoom mode ──────────────────────────────────────────────────────
