@@ -1,5 +1,6 @@
 /* import { useRef } from 'react'; */
 
+import { Canvas } from '@react-three/fiber';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
 
@@ -54,7 +55,9 @@ function GameDetailManager() {
       {/*       <MapCanvas achievements={achievements} />
        */}
 
-      <Stage />
+      <Canvas camera={{ fov: 60, near: 0.1, far: 1000 }}>
+        <Stage />
+      </Canvas>
 
       {/*       <div className={styles.content_root}>
         <section className={styles.hero_panel}>

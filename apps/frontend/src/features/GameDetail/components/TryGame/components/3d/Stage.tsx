@@ -1,85 +1,95 @@
+// components/3d/Stage.tsx
+/**
+ * Scene root — creates all shared refs and wires them to child components.
+ *
+ * ── Input architecture ────────────────────────────────────────────────────
+ *
+ *   useCameraMode()  →  cameraModeRef   (read: CameraController)
+ *                   ↘  cameraModeRef   (read: useInputRouter)
+ *
+ *   useInputRouter(cameraModeRef)
+ *     → carControlsRef    passed to Car  → useCarPhysics
+ *     → arcadeControlsRef passed to Billboards3D → ArcadeScreen
+ *
+ * The cameraModeRef doubles as the input-lock signal.  When the camera
+ * is in 'arcade' mode, useInputRouter routes keyboard events to arcade
+ * controls and returns all-false car controls so the car coasts to a stop.
+ *
+ * ── Data flow diagram ─────────────────────────────────────────────────────
+ *
+ *   Keyboard
+ *     │
+ *     ▼
+ *   useInputRouter ──(cameraModeRef)──► mode check
+ *     │                                  │
+ *     ├─ carControlsRef ──────────────► Car (physics)
+ *     └─ arcadeControlsRef ───────────► Billboards3D ──► ArcadeScreen
+ *
+ *   useCameraMode
+ *     ├─ modeRef / poseRef ───────────► CameraController (zoom)
+ *     ├─ openArcade() ────────────────► Billboards3D (E key)
+ *     └─ closeArcade() ───────────────► Billboards3D (✕ button)
+ */
+
 import React, { useRef } from 'react';
 
-import { Grid } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { Billboards3D } from './Billboard/3d/Billboards3D';
 import { CameraController } from './CameraControlller';
 import { Car } from './Car/Car';
-import { useCameraMode } from '../../hooks/useCameraMode'; // 1. Import the hook
+import { useCameraMode } from '../../hooks/useCameraMode';
+import { useInputRouter } from '../../hooks/useInputerRouter';
+import { DEFAULT_PHYSICS_CONFIG } from '../../types/vehicle';
 
-import type { BillboardConfig } from '../../types/billboard';
+import type { VehiclePhysicsConfig } from '../../types/vehicle';
 
-const DEFAULT_BILLBOARDS: readonly BillboardConfig[] = [
-  {
-    position: [-20, 0, -15],
-    width: 8,
-    height: 6,
-    rotation: [0, -Math.PI / 8, 0],
-    category: 'playing',
-  },
-  {
-    position: [20, 0, -15],
-    width: 8,
-    height: 6,
-    rotation: [0, Math.PI / 8, 0],
-    category: 'completed',
-  },
-  {
-    position: [0, 0, 30],
-    width: 8,
-    height: 6,
-    rotation: [0, 0, 0],
-    category: 'backlog',
-  },
-];
+interface StageProps {
+  readonly physicsConfig?: Readonly<VehiclePhysicsConfig>;
+}
 
-export const Stage: React.FC = () => {
+export const Stage: React.FC<StageProps> = ({ physicsConfig = DEFAULT_PHYSICS_CONFIG }) => {
   const carRootRef = useRef<THREE.Group>(null);
   const carSpeedRef = useRef<number>(0);
 
-  // 2. Instantiate the camera tracking machine at the root level
-  const cameraModeControls = useCameraMode();
+  // ── Camera state machine ──────────────────────────────────────────────
+  const cameraMode = useCameraMode();
+
+  // ── Input router ──────────────────────────────────────────────────────
+  // cameraModeRef is passed so the router knows when to switch contexts.
+  // When cameraMode.modeRef.current === 'arcade':
+  //   carControlsRef   → all false  (car coasts to stop via friction)
+  //   arcadeControlsRef → live arrow key state
+  const { carControlsRef } = useInputRouter(cameraMode.modeRef);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#0f172a', position: 'relative' }}>
-      <Canvas camera={{ position: [0, 10, -15], fov: 45 }} shadows>
-        <ambientLight intensity={0.5} />
-        <directionalLight
-          position={[15, 25, 10]}
-          intensity={1.2}
-          castShadow
-          shadow-mapSize={[2048, 2048]}
-        />
+    <>
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[10, 20, 10]} intensity={1.2} castShadow />
 
-        <Grid
-          infiniteGrid
-          cellSize={1}
-          cellThickness={0.8}
-          cellColor="#1e293b"
-          sectionSize={10}
-          sectionThickness={1.2}
-          sectionColor="#334155"
-          fadeDistance={60}
-        />
+      {/* Camera — needs modeRef+poseRef to drive zoom animation */}
+      <CameraController
+        targetRef={carRootRef}
+        currentSpeedRef={carSpeedRef}
+        modeControls={cameraMode}
+      />
 
-        <Car
-          sharedRootRef={carRootRef}
-          sharedSpeedRef={carSpeedRef}
-          billboardsConfig={DEFAULT_BILLBOARDS}
-        />
+      {/* Car — receives carControlsRef which goes silent in arcade mode */}
+      <Car
+        sharedRootRef={carRootRef}
+        sharedSpeedRef={carSpeedRef}
+        billboardsConfig={[]}
+        physicsConfig={physicsConfig}
+        controlsRef={carControlsRef}
+      />
 
-        {/* 3. Pass shared references directly into the processing engine */}
-        <CameraController
-          targetRef={carRootRef}
-          currentSpeedRef={carSpeedRef}
-          modeControls={cameraModeControls}
-        />
+      {/* Billboards — receives both camera controls (zoom) and arcade controls (navigation) */}
+      <Billboards3D carPositionRef={carRootRef} cameraControls={cameraMode} />
 
-        {/* 4. Feed the matching camera tracking handles down to interaction layer loops */}
-        <Billboards3D carPositionRef={carRootRef} cameraControls={cameraModeControls} />
-      </Canvas>
-    </div>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[200, 200]} />
+        <meshStandardMaterial color="#1a1a2e" />
+      </mesh>
+    </>
   );
 };
