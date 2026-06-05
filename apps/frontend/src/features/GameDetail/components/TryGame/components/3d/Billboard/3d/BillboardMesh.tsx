@@ -21,6 +21,7 @@ import { GAME_CATEGORY_CONFIG } from '../../../../types/billboard';
 import { CollisionBoxHelper } from '../../debug/CollisionBoxHelper';
 
 import type { BillboardConfig } from '../../../../types/billboard';
+import type { ArcadeControls } from '../../../../types/input';
 import type { Game } from '@repo/shared';
 
 interface BillboardProps extends BillboardConfig {
@@ -32,6 +33,7 @@ interface BillboardProps extends BillboardConfig {
   readonly showPrompt?: boolean;
   readonly onOpen?: () => void;
   readonly onClose?: () => void;
+  readonly arcadeControlsRef: React.RefObject<ArcadeControls>;
 }
 
 export const Billboard: React.FC<BillboardProps> = (props) => {

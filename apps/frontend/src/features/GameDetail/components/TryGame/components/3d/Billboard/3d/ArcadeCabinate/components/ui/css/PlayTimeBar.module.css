@@ -1,0 +1,32 @@
+.playTimeLabel {
+  font-size: 6px;
+  color: #94a3b8;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.playTimeBlocks {
+  display: flex;
+  gap: 2px;
+}
+
+.timeBlock {
+  width: 10px;
+  height: 6px;
+  border-radius: 1px;
+}
+
+.blockActive {
+  background: #f97316;
+}
+
+.blockDim {
+  background: #7c3a10;
+}
+
+.hoursText {
+  font-size: 6px;
+  color: #64748b;
+  margin-top: 2px;
+  display: block;
+}

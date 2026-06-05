@@ -1,4 +1,3 @@
-// components/3d/Stage.tsx
 import React, { useRef } from 'react';
 
 import * as THREE from 'three';

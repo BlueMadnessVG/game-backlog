@@ -1,0 +1,99 @@
+.headerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #0f172a;
+  border-bottom: 1px solid rgba(249, 115, 22, 0.25);
+}
+
+.headerTitle {
+  color: #f97316;
+  font-size: 7px;
+  letter-spacing: 1px;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.openBody {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.openCoverWrapper {
+  width: 45%;
+  position: relative;
+  overflow: hidden;
+}
+
+.coverImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(1.2) contrast(1.05);
+}
+
+.placeholderImage {
+  background: #0f172a;
+}
+
+.placeholderEmojiOpen {
+  font-size: 22px;
+}
+
+.infoPanel {
+  flex: 1;
+  padding: 8px 6px;
+  background: #0c1420;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.infoTitle {
+  font-size: 7px;
+  color: #e2e8f0;
+  line-height: 1.5;
+}
+
+.playTimeSection {
+  margin-top: 8px;
+}
+
+.navBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 8px;
+  background: #0f172a;
+  border-top: 1px solid rgba(249, 115, 22, 0.18);
+}
+
+.navProgress {
+  font-size: 7px;
+  color: #94a3b8;
+}
+
+.navBtn {
+  background: transparent;
+  border: 1px solid rgba(249, 115, 22, 0.38);
+  color: #f97316;
+  font-size: 14px;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: monospace;
+}

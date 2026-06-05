@@ -9,6 +9,7 @@ import styles from './css/ArcadeCabinetMesh.module.css';
 import { CollisionBoxHelper } from '../../../debug/CollisionBoxHelper';
 
 import type { BillboardConfig } from '../../../../../types/billboard';
+import type { ArcadeControls } from '@/features/GameDetail/components/TryGame/types/input';
 import type { Game } from '@repo/shared';
 
 const CABINET_SCALE = 0.5;
@@ -39,6 +40,7 @@ interface ArcadeCabinetMeshProps extends Pick<BillboardConfig, 'position' | 'rot
   readonly showPrompt?: boolean;
   readonly onOpen?: () => void;
   readonly onClose?: () => void;
+  readonly arcadeControlsRef: React.RefObject<ArcadeControls>;
 }
 
 export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
@@ -52,6 +54,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
   showPrompt = false,
   onOpen,
   onClose,
+  arcadeControlsRef,
 }) => {
   const { nodes, materials } = useGLTF('/models/arcade/scene.gltf') as unknown as {
     nodes: Record<string, THREE.Mesh>;
@@ -72,22 +75,12 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
 
   useFrame((state) => {
     if (!screenGroupRef.current) return;
-
-    // 1. Get world positions
     cameraPosition.setFromMatrixPosition(state.camera.matrixWorld);
     screenGroupRef.current.getWorldPosition(screenPosition);
-
-    // 2. Vector heading from screen pointing to camera
     cameraDirection.subVectors(cameraPosition, screenPosition).normalize();
-
-    // 3. Extract the direction vector the model cabinet is facing
-    // For this GLTF setup, the screen container object's local forward angle is +X
     screenGroupRef.current.getWorldDirection(cabinetForward);
-
-    // 4. Compute dot product alignment threshold
     const dot = cameraDirection.dot(cabinetForward);
-    const visibleThreshold = dot > -0.15; // Small buffer window to avoid edge flickering
-
+    const visibleThreshold = dot > -0.15;
     if (visibleThreshold !== isFrontVisible) {
       setIsFrontVisible(visibleThreshold);
     }
@@ -306,15 +299,15 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
           ref={screenGroupRef}
           scale={[1, 1, 1]}
           rotation={[0, Math.PI / 2, 0]}
-          position={[0.03, 0, 0]}
+          position={[0.03, 0.12, 0]}
         >
           {isFrontVisible && (
             <Html
               transform
-              distanceFactor={2.35}
+              distanceFactor={1.35}
               style={{
-                width: '360px',
-                height: '320px',
+                width: '650px',
+                height: '580px',
                 pointerEvents: isOpen ? 'auto' : 'none',
               }}
             >
@@ -325,6 +318,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
                 isSelected={isSelected}
                 onOpen={onOpen}
                 onClose={onClose}
+                arcadeControlsRef={arcadeControlsRef}
               />
             </Html>
           )}

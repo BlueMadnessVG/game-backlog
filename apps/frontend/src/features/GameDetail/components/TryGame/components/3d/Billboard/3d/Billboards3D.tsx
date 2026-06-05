@@ -15,6 +15,7 @@ import { ARCADE_CAMERA_LOCAL } from '../../../../types/camera';
 
 import type { CameraModeControls } from '../../../../hooks/useCameraMode';
 import type { BillboardConfig } from '../../../../types/billboard';
+import type { ArcadeControls } from '../../../../types/input';
 
 /**
  * Billboard layout.
@@ -88,9 +89,14 @@ interface Billboards3DProps {
    * and zoom-out when the screen is closed.
    */
   readonly cameraControls?: CameraModeControls;
+  readonly arcadeControlsRef: React.RefObject<ArcadeControls>;
 }
 
-export const Billboards3D: React.FC<Billboards3DProps> = ({ carPositionRef, cameraControls }) => {
+export const Billboards3D: React.FC<Billboards3DProps> = ({
+  carPositionRef,
+  cameraControls,
+  arcadeControlsRef,
+}) => {
   const { isLoading, getGamesByCategory } = useGamesByCategory();
   const { selectedCategory, isModalOpen, openBillboard, closeBillboard } =
     useBillboardInteraction('playing');
@@ -176,6 +182,7 @@ export const Billboards3D: React.FC<Billboards3DProps> = ({ carPositionRef, came
             }}
             onClose={handleClose}
             showPrompt={selected}
+            arcadeControlsRef={arcadeControlsRef}
           />
         );
       })}
