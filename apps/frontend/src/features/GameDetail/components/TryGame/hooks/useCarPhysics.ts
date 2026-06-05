@@ -1,15 +1,15 @@
-// hooks/useCarPhysics.ts
 import { useMemo } from 'react';
 
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { OBB } from 'three/examples/jsm/math/OBB.js';
 
 import { DEFAULT_PHYSICS_CONFIG, PHYSICS_CONSTANTS } from '../types/vehicle';
-import { createBillboardOBB, resolveCollision } from '../utils/collisionDetection';
+import { createColliderOBB, resolveCollision } from '../utils/collisionDetection';
 import { calculateCarPosition } from '../utils/positionCalculators';
 import { calculateNextVehicleState } from '../utils/vehiclePhysics';
 
-import type { BillboardConfig } from '../types/billboard';
+import type { ColliderConfig } from '../types/collider';
 import type { CarControls } from '../types/input';
 import type { VehiclePhysicsConfig } from '../types/vehicle';
 
@@ -17,53 +17,40 @@ interface UseCarPhysicsOptions {
   readonly chassisRef: React.RefObject<THREE.Group | null>;
   readonly sharedSpeedRef: React.MutableRefObject<number>;
   readonly rotationRef: React.MutableRefObject<number>;
-  readonly billboardsConfig: readonly BillboardConfig[];
-  readonly physicsConfig?: Readonly<VehiclePhysicsConfig>;
   /**
-   * Controls ref from useInputRouter.
+   * World-space collision volumes for all static objects in the scene.
    *
-   * DIP: the physics hook no longer owns its input source.
-   * When the player is in arcade mode, useInputRouter returns all-false
-   * controls here — the car receives no input and decelerates via friction.
-   *
-   * Previously this hook called useKeyboardControls() internally.
-   * That coupling meant the physics layer had to know about input sources,
-   * which violated SRP and made input switching impossible without a rewrite.
+   * Built once at startup from ColliderConfig (not from BillboardConfig).
+   * Each entry carries its own bounceFactor so the physics response is
+   * tuned per-object — the arcade cabinet bounces harder than a flat sign.
    */
+  readonly colliders: readonly ColliderConfig[];
+  readonly physicsConfig?: Readonly<VehiclePhysicsConfig>;
   readonly controlsRef: React.RefObject<CarControls>;
 }
 
-/**
- * SRP: owns only the per-frame physics + collision update loop.
- * OCP: new billboard types can be added without touching this hook.
- * DIP: depends on CarControls abstraction, not on a specific input hook.
- */
 export function useCarPhysics({
   chassisRef,
   sharedSpeedRef,
   rotationRef,
-  billboardsConfig,
+  colliders,
   physicsConfig = DEFAULT_PHYSICS_CONFIG,
   controlsRef,
 }: UseCarPhysicsOptions): void {
-  const billboardOBBs = useMemo(() => {
-    const FRAME_THICKNESS = 0.15;
-    const FRAME_DEPTH = 0.1;
-    return billboardsConfig.map((config) =>
-      createBillboardOBB(config, FRAME_THICKNESS, FRAME_DEPTH),
-    );
-  }, [billboardsConfig]);
+  // Pre-build OBBs once — cheaper than rebuilding every frame
+  const colliderOBBs = useMemo<{ obb: OBB; bounceFactor: number }[]>(
+    () => colliders.map((c) => ({ obb: createColliderOBB(c), bounceFactor: c.bounceFactor })),
+    [colliders],
+  );
 
   useFrame((_, delta) => {
     const chassis = chassisRef.current;
-    const controls = controlsRef.current; // ← from useInputRouter, not internal hook
+    const controls = controlsRef.current;
     if (!chassis || !controls) return;
 
     const safeDelta = Math.min(delta, PHYSICS_CONSTANTS.MAX_DELTA_TIME);
 
-    // ── 1. Update velocity & steering ────────────────────────────────────
-    // When in arcade mode, controls has all-false values → speed decays via
-    // friction (exponential decay in calculateNextVehicleState), steering → 0.
+    // ── 1. Velocity & steering ────────────────────────────────────────────
     const { speed, steeringAngle } = calculateNextVehicleState(
       sharedSpeedRef.current,
       controls,
@@ -86,30 +73,33 @@ export function useCarPhysics({
     chassis.position.copy(tentativePosition);
     chassis.updateMatrixWorld();
 
-    // ── 3. MTV collision resolution ───────────────────────────────────────
-    let collisionDetected = false;
+    // ── 3. Collision resolution ───────────────────────────────────────────
+    // Accumulate the highest bounceFactor across all hit colliders this frame.
+    // Using the max (rather than first-hit) gives correct behaviour when the
+    // car clips two objects simultaneously (e.g. corner of cabinet + wall).
+    let maxBounceFactor = 0;
+    let anyHit = false;
 
-    for (const obb of billboardOBBs) {
-      const resolvedPosition = resolveCollision(chassis, obb);
+    for (const { obb, bounceFactor } of colliderOBBs) {
+      const result = resolveCollision(chassis, obb, bounceFactor);
 
-      if (!resolvedPosition.equals(chassis.position)) {
-        chassis.position.copy(resolvedPosition);
-        collisionDetected = true;
+      if (result.hit) {
+        chassis.position.copy(result.position);
+        chassis.updateMatrixWorld();
+        anyHit = true;
+        if (result.bounceFactor > maxBounceFactor) {
+          maxBounceFactor = result.bounceFactor;
+        }
       }
     }
 
-    // ── 4. Bounce back on collision ───────────────────────────────────────
-    if (collisionDetected) {
-      const BOUNCE_FACTOR = 0.2;
-
-      if (sharedSpeedRef.current > 0) {
-        sharedSpeedRef.current = -physicsConfig.maxSpeed * BOUNCE_FACTOR;
-      } else if (sharedSpeedRef.current < 0) {
-        sharedSpeedRef.current = physicsConfig.maxSpeed * BOUNCE_FACTOR;
-      } else {
-        sharedSpeedRef.current = 0;
-      }
-
+    // ── 4. Apply bounce ───────────────────────────────────────────────────
+    // Speed after impact = -currentSpeed × bounceFactor
+    //   bounceFactor 0.4 (arcade cabinet): noticeable rebound
+    //   bounceFactor 0.15 (flat panel):    gentle push-back
+    // The negative sign reverses direction; the factor scales the magnitude.
+    if (anyHit && maxBounceFactor > 0) {
+      sharedSpeedRef.current = -sharedSpeedRef.current * maxBounceFactor;
       chassis.updateMatrixWorld();
     }
   });
