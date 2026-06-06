@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 
 import { Html, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import * as THREE from 'three';
 
 import { ArcadeScreen } from './ArcadeScreen';
@@ -12,10 +13,14 @@ import type { BillboardConfig } from '../../../../../types/billboard';
 import type { ArcadeControls } from '@/features/GameDetail/components/TryGame/types/input';
 import type { Game } from '@repo/shared';
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const CABINET_SCALE = 0.5;
 const MARQUEE_OFFSET = { x: 0, y: 0.72, z: 0.29 } as const;
 const PROMPT_OFFSET = { x: 0, y: -0.55, z: 0.38 } as const;
 const COLLISION_SIZE: [number, number, number] = [0.85, 1.9, 0.75];
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ArcadeMaterials extends Record<string, THREE.Material> {
   paint: THREE.Material;
@@ -43,6 +48,8 @@ interface ArcadeCabinetMeshProps extends Pick<BillboardConfig, 'position' | 'rot
   readonly arcadeControlsRef: React.RefObject<ArcadeControls>;
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
   position,
   rotation,
@@ -61,13 +68,18 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
     materials: ArcadeMaterials;
   };
 
+  // Read the QueryClient while still in the real React tree (above the portal).
+  // R3F's <Html> is a DOM portal that severs all React context — any hook that
+  // reads context (useQueryClient, useTheme, etc.) must be called here and the
+  // client re-provided inside the portal via QueryClientProvider.
+  const queryClient = useQueryClient();
+
   const rotationArray = useMemo(() => rotation as [number, number, number], [rotation]);
 
-  // ── Backface Vector Pruning Infrastructure ─────────────────────────────────
+  // ── Backface vector pruning ───────────────────────────────────────────────
   const [isFrontVisible, setIsFrontVisible] = useState(true);
   const screenGroupRef = useRef<THREE.Group>(null);
 
-  // Instantiated once via useMemo to avoid GC allocation thrashing inside useFrame
   const cameraPosition = useMemo(() => new THREE.Vector3(), []);
   const screenPosition = useMemo(() => new THREE.Vector3(), []);
   const cameraDirection = useMemo(() => new THREE.Vector3(), []);
@@ -80,9 +92,9 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
     cameraDirection.subVectors(cameraPosition, screenPosition).normalize();
     screenGroupRef.current.getWorldDirection(cabinetForward);
     const dot = cameraDirection.dot(cabinetForward);
-    const visibleThreshold = dot > -0.15;
-    if (visibleThreshold !== isFrontVisible) {
-      setIsFrontVisible(visibleThreshold);
+    const isVisible = dot > -0.15;
+    if (isVisible !== isFrontVisible) {
+      setIsFrontVisible(isVisible);
     }
   });
 
@@ -302,6 +314,8 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
           position={[0.03, 0.12, 0]}
         >
           {isFrontVisible && (
+            // QueryClientProvider re-injects the client captured above into the
+            // R3F <Html> portal subtree, where React context is otherwise severed.
             <Html
               transform
               distanceFactor={1.35}
@@ -311,15 +325,17 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
                 pointerEvents: isOpen ? 'auto' : 'none',
               }}
             >
-              <ArcadeScreen
-                games={games}
-                isLoading={isLoading}
-                isOpen={isOpen}
-                isSelected={isSelected}
-                onOpen={onOpen}
-                onClose={onClose}
-                arcadeControlsRef={arcadeControlsRef}
-              />
+              <QueryClientProvider client={queryClient}>
+                <ArcadeScreen
+                  games={games}
+                  isLoading={isLoading}
+                  isOpen={isOpen}
+                  isSelected={isSelected}
+                  onOpen={onOpen}
+                  onClose={onClose}
+                  arcadeControlsRef={arcadeControlsRef}
+                />
+              </QueryClientProvider>
             </Html>
           )}
         </group>

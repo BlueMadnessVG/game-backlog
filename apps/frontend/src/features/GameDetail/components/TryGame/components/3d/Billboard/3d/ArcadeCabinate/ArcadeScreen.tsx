@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+
+import { useQueryClient } from '@tanstack/react-query';
 
 import { ScreenEmpty } from './components/states/ScreenEmpty';
 import { ScreenIdle } from './components/states/ScreenIdle';
@@ -10,6 +12,8 @@ import { useArcadeScreenControls } from './hooks/useArcadeScreenControls';
 import type { ArcadeControls } from '@/features/GameDetail/components/TryGame/types/input';
 import type { Game } from '@repo/shared';
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 interface ArcadeScreenProps {
   readonly games: readonly Game[];
   readonly isLoading: boolean;
@@ -20,6 +24,35 @@ interface ArcadeScreenProps {
   readonly arcadeControlsRef: React.RefObject<ArcadeControls>;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function cycleIndex(current: number, direction: 'prev' | 'next', length: number): number {
+  if (direction === 'prev') return current === 0 ? length - 1 : current - 1;
+  return current === length - 1 ? 0 : current + 1;
+}
+
+/**
+ * Clamps gameIndex to a valid position without an effect.
+ * If the games list shrinks and the current index is out of bounds,
+ * we derive the safe value during render instead of scheduling a setState.
+ */
+function clampIndex(index: number, length: number): number {
+  if (length === 0) return 0;
+  return Math.min(index, length - 1);
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+//
+// NOTE: ArcadeScreen renders inside R3F's <Html> portal, which severs React
+// context. QueryClientProvider must be applied in ArcadeCabinetMesh, wrapping
+// the <Html> element — that is the only place above the portal boundary where
+// useQueryClient() can still be called.
+//
+// This component calls useQueryClient() and receives it from that re-provided
+// context. It then passes the client down as a prop to ScreenOpen so
+// AchievementList can use it without crossing another context gap.
+//
+
 export const ArcadeScreen: React.FC<ArcadeScreenProps> = ({
   games,
   isLoading,
@@ -29,25 +62,30 @@ export const ArcadeScreen: React.FC<ArcadeScreenProps> = ({
   onClose,
   arcadeControlsRef,
 }) => {
-  // Single source of truth index for both states
+  // Safe because QueryClientProvider is applied in ArcadeCabinetMesh above <Html>
+  const queryClient = useQueryClient();
+
   const [gameIndex, setGameIndex] = useState(0);
 
-  // ── Handlers linked directly to input router navigation ─────────────────
-  const handlePrev = () => {
+  // Derive safe index during render — no effect needed
+  const safeGameIndex = clampIndex(gameIndex, games.length);
+
+  // ── Navigation handlers ───────────────────────────────────────────────────
+  // useCallback keeps references stable so the RAF loop in useArcadeScreenControls
+  // does not restart on every render.
+
+  const handlePrev = useCallback(() => {
     if (games.length <= 1) return;
-    setGameIndex((prev) => (prev === 0 ? games.length - 1 : prev - 1));
-  };
+    setGameIndex((i) => cycleIndex(clampIndex(i, games.length), 'prev', games.length));
+  }, [games.length]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (games.length <= 1) return;
-    setGameIndex((prev) => (prev === games.length - 1 ? 0 : prev + 1));
-  };
+    setGameIndex((i) => cycleIndex(clampIndex(i, games.length), 'next', games.length));
+  }, [games.length]);
 
-  const handleClose = () => {
-    if (onClose) onClose();
-  };
+  const handleClose = useCallback(() => onClose?.(), [onClose]);
 
-  // ── Sync internal hooks to read the RAF loop ref matrices ───────────────
   useArcadeScreenControls({
     arcadeControlsRef,
     gamesCount: games.length,
@@ -57,50 +95,60 @@ export const ArcadeScreen: React.FC<ArcadeScreenProps> = ({
     onClose: handleClose,
   });
 
-  // ── Attract Mode: Idle Autoplay Ticker (only runs when closed) ──────────
+  // ── Attract mode: auto-advance carousel when screen is closed ────────────
   useEffect(() => {
     if (isOpen || games.length <= 1) return;
 
     const id = setInterval(() => {
-      setGameIndex((i) => (i + 1) % games.length);
+      setGameIndex((i) => cycleIndex(clampIndex(i, games.length), 'next', games.length));
     }, 3000);
 
     return () => clearInterval(id);
   }, [isOpen, games.length]);
 
-  const activeGame = games[gameIndex];
+  // ── Render ────────────────────────────────────────────────────────────────
 
-  const renderContent = () => {
-    if (isLoading) return <ScreenLoading />;
-    if (games.length === 0) return <ScreenEmpty />;
-
-    if (isOpen) {
-      return (
-        <ScreenOpen
-          activeGame={activeGame}
-          gamesCount={games.length}
-          openIndex={gameIndex}
-          setOpenIndex={setGameIndex}
-          onClose={onClose}
-        />
-      );
-    }
-
+  if (isLoading) {
     return (
-      <ScreenIdle
-        activeGame={activeGame}
-        gamesCount={games.length}
-        carouselIndex={gameIndex}
-        isSelected={isSelected}
-        onOpen={onOpen}
-      />
+      <div className={styles.screenRoot}>
+        <div className={styles.scanlineStyle} />
+        <ScreenLoading />
+      </div>
     );
-  };
+  }
+
+  if (games.length === 0) {
+    return (
+      <div className={styles.screenRoot}>
+        <div className={styles.scanlineStyle} />
+        <ScreenEmpty />
+      </div>
+    );
+  }
+
+  const activeGame = games[safeGameIndex];
 
   return (
     <div className={styles.screenRoot}>
       <div className={styles.scanlineStyle} />
-      {renderContent()}
+      {isOpen ? (
+        <ScreenOpen
+          activeGame={activeGame}
+          gamesCount={games.length}
+          openIndex={safeGameIndex}
+          setOpenIndex={setGameIndex}
+          onClose={onClose}
+          queryClient={queryClient}
+        />
+      ) : (
+        <ScreenIdle
+          activeGame={activeGame}
+          gamesCount={games.length}
+          carouselIndex={safeGameIndex}
+          isSelected={isSelected}
+          onOpen={onOpen}
+        />
+      )}
     </div>
   );
 };
