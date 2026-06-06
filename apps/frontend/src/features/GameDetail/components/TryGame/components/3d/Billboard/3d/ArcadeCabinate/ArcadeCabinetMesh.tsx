@@ -1,7 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef } from 'react';
 
 import { Html, useGLTF } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import * as THREE from 'three';
 
@@ -68,35 +67,11 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
     materials: ArcadeMaterials;
   };
 
-  // Read the QueryClient while still in the real React tree (above the portal).
-  // R3F's <Html> is a DOM portal that severs all React context — any hook that
-  // reads context (useQueryClient, useTheme, etc.) must be called here and the
-  // client re-provided inside the portal via QueryClientProvider.
   const queryClient = useQueryClient();
-
   const rotationArray = useMemo(() => rotation as [number, number, number], [rotation]);
 
   // ── Backface vector pruning ───────────────────────────────────────────────
-  const [isFrontVisible, setIsFrontVisible] = useState(true);
   const screenGroupRef = useRef<THREE.Group>(null);
-
-  const cameraPosition = useMemo(() => new THREE.Vector3(), []);
-  const screenPosition = useMemo(() => new THREE.Vector3(), []);
-  const cameraDirection = useMemo(() => new THREE.Vector3(), []);
-  const cabinetForward = useMemo(() => new THREE.Vector3(), []);
-
-  useFrame((state) => {
-    if (!screenGroupRef.current) return;
-    cameraPosition.setFromMatrixPosition(state.camera.matrixWorld);
-    screenGroupRef.current.getWorldPosition(screenPosition);
-    cameraDirection.subVectors(cameraPosition, screenPosition).normalize();
-    screenGroupRef.current.getWorldDirection(cabinetForward);
-    const dot = cameraDirection.dot(cabinetForward);
-    const isVisible = dot > -0.15;
-    if (isVisible !== isFrontVisible) {
-      setIsFrontVisible(isVisible);
-    }
-  });
 
   return (
     <group
@@ -104,6 +79,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
       rotation={rotationArray}
       scale={[CABINET_SCALE, CABINET_SCALE, CABINET_SCALE]}
     >
+      {/* Target object used for 3D CSS Occlusion blending boundaries */}
       <group position={[0, 6.381, 0]} scale={[3.429, 6.438, 3.499]}>
         <mesh
           castShadow
@@ -131,6 +107,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
         />
       </group>
 
+      {/* Levers & Controls */}
       <group position={[4.441, 5.697, 1.844]} rotation={[0, 0, -0.125]} scale={[0.3, 0.09, 0.3]}>
         <mesh
           castShadow
@@ -173,6 +150,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
         />
       </group>
 
+      {/* Buttons */}
       <group position={[4.288, 5.764, 1.026]} rotation={[0, 0, -0.125]} scale={0.674}>
         <mesh
           castShadow
@@ -293,6 +271,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
         />
       </group>
 
+      {/* Hollow Housing Mesh */}
       <group position={[1.584, 8.639, 0]} scale={[1, 2.443, 2.767]}>
         <mesh
           castShadow
@@ -306,66 +285,64 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
           geometry={nodes.Object_42.geometry}
           material={materials.tv_plastic}
         />
-
-        <group
-          ref={screenGroupRef}
-          scale={[1, 1, 1]}
-          rotation={[0, Math.PI / 2, 0]}
-          position={[0.03, 0.12, 0]}
-        >
-          {isFrontVisible && (
-            // QueryClientProvider re-injects the client captured above into the
-            // R3F <Html> portal subtree, where React context is otherwise severed.
-            <Html
-              transform
-              distanceFactor={1.35}
-              style={{
-                width: '650px',
-                height: '580px',
-                pointerEvents: isOpen ? 'auto' : 'none',
-              }}
-            >
-              <QueryClientProvider client={queryClient}>
-                <ArcadeScreen
-                  games={games}
-                  isLoading={isLoading}
-                  isOpen={isOpen}
-                  isSelected={isSelected}
-                  onOpen={onOpen}
-                  onClose={onClose}
-                  arcadeControlsRef={arcadeControlsRef}
-                />
-              </QueryClientProvider>
-            </Html>
-          )}
-        </group>
       </group>
 
-      {isFrontVisible && (
-        <group rotation={[0, Math.PI / 2, 0]}>
+      {/* Screen Group at root level with clean parent matrix scaling */}
+      <group
+        ref={screenGroupRef}
+        scale={[3.4, 3, 1]}
+        rotation={[0, Math.PI / 2, 0]}
+        position={[2.3, 9, 0]}
+      >
+        <Html
+          transform
+          occlude
+          distanceFactor={1}
+          style={{
+            width: '650px',
+            height: '580px',
+            pointerEvents: isOpen ? 'auto' : 'none',
+          }}
+        >
+          <QueryClientProvider client={queryClient}>
+            <ArcadeScreen
+              games={games}
+              isLoading={isLoading}
+              isOpen={isOpen}
+              isSelected={isSelected}
+              onOpen={onOpen}
+              onClose={onClose}
+              arcadeControlsRef={arcadeControlsRef}
+            />
+          </QueryClientProvider>
+        </Html>
+      </group>
+
+      <group rotation={[0, Math.PI / 2, 0]}>
+        <Html
+          position={[MARQUEE_OFFSET.x, MARQUEE_OFFSET.y, MARQUEE_OFFSET.z]}
+          transform
+          occlude
+          className={styles.marqueeHtmlWrapper}
+        >
+          <div className={styles.marquee}>NOW PLAYING</div>
+        </Html>
+
+        {showPrompt && games.length > 0 && (
           <Html
-            position={[MARQUEE_OFFSET.x, MARQUEE_OFFSET.y, MARQUEE_OFFSET.z]}
+            position={[PROMPT_OFFSET.x, PROMPT_OFFSET.y, PROMPT_OFFSET.z]}
             transform
-            className={styles.marqueeHtmlWrapper}
+            className={styles.promptHtmlWrapper}
           >
-            <div className={styles.marquee}>NOW PLAYING</div>
+            <div className={styles.prompt}>
+              <span className={styles.pulseIcon}>⚡</span>
+              Press E · View
+            </div>
           </Html>
+        )}
+      </group>
 
-          {showPrompt && games.length > 0 && (
-            <Html
-              position={[PROMPT_OFFSET.x, PROMPT_OFFSET.y, PROMPT_OFFSET.z]}
-              transform
-              className={styles.promptHtmlWrapper}
-            >
-              <div className={styles.prompt}>
-                <span className={styles.pulseIcon}>⚡</span>
-                Press E · View
-              </div>
-            </Html>
-          )}
-        </group>
-      )}
-
+      {/* Proximity Rings & Helpers */}
       {isNearby && (
         <mesh position={[0, 5.0, -0.1]}>
           <planeGeometry args={[4.5, 6.5]} />
