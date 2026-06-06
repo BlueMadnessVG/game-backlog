@@ -1,17 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* ── Same purple palette as ScreenOpen ──────────────────────────────────────
+   Background: #0d0d1a
+   Surface:    #13132a
+   Primary:    #6366f1
+   Secondary:  #a855f7
+   Text hi:    #e0e7ff
+   Text mid:   #a5b4fc
+   Text dim:   #818cf8
+   Accent:     #fbbf24 (gold — game count, open button)
+*/
+
+.viewContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0d0d1a;
+  overflow: hidden;
+  font-family: 'Press Start 2P', 'Courier New', monospace;
+  position: relative;
+}
+
+.centeredFlex {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Ticker ───────────────────────────────────────────────────────────────── */
 .tickerBar {
-  background: #0f172a;
-  border-bottom: 1px solid rgba(249, 115, 22, 0.25);
-  padding: 4px 8px;
+  background: rgba(99, 102, 241, 0.08);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.25);
+  padding: 5px 8px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .tickerText {
-  color: #f97316;
+  color: #a5b4fc;
   font-size: 7px;
   letter-spacing: 2px;
-  text-shadow: 0 0 6px #f97316;
 }
 
+/* ── Carousel ─────────────────────────────────────────────────────────────── */
 .carouselContainer {
   flex: 1;
   position: relative;
@@ -23,40 +56,47 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  filter: saturate(1.2) contrast(1.05);
 }
 
 .placeholderImage {
-  background: #0f172a;
+  background: #13132a;
 }
 
 .placeholderEmoji {
-  font-size: 28px;
+  font-size: 32px;
 }
 
+/* Title overlay — white text on gradient, always readable */
 .coverTitleOverlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
-  padding: 8px 6px 4px;
+  background: linear-gradient(transparent, rgba(13, 13, 26, 0.92));
+  padding: 18px 8px 6px;
 }
 
+/* Game title — white for max contrast against the dark gradient */
 .coverTitleText {
+  font-family: 'Press Start 2P', monospace;
   font-size: 7px;
-  letter-spacing: 1px;
-  color: #fff;
+  letter-spacing: 0.08em;
+  color: #e0e7ff;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* ── Carousel dots ────────────────────────────────────────────────────────── */
 .dotRow {
   position: absolute;
-  bottom: 22px;
+  bottom: 26px;
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
 }
 
 .dot {
@@ -67,34 +107,48 @@
 }
 
 .dotActive {
-  background: #f97316;
+  background: #a855f7;
+  box-shadow: 0 0 4px #a855f7;
 }
-
 .dotDim {
-  background: #7c3a10;
+  background: rgba(99, 102, 241, 0.3);
 }
 
+/* ── Bottom bar ───────────────────────────────────────────────────────────── */
 .bottomBar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
-  background: #0f172a;
-  border-top: 1px solid rgba(249, 115, 22, 0.18);
+  padding: 5px 9px;
+  background: rgba(99, 102, 241, 0.06);
+  border-top: 1px solid rgba(99, 102, 241, 0.2);
+  flex-shrink: 0;
 }
 
+/* Game count — readable secondary text */
 .gameCountText {
-  color: #94a3b8;
+  font-family: 'Press Start 2P', monospace;
   font-size: 7px;
+  color: #818cf8;
+  letter-spacing: 0.06em;
 }
 
+/* Open button — gold for action affordance, stands out from purple */
 .openButton {
   background: transparent;
-  border: 1px solid #f97316;
-  color: #f97316;
+  border: 1px solid #fbbf24;
+  color: #fbbf24;
   font-size: 7px;
-  padding: 2px 6px;
+  padding: 3px 7px;
   cursor: pointer;
-  letter-spacing: 1px;
+  letter-spacing: 0.08em;
   font-family: 'Press Start 2P', 'Courier New', monospace;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.openButton:hover {
+  background: rgba(251, 191, 36, 0.1);
+  color: #fde68a;
 }

@@ -1,7 +1,6 @@
-// types/camera.ts
 import * as THREE from 'three';
 
-// ── Follow config ─────────────────────────────────────────────────────────
+// ── Follow config ─────────────────────────────────────────────────────────────
 
 export interface CameraFollowConfig {
   readonly offset: Readonly<THREE.Vector3>;
@@ -19,52 +18,80 @@ export const DEFAULT_CAMERA_CONFIG: Readonly<CameraFollowConfig> = {
   speedZoomFactor: -0.15,
 } as const;
 
-// ── Arcade zoom mode ──────────────────────────────────────────────────────
+// ── Camera mode ───────────────────────────────────────────────────────────────
 
 export type CameraMode = 'driving' | 'zoomIn' | 'arcade' | 'zoomOut';
+
+// ── Arcade pose ───────────────────────────────────────────────────────────────
 
 export interface ArcadeCameraPose {
   readonly position: THREE.Vector3;
   readonly lookAt: THREE.Vector3;
 }
 
-export const ARCADE_ZOOM_LERP = 4.0;
+// ── Arcade camera tuning ──────────────────────────────────────────────────────
+//
+// All offsets are in the CABINET'S local space (before the billboard's world
+// rotation is applied). They must match the actual mesh geometry.
+//
+// Screen world centre (cabinet-local, with CABINET_SCALE = 0.5):
+//   x = 1.584 × 0.5 = 0.792
+//   y = 8.639 × 0.5 = 4.320
+//   z = 0
+//
+// ── Tuning guide ─────────────────────────────────────────────────────────────
+//   eyeOffset.x    — increase to zoom out, decrease to zoom in
+//   eyeOffset.y    — raise/lower camera eye height
+//   screenOffset.y — raise/lower the lookAt point on the screen
+//   fov.arcade     — lower = less perspective distortion (better on widescreen)
+//   fov.driving    — restore to default when returning to car
+//
+// If the cabinet model changes scale, multiply all offset values by the ratio:
+//   newValue = oldValue × (newScale / 0.5)
+//
 
-/**
- * Local-space offsets used by computeArcadePose in Billboards3D to
- * calculate the world-space arcade camera pose.
- *
- * These offsets are in the CABINET'S local space (before the billboard's
- * world rotation is applied).  They must match the actual mesh geometry.
- *
- * ── How these values were derived ────────────────────────────────────────
- * The new ArcadeCabinetMesh (document 5) has CABINET_SCALE = 0.5 and
- * the screen group sits at model position [1.584, 8.639, 0] with
- * rotation [0, PI/2, 0] (screen faces the cabinet's +X direction).
- *
- * Screen world centre (cabinet-local):
- *   x = 1.584 × 0.5 = 0.792
- *   y = 8.639 × 0.5 = 4.320
- *   z = 0
- *
- * Camera eye: 1.4 m in front of the screen along the screen's facing
- * direction (+X in cabinet local space), slightly higher than screen centre:
- *   x = 0.792 + 1.4 = ~2.2
- *   y = 4.320 + 0.1 = ~4.42  (a tiny rise to look slightly down at screen)
- *   z = 0
- *
- * ── Tuning guide ─────────────────────────────────────────────────────────
- * If the close-up is off:
- *   eyeOffset.x    — increase to zoom out, decrease to zoom in
- *   eyeOffset.y    — raise/lower camera eye height
- *   screenOffset.y — raise/lower the lookAt point on the screen
- *
- * If the cabinet model changes scale, multiply all values by the ratio:
- *   newValue = oldValue × (newScale / 0.5)
- */
 export const ARCADE_CAMERA_LOCAL = {
-  /** Where the camera eye sits — in front of and slightly above the screen. */
-  eyeOffset: new THREE.Vector3(5, 3.4, 0),
+  /** Camera eye — in front of and slightly above the screen centre. */
+  eyeOffset: new THREE.Vector3(5, 4, 0),
   /** Screen centre — used as the lookAt target. */
-  screenOffset: new THREE.Vector3(0.792, 4.1, 0),
+  screenOffset: new THREE.Vector3(0.798, 4.5, 0),
+} as const;
+
+// ── Lerp speeds ───────────────────────────────────────────────────────────────
+//
+// Zoom-in and zoom-out use independent speeds so the approach can feel snappy
+// while the departure feels weightier and more cinematic.
+//
+
+export const CAMERA_LERP = {
+  /** Speed for zooming in toward the arcade cabinet. */
+  zoomIn: 5.0,
+  /** Speed for returning to the driving follow camera. */
+  zoomOut: 3.5,
+} as const;
+
+// ── Arrival thresholds (squared distance) ─────────────────────────────────────
+//
+// Kept here so the controller has a single source of truth to import.
+// Using squared distance avoids a sqrt per frame.
+//
+
+export const CAMERA_ARRIVAL_SQ = {
+  /** Snap to final arcade pose when this close. */
+  zoomIn: 0.08,
+  /** Switch mode back to 'driving' when this close to follow position. */
+  zoomOut: 0.5,
+} as const;
+
+// ── Field of view ─────────────────────────────────────────────────────────────
+//
+// A narrower FOV when zoomed into the cabinet reduces perspective distortion,
+// which is especially noticeable on wide (1900×800) viewports.
+//
+
+export const CAMERA_FOV = {
+  /** Default driving FOV. */
+  driving: 60,
+  /** Tighter FOV used during arcade inspect mode — reduces screen distortion. */
+  arcade: 35,
 } as const;

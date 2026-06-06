@@ -9,14 +9,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px 4px;
+  padding: 6px 12px 4px;
   flex-shrink: 0;
 }
 
 .statsText {
   font-family: 'Press Start 2P', monospace;
   font-size: 7px;
-  color: #39ff14;
+  color: #a5b4fc;
   letter-spacing: 0.05em;
   flex: 1;
 }
@@ -24,29 +24,27 @@
 .statsPct {
   font-family: 'Press Start 2P', monospace;
   font-size: 8px;
-  color: #f0b429;
+  color: #fbbf24;
 }
 
 .cacheTag {
   font-family: 'Courier New', monospace;
   font-size: 8px;
-  color: rgba(57, 255, 20, 0.4);
+  color: #818cf8;
   letter-spacing: 0.05em;
 }
 
 .progressTrack {
-  height: 4px;
-  background: rgba(57, 255, 20, 0.12);
-  margin: 0 10px 6px;
+  height: 3px;
+  background: rgba(99, 102, 241, 0.15);
+  margin: 0 12px 6px;
   flex-shrink: 0;
-  position: relative;
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
-  background: linear-gradient(90deg, #39ff14, #a8ff78);
-  box-shadow: 0 0 6px #39ff14;
+  background: linear-gradient(90deg, #6366f1, #a855f7);
   transition: width 0.4s ease;
 }
 
@@ -54,7 +52,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px 6px;
+  padding: 0 10px 6px;
   flex-shrink: 0;
   gap: 4px;
 }
@@ -69,10 +67,10 @@
 .sortBtn {
   font-family: 'Press Start 2P', monospace;
   font-size: 6px;
-  padding: 3px 5px;
+  padding: 3px 6px;
   background: transparent;
-  border: 1px solid rgba(57, 255, 20, 0.25);
-  color: rgba(57, 255, 20, 0.45);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #818cf8;
   cursor: pointer;
   letter-spacing: 0.03em;
   transition: all 0.1s ease;
@@ -80,16 +78,15 @@
 
 .filterBtn:hover,
 .sortBtn:hover {
-  border-color: rgba(57, 255, 20, 0.6);
-  color: rgba(57, 255, 20, 0.8);
+  border-color: rgba(168, 85, 247, 0.6);
+  color: #c7d2fe;
 }
 
 .filterBtnActive,
 .sortBtnActive {
-  border-color: #39ff14 !important;
-  color: #39ff14 !important;
-  background: rgba(57, 255, 20, 0.1) !important;
-  text-shadow: 0 0 6px #39ff14;
+  border-color: #a855f7 !important;
+  color: #e0e7ff !important;
+  background: rgba(168, 85, 247, 0.12) !important;
 }
 
 .list {
@@ -97,15 +94,14 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(57, 255, 20, 0.3) transparent;
+  scrollbar-color: rgba(99, 102, 241, 0.3) transparent;
 }
 
 .list::-webkit-scrollbar {
   width: 3px;
 }
-
 .list::-webkit-scrollbar-thumb {
-  background: rgba(57, 255, 20, 0.3);
+  background: rgba(99, 102, 241, 0.3);
 }
 
 .statusBox {
@@ -118,16 +114,16 @@
 .statusText {
   font-family: 'Press Start 2P', monospace;
   font-size: 8px;
-  color: rgba(57, 255, 20, 0.35);
+  color: #818cf8;
   letter-spacing: 0.08em;
 }
 
 .loadMoreBtn {
   font-family: 'Press Start 2P', monospace;
   font-size: 7px;
-  color: #39ff14;
+  color: #a5b4fc;
   background: transparent;
-  border: 1px solid rgba(57, 255, 20, 0.4);
+  border: 1px solid rgba(99, 102, 241, 0.35);
   padding: 6px 12px;
   margin: 6px auto;
   display: block;
@@ -138,8 +134,8 @@
 }
 
 .loadMoreBtn:hover:not(:disabled) {
-  background: rgba(57, 255, 20, 0.08);
-  box-shadow: 0 0 8px rgba(57, 255, 20, 0.3);
+  background: rgba(99, 102, 241, 0.08);
+  border-color: #a855f7;
 }
 
 .loadMoreBtn:disabled {

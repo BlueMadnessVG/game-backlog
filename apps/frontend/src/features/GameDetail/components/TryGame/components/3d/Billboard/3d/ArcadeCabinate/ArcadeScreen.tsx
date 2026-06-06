@@ -131,6 +131,7 @@ export const ArcadeScreen: React.FC<ArcadeScreenProps> = ({
   return (
     <div className={styles.screenRoot}>
       <div className={styles.scanlineStyle} />
+
       {isOpen ? (
         <ScreenOpen
           activeGame={activeGame}

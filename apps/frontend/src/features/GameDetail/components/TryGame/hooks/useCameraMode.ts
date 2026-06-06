@@ -1,56 +1,55 @@
-import { useCallback, useRef } from 'react';
+import { useRef, useCallback } from 'react';
 
-import type { ArcadeCameraPose, CameraMode } from '../types/camera';
+import * as THREE from 'three';
 
-/**
- * Manages the camera state machine used by CameraController.
- *
- * SRP: the only responsibility of this hook is tracking which camera
- *      mode is active and providing stable callbacks to change it.
- *
- * Why refs instead of useState?
- *   CameraController reads the mode inside useFrame (every tick).
- *   Using useState would re-render the entire scene tree on every
- *   mode change.  A ref is mutated directly and read in the same
- *   frame with zero React overhead.
- *
- * State machine:
- *
- *   openArcade()           closeArcade()
- *        │                      │
- *   driving → zoomIn → arcade → zoomOut → driving
- *                  (auto, no     (auto, no
- *                  callback)     callback)
- *
- * The zoomIn → arcade and zoomOut → driving transitions are triggered
- * automatically by CameraController once the lerp is close enough to
- * the target (see ZOOM_ARRIVAL_THRESHOLD in CameraController).
- */
+import type { CameraMode, ArcadeCameraPose } from '../types/camera';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export interface CameraModeControls {
-  /** Current mode — read every frame inside useFrame, never in render. */
-  readonly modeRef: React.MutableRefObject<CameraMode>;
-  /** Target pose for the arcade close-up — null when in driving mode. */
-  readonly poseRef: React.MutableRefObject<ArcadeCameraPose | null>;
-  /** Call when the player opens a billboard (E key). */
-  readonly openArcade: (pose: ArcadeCameraPose) => void;
-  /** Call when the player closes the billboard (✕ button). */
-  readonly closeArcade: () => void;
+  /** Ref polled every frame by CameraController — never triggers a re-render. */
+  modeRef: React.MutableRefObject<CameraMode>;
+  /** The target arcade pose set when opening a cabinet. */
+  poseRef: React.MutableRefObject<ArcadeCameraPose | null>;
+  /**
+   * Transition to a new mode. Use this instead of writing modeRef.current
+   * directly so the update goes through a stable, typed setter.
+   */
+  setMode: (mode: CameraMode) => void;
+  /**
+   * Called when the player opens an arcade cabinet (presses E).
+   * Stores the pose and starts the zoom-in sequence.
+   */
+  openArcade: (pose: ArcadeCameraPose) => void;
+  /**
+   * Called when the player closes the arcade screen.
+   * Starts the zoom-out sequence back to the driving camera.
+   */
+  closeArcade: () => void;
 }
+
+// ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useCameraMode(): CameraModeControls {
   const modeRef = useRef<CameraMode>('driving');
   const poseRef = useRef<ArcadeCameraPose | null>(null);
 
+  const setMode = useCallback((mode: CameraMode) => {
+    modeRef.current = mode;
+  }, []);
+
   const openArcade = useCallback((pose: ArcadeCameraPose) => {
-    poseRef.current = pose;
+    // Clone vectors so the caller can't mutate them after passing in
+    poseRef.current = {
+      position: new THREE.Vector3().copy(pose.position),
+      lookAt: new THREE.Vector3().copy(pose.lookAt),
+    };
     modeRef.current = 'zoomIn';
   }, []);
 
   const closeArcade = useCallback(() => {
-    if (modeRef.current === 'arcade') {
-      modeRef.current = 'zoomOut';
-    }
+    modeRef.current = 'zoomOut';
   }, []);
 
-  return { modeRef, poseRef, openArcade, closeArcade };
+  return { modeRef, poseRef, setMode, openArcade, closeArcade };
 }

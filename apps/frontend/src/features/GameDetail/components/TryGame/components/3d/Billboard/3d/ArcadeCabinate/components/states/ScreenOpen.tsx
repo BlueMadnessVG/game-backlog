@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { type QueryClient } from '@tanstack/react-query';
 
 import { AchievementList } from '../ui/AchievementList';
-import { PlayTimeBar } from '../ui/PlayTimeBar';
 import styles from './css/ScreenOpen.module.css';
 
 import type { Game } from '@repo/shared';
@@ -184,12 +183,6 @@ export const ScreenOpen: React.FC<ScreenOpenProps> = ({
             <StatRow label="LAST PLAYED" value={formatLastPlayed(activeGame?.lastPlayedAt)} />
             <StatRow label="PLATFORM" value={platformLabel(activeGame?.platform)} />
             <StatRow label="STATUS" value={statusLabel(activeGame?.status)} />
-
-            {activeGame?.playTime !== undefined && activeGame.playTime > 0 && (
-              <div className={styles.playTimeBarWrapper}>
-                <PlayTimeBar hours={Math.round(activeGame.playTime / 60)} />
-              </div>
-            )}
           </div>
         )}
 

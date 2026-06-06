@@ -16,7 +16,7 @@ import type { Game } from '@repo/shared';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CABINET_SCALE = 0.5;
-const MARQUEE_OFFSET = { x: 0, y: 0.72, z: 0.29 } as const;
+const MARQUEE_OFFSET = { x: 0.1, y: 12.16, z: 3.2 } as const;
 const PROMPT_OFFSET = { x: 0, y: -0.55, z: 0.38 } as const;
 const COLLISION_SIZE: [number, number, number] = [0.85, 1.9, 0.75];
 
@@ -342,7 +342,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
       </group>
 
       {isFrontVisible && (
-        <>
+        <group rotation={[0, Math.PI / 2, 0]}>
           <Html
             position={[MARQUEE_OFFSET.x, MARQUEE_OFFSET.y, MARQUEE_OFFSET.z]}
             transform
@@ -363,7 +363,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
               </div>
             </Html>
           )}
-        </>
+        </group>
       )}
 
       {isNearby && (
