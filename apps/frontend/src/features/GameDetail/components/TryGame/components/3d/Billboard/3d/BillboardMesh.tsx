@@ -17,6 +17,7 @@ import { Zap } from 'lucide-react';
 
 import { ArcadeCabinetMesh } from './ArcadeCabinate/ArcadeCabinetMesh';
 import BillboardScreen from './BillboardScreen';
+import { TrophyCaseMesh } from './TrophyCase/TrophyCaseMesh';
 import { GAME_CATEGORY_CONFIG } from '../../../../types/billboard';
 import { CollisionBoxHelper } from '../../debug/CollisionBoxHelper';
 
@@ -40,9 +41,10 @@ export const Billboard: React.FC<BillboardProps> = (props) => {
   const { category } = props;
 
   // ── "Playing" category → arcade cabinet ─────────────────────────────
-  if (category === 'playing') {
-    return <ArcadeCabinetMesh {...props} />;
-  }
+  if (category === 'playing') return <ArcadeCabinetMesh {...props} />;
+
+  // ── "Completed" category → trophy case ─────────────────────────────
+  if (category === 'completed') return <TrophyCaseMesh {...props} />;
 
   // ── All other categories → flat panel (existing implementation) ──────
   return <FlatBillboard {...props} />;
