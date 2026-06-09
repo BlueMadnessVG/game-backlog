@@ -46,10 +46,10 @@ export const BILLBOARD_COLLIDERS: readonly ColliderConfig[] = [
   // halfExtents: [(8+0.3)/2, (6+0.3)/2, 0.1/2] = [4.15, 3.15, 0.05]
   // Panel centre is at y=3 (position.y from BillboardConfig)
   {
-    position: [20, 1.2, -15], // matches BillboardConfig position for 'completed'
+    position: [20, 1.61, -15],
     rotation: [0, Math.PI / 8, 0],
-    halfExtents: [1.1, 1.2, 0.7], // tune after seeing the model in-scene
-    bounceFactor: 0.3, // solid wood — medium bounce
+    halfExtents: [0.85, 1.61, 0.87],
+    bounceFactor: 0.25,
     label: 'trophy-case-completed',
   },
 

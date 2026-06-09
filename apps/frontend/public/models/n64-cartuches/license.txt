@@ -1,0 +1,11 @@
+Model Information:
+* title:	Nintendo 64 Cart
+* source:	https://sketchfab.com/3d-models/nintendo-64-cart-7b93f9cb196743009c2211a5e47643d8
+* author:	Chris Sweetwood (https://sketchfab.com/ChrisSweetwood)
+
+Model License:
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Nintendo 64 Cart" (https://sketchfab.com/3d-models/nintendo-64-cart-7b93f9cb196743009c2211a5e47643d8) by Chris Sweetwood (https://sketchfab.com/ChrisSweetwood) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
