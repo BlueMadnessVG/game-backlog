@@ -1,3 +1,18 @@
+// components/3d/Billboard/3d/TrophyCase/TrophyCaseMesh.tsx
+/**
+ * Trophy Case mesh + overlays for the "Completed" category.
+ *
+ * ── Index ownership ───────────────────────────────────────────────────────
+ * activeIndex lives HERE — it is the single source of truth for:
+ *   1. Which game the N64Cartridge displays (3D object)
+ *   2. Which game TrophyCaseScreen shows (Html overlay)
+ *
+ * Previously TrophyCaseMesh had its own index AND TrophyCaseScreen had a
+ * separate carouselIndex, causing them to drift out of sync.
+ * The fix: useTrophyCaseControls is called ONLY here; TrophyCaseScreen
+ * receives activeIndex as a prop and never manages its own.
+ */
+
 import React, { useMemo, useState } from 'react';
 
 import { Html, useGLTF } from '@react-three/drei';
@@ -10,32 +25,27 @@ import { TrophyCaseScreen } from './TrophyCaseScreen';
 import { CollisionBoxHelper } from '../../../debug/CollisionBoxHelper';
 
 import type { BillboardConfig } from '../../../../../types/billboard';
-import type { ArcadeControls } from '@/features/GameDetail/components/TryGame/types/input';
+import type { ArcadeControls } from '../../../../../types/input';
 import type { Game } from '@repo/shared';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Layout constants ───────────────────────────────────────────────────────
 
 const CASE_SCALE = 0.12;
 const MESH_POSITION_OFFSET: [number, number, number] = [-8, -6, -8];
 const ROTATION_Y_OFFSET = Math.PI / 2;
 const SCREEN_OFFSET = { x: 0, y: 0.55, z: 0.35 } as const;
-
-// Pushes the cartridge coordinate origin to float precisely within the center glass viewport
 const ITEM_DISPLAY_OFFSET: [number, number, number] = [0, 1.0, 0];
-
 const PROMPT_OFFSET = { x: 0, y: -0.15, z: 0.4 } as const;
 const COLLISION_SIZE: [number, number, number] = [2.2, 1.2, 1.4];
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface CaseMaterials extends Record<string, THREE.Material> {
   Element: THREE.Material;
 }
 
 interface TrophyCaseGLTFResult {
-  nodes: {
-    Object_2: THREE.Mesh;
-  };
+  nodes: { Object_2: THREE.Mesh };
   materials: CaseMaterials;
 }
 
@@ -51,7 +61,7 @@ interface TrophyCaseMeshProps extends Pick<BillboardConfig, 'position' | 'rotati
   readonly onClose?: () => void;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────
 
 export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
   position,
@@ -72,21 +82,29 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
 
   const queryClient = useQueryClient();
   const rotationArray = useMemo(() => rotation as [number, number, number], [rotation]);
-  const [activeIndex, setActiveIndex] = useState<number>(0);
-  const currentGame = games[activeIndex];
 
-  // Navigate through your completed collection array smoothly using your hook
+  // ── Single source of truth for the active game index ─────────────────────
+  // Controls BOTH the 3D cartridge displayed inside the case AND the
+  // Html screen overlay. One index, two consumers.
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const handlePrev = () => setActiveIndex((i) => (i === 0 ? games.length - 1 : i - 1));
+  const handleNext = () => setActiveIndex((i) => (i === games.length - 1 ? 0 : i + 1));
+  const handleClose = () => onClose?.();
+
+  // Arrow keys + Escape routed here — NOT in TrophyCaseScreen
   useTrophyCaseControls({
     arcadeControlsRef,
     gamesCount: games.length,
     isOpen,
-    onPrev: () => setActiveIndex((prev) => (prev === 0 ? games.length - 1 : prev - 1)),
-    onNext: () => setActiveIndex((prev) => (prev === games.length - 1 ? 0 : prev + 1)),
-    onClose: () => {
-      if (onClose) onClose();
-    },
+    onPrev: handlePrev,
+    onNext: handleNext,
+    onClose: handleClose,
   });
 
+  const currentGame = games[activeIndex];
+
+  // Material tint for proximity / selection glow
   const caseMaterial = useMemo(() => {
     const mat = materials.Element.clone() as THREE.MeshStandardMaterial;
     if (isSelected) {
@@ -103,7 +121,7 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
 
   return (
     <group position={position as [number, number, number]} rotation={rotationArray}>
-      {/* Structural Framework Model */}
+      {/* ── GLTF mesh ───────────────────────────────────────────────── */}
       <group scale={[CASE_SCALE, CASE_SCALE, CASE_SCALE]} rotation={[0, ROTATION_Y_OFFSET, 0]}>
         <mesh
           castShadow
@@ -115,16 +133,13 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
         />
       </group>
 
-      {/* ── Showcase Interior Illumination Engine ── */}
+      {/* ── Interior lighting ───────────────────────────────────────── */}
       {games.length > 0 && (
         <group position={[0, 1.6, 0]}>
-          {/* Subtle physical fixture disc at the top roof of the display cabinet */}
           <mesh rotation={[Math.PI / 2, 0, 0]}>
             <circleGeometry args={[0.2, 16]} />
             <meshBasicMaterial color="#ffffff" toneMapped={false} />
           </mesh>
-
-          {/* Focused downlight spotlight targetting the spinning cartridge */}
           <spotLight
             castShadow
             intensity={4.5}
@@ -135,25 +150,18 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
             position={[0, 0, 0]}
             target-position={[0, -0.6, 0]}
           />
-
-          {/* Ambient bounce to ensure the cartridge details are crisp from all angles */}
           <pointLight intensity={0.8} distance={1.5} color="#34d399" position={[0, -0.4, 0.2]} />
         </group>
       )}
 
-      {/* ── Centerpiece Dynamic Trophy Display ── */}
+      {/* ── Rotating cartridge — driven by activeIndex ──────────────── */}
       {games.length > 0 && (
         <group position={ITEM_DISPLAY_OFFSET}>
           <N64Cartridge game={currentGame} />
-
-          <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[0.3, 0.3, 0.3]} />
-            <meshBasicMaterial color="red" wireframe />
-          </mesh>
         </group>
       )}
 
-      {/* HUD Panel Engine */}
+      {/* ── Html screen — receives activeIndex, never manages its own ── */}
       <group position={[SCREEN_OFFSET.x, SCREEN_OFFSET.y, SCREEN_OFFSET.z]}>
         <Html
           transform
@@ -165,21 +173,27 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
             pointerEvents: isOpen ? 'auto' : 'none',
           }}
         >
+          {/*
+            QueryClientProvider re-provided here because <Html> severs
+            React context (same pattern as ArcadeCabinetMesh).
+          */}
           <QueryClientProvider client={queryClient}>
             <TrophyCaseScreen
               games={games}
               isLoading={isLoading}
               isOpen={isOpen}
               isSelected={isSelected}
-              arcadeControlsRef={arcadeControlsRef}
+              activeIndex={activeIndex} // ← single source of truth
               onOpen={onOpen}
-              onClose={onClose}
+              onClose={handleClose}
+              onPrev={handlePrev} // ← callbacks from THIS component
+              onNext={handleNext}
             />
           </QueryClientProvider>
         </Html>
       </group>
 
-      {/* Driver action hint layout */}
+      {/* ── Prompt ──────────────────────────────────────────────────── */}
       {showPrompt && games.length > 0 && (
         <Html
           position={[PROMPT_OFFSET.x, PROMPT_OFFSET.y, PROMPT_OFFSET.z]}
@@ -208,7 +222,7 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
         </Html>
       )}
 
-      {/* Environment Glow Elements */}
+      {/* ── Environment ─────────────────────────────────────────────── */}
       {isNearby && (
         <mesh position={[0, 0.5, -0.1]}>
           <planeGeometry args={[2.8, 1.6]} />

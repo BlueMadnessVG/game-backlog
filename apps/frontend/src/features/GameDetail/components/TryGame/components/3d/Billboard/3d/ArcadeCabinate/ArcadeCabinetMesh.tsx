@@ -299,7 +299,7 @@ export const ArcadeCabinetMesh: React.FC<ArcadeCabinetMeshProps> = ({
           occlude
           distanceFactor={1}
           style={{
-            width: '650px',
+            width: '670px',
             height: '580px',
             pointerEvents: isOpen ? 'auto' : 'none',
           }}

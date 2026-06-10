@@ -5,95 +5,71 @@ import * as THREE from 'three';
 
 import { preloadArcadeCabinet } from './ArcadeCabinate/ArcadeCabinetMesh';
 import { Billboard } from './BillboardMesh';
+import { preloadTrophyCase } from './TrophyCase/TrophyCaseMesh';
 import {
   useBillboardInteraction,
   useBillboardProximity,
 } from '../../../../hooks/useBillboardProximity';
 import { useGamesByCategory } from '../../../../hooks/useGamesByCategory';
 import { BILLBOARD_INTERACTION_DISTANCE } from '../../../../types/billboard';
-import { ARCADE_CAMERA_LOCAL } from '../../../../types/camera';
+import { ARCADE_CAMERA_LOCAL, TROPHY_CASE_CAMERA_LOCAL } from '../../../../types/camera';
 
 import type { CameraModeControls } from '../../../../hooks/useCameraMode';
 import type { BillboardConfig } from '../../../../types/billboard';
 import type { ArcadeControls } from '../../../../types/input';
 
-/**
- * Room layout — all stations are now against the back wall (Z ≈ -25..−28)
- * so they face the car as it drives up from the +Z spawn.
- *
- * 'playing'   → left area  [-20, 0, -25]   ArcadeCabinetMesh
- * 'completed' → right area [+20, 0, -25]   TrophyCaseMesh
- * 'backlog'   → center     [  0, 0, -25]   DeskMonitorMesh
- *
- * position.y = 0 for all three — each mesh positions its own content
- * vertically from the ground plane.
- *
- * width/height feed the collision OBB only.
- */
 const DEFAULT_BILLBOARDS: readonly BillboardConfig[] = [
   {
-    // Arcade cabinet — slightly angled to face center-right
-    position: [-20, 0, -25],
+    position: [-20, 0, -15],
     width: 0.85,
     height: 1.9,
-    rotation: [0, Math.PI / 8, 0],
+    rotation: [0, -Math.PI / 8, 0],
     category: 'playing',
   },
   {
-    // Trophy case — slightly angled to face center-left
-    position: [20, 0, -25],
-    width: 3.5,
-    height: 4.0,
-    rotation: [0, -Math.PI / 8, 0],
+    position: [20, 2, -15],
+    width: 0.85,
+    height: 1.9,
+    rotation: [0, Math.PI / 8, 0],
     category: 'completed',
   },
   {
-    // Desk + monitor — faces straight toward +Z (toward the player)
-    position: [0, 0, -25],
-    width: 2.5,
-    height: 2.0,
+    position: [0, 3, 30],
+    width: 8,
+    height: 6,
     rotation: [0, 0, 0],
     category: 'backlog',
   },
 ];
 
 preloadArcadeCabinet();
+preloadTrophyCase();
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── Pose calculators ──────────────────────────────────────────────────────────
 
 /**
- * Computes the world-space arcade camera pose for a given billboard.
- *
- * Both the eye position and the screen lookAt point are defined as local
- * offsets in ARCADE_CAMERA_LOCAL.  We rotate those offsets by the
- * billboard's Y rotation and add the billboard's world position.
- *
- * Only called for the 'playing' category — other categories don't zoom.
+ * Shared pose calculator — rotates local offsets by the billboard's Y rotation
+ * then adds the billboard's world position.
  */
-function computeArcadePose(billboard: BillboardConfig) {
+function computePose(
+  billboard: BillboardConfig,
+  eyeOffset: THREE.Vector3,
+  screenOffset: THREE.Vector3,
+) {
   const yRot = (billboard.rotation as [number, number, number])[1];
   const rotMatrix = new THREE.Matrix4().makeRotationY(yRot);
-
-  const eye = ARCADE_CAMERA_LOCAL.eyeOffset.clone().applyMatrix4(rotMatrix);
-  const screen = ARCADE_CAMERA_LOCAL.screenOffset.clone().applyMatrix4(rotMatrix);
-
   const origin = new THREE.Vector3(...(billboard.position as [number, number, number]));
 
   return {
-    position: eye.add(origin),
-    lookAt: screen.add(origin),
+    position: eyeOffset.clone().applyMatrix4(rotMatrix).add(origin),
+    lookAt: screenOffset.clone().applyMatrix4(rotMatrix).add(origin),
   };
 }
 
-// ── Component ─────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 interface Billboards3DProps {
   readonly carPositionRef: React.RefObject<THREE.Group | null>;
-  /**
-   * Camera mode controls from useCameraMode (created in the parent scene).
-   * Pass this so the billboard can trigger the zoom-in when E is pressed
-   * and zoom-out when the screen is closed.
-   */
   readonly cameraControls?: CameraModeControls;
   readonly arcadeControlsRef: React.RefObject<ArcadeControls>;
 }
@@ -109,13 +85,24 @@ export const Billboards3D: React.FC<Billboards3DProps> = ({
   const proximity = useBillboardProximity(carPositionRef, DEFAULT_BILLBOARDS);
   const keyHandledRef = useRef(false);
 
-  // Pre-compute arcade poses for all billboards — stable across renders
-  const arcadePoses = useMemo(
-    () => Object.fromEntries(DEFAULT_BILLBOARDS.map((b) => [b.category, computeArcadePose(b)])),
+  // Pre-compute poses for ALL interactive structures — stable across renders
+  const poses = useMemo(
+    () => ({
+      playing: computePose(
+        DEFAULT_BILLBOARDS.find((b) => b.category === 'playing')!,
+        ARCADE_CAMERA_LOCAL.eyeOffset,
+        ARCADE_CAMERA_LOCAL.screenOffset,
+      ),
+      completed: computePose(
+        DEFAULT_BILLBOARDS.find((b) => b.category === 'completed')!,
+        TROPHY_CASE_CAMERA_LOCAL.eyeOffset,
+        TROPHY_CASE_CAMERA_LOCAL.screenOffset,
+      ),
+    }),
     [],
   );
 
-  // ── Interaction key handler ──────────────────────────────────────────
+  // ── Key handler ────────────────────────────────────────────────────────────
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
       if (
@@ -125,12 +112,13 @@ export const Billboards3D: React.FC<Billboards3DProps> = ({
         !isModalOpen &&
         !keyHandledRef.current
       ) {
-        const billboard = proximity.closestBillboard;
-        openBillboard(billboard.category);
+        const { category } = proximity.closestBillboard;
+        openBillboard(category);
 
-        // Trigger camera zoom only for the arcade cabinet ('playing')
-        if (billboard.category === 'playing' && cameraControls) {
-          cameraControls.openArcade(arcadePoses[billboard.category]);
+        // Trigger camera zoom for structures that have a pose defined
+        if (cameraControls) {
+          if (category === 'playing') cameraControls.openArcade(poses.playing);
+          if (category === 'completed') cameraControls.openArcade(poses.completed);
         }
 
         keyHandledRef.current = true;
@@ -145,15 +133,13 @@ export const Billboards3D: React.FC<Billboards3DProps> = ({
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup', onUp);
     };
-  }, [proximity, isModalOpen, openBillboard, cameraControls, arcadePoses]);
+  }, [proximity, isModalOpen, openBillboard, cameraControls, poses]);
 
-  // ── Close handler — also triggers zoom out ───────────────────────────
   const handleClose = useCallback(() => {
     closeBillboard();
     cameraControls?.closeArcade();
   }, [closeBillboard, cameraControls]);
 
-  // ── Proximity helpers ────────────────────────────────────────────────
   const isNearby = useCallback(
     (b: BillboardConfig) => proximity.nearbyBillboards.some((n) => n.category === b.category),
     [proximity.nearbyBillboards],
@@ -182,8 +168,9 @@ export const Billboards3D: React.FC<Billboards3DProps> = ({
             isOpen={open}
             onOpen={() => {
               openBillboard(billboard.category);
-              if (billboard.category === 'playing' && cameraControls) {
-                cameraControls.openArcade(arcadePoses[billboard.category]);
+              if (cameraControls) {
+                if (billboard.category === 'playing') cameraControls.openArcade(poses.playing);
+                if (billboard.category === 'completed') cameraControls.openArcade(poses.completed);
               }
             }}
             onClose={handleClose}
