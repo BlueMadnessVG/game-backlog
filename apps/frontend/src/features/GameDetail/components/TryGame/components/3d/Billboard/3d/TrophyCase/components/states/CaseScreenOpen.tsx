@@ -1,8 +1,9 @@
 // components/states/CaseScreenOpen.tsx
 import React from 'react';
 
+/* 
 import { CompletionBadge } from '../ui/CompletitionBadge';
-import { PlayTimeSummary } from '../ui/PlayTimeSummary';
+import { PlayTimeSummary } from '../ui/PlayTimeSummary'; */
 import styles from './css/CaseScreenOpen.module.css';
 
 import type { Game } from '@repo/shared';
@@ -16,11 +17,13 @@ interface CaseScreenOpenProps {
   onClose: () => void;
 }
 
-export const CaseScreenOpen: React.FC<CaseScreenOpenProps> = ({
-  activeGame,
+/*   activeGame,
   gamesCount,
   openIndex,
   onPrev,
   onNext,
-  onClose,
-}) => <div className={styles.root}>Screen</div>;
+  onClose, */
+
+export const CaseScreenOpen: React.FC<CaseScreenOpenProps> = () => (
+  <div className={styles.root}>Screen</div>
+);

@@ -18,34 +18,40 @@ import type { BillboardConfig } from '../../../../types/billboard';
 import type { ArcadeControls } from '../../../../types/input';
 
 /**
- * Billboard layout.
+ * Room layout — all stations are now against the back wall (Z ≈ -25..−28)
+ * so they face the car as it drives up from the +Z spawn.
  *
- * 'playing' uses the arcade cabinet (ArcadeCabinetMesh).
- *   position.y = 0  → cabinet base sits on the ground plane
- *   width/height    → used for collision OBB only, not visual size
+ * 'playing'   → left area  [-20, 0, -25]   ArcadeCabinetMesh
+ * 'completed' → right area [+20, 0, -25]   TrophyCaseMesh
+ * 'backlog'   → center     [  0, 0, -25]   DeskMonitorMesh
  *
- * 'completed' / 'backlog' remain as flat panels.
- *   position.y = 3  → vertical centre of a 6-unit-tall panel
+ * position.y = 0 for all three — each mesh positions its own content
+ * vertically from the ground plane.
+ *
+ * width/height feed the collision OBB only.
  */
 const DEFAULT_BILLBOARDS: readonly BillboardConfig[] = [
   {
-    position: [-20, 0, -15],
+    // Arcade cabinet — slightly angled to face center-right
+    position: [-20, 0, -25],
     width: 0.85,
     height: 1.9,
-    rotation: [0, -Math.PI / 8, 0],
+    rotation: [0, Math.PI / 8, 0],
     category: 'playing',
   },
   {
-    position: [20, 3, -15],
-    width: 8,
-    height: 6,
-    rotation: [0, Math.PI / 8, 0],
+    // Trophy case — slightly angled to face center-left
+    position: [20, 0, -25],
+    width: 3.5,
+    height: 4.0,
+    rotation: [0, -Math.PI / 8, 0],
     category: 'completed',
   },
   {
-    position: [0, 3, 30],
-    width: 8,
-    height: 6,
+    // Desk + monitor — faces straight toward +Z (toward the player)
+    position: [0, 0, -25],
+    width: 2.5,
+    height: 2.0,
     rotation: [0, 0, 0],
     category: 'backlog',
   },

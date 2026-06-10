@@ -166,7 +166,7 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
           }}
         >
           <QueryClientProvider client={queryClient}>
-            {/*             <TrophyCaseScreen
+            <TrophyCaseScreen
               games={games}
               isLoading={isLoading}
               isOpen={isOpen}
@@ -174,7 +174,7 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
               arcadeControlsRef={arcadeControlsRef}
               onOpen={onOpen}
               onClose={onClose}
-            /> */}
+            />
           </QueryClientProvider>
         </Html>
       </group>
@@ -243,6 +243,7 @@ export const TrophyCaseMesh: React.FC<TrophyCaseMeshProps> = ({
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function preloadTrophyCase(): void {
   useGLTF.preload('/models/trophy-case/scene.gltf');
 }
