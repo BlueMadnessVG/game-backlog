@@ -22,7 +22,7 @@ export interface CarModelConfig {
 
 export const DEFAULT_CAR_MODEL_CONFIG: Readonly<CarModelConfig> = {
   url: '/models/car/scene.gltf',
-  scale: 0.01,
+  scale: 0.006,
   yOffset: 0,
   rotationYOffset: -Math.PI / 2, // ← was +PI/2 (caused backwards movement)
 };

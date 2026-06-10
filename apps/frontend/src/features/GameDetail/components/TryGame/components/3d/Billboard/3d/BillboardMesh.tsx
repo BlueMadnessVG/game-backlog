@@ -96,14 +96,22 @@ const SCREEN_H = MON_H * 0.9;
 const HTML_W = SCREEN_W * 100;
 const HTML_H = SCREEN_H * 100;
 
-const C_DESK_BODY = '#101018'; // almost-black desk surface
-const C_DESK_EDGE = '#1e1e3a'; // slightly lighter edge trim
-const C_BEZEL = '#0d0d20'; // monitor bezel
-const C_SCREEN_BG = '#0d1117'; // screen backing
-const C_GLOW_IDLE = '#818cf8'; // indigo — default screen bezel glow
-const C_GLOW_NEAR = '#60a5fa'; // blue — proximity
-const C_GLOW_SEL = '#fbbf24'; // amber — selected
-const C_KEYBOARD = '#13132a';
+// ── Cozy palette — warm wood desk, off-white shell, purple screen-only glow ──
+//
+// The desk lives in a bright cream room so the surfaces are light.
+// Purple (#6366f1 / #818cf8) is reserved for the screen bezel glow only,
+// keeping it consistent with the arcade screen CSS tokens.
+//
+const C_DESK_BODY = '#c8a96e'; // honey-oak — matches PlankFloor planks
+const C_DESK_TOP = '#d4b896'; // lighter top surface (pine/maple)
+const C_DESK_EDGE = '#a0785a'; // darker wood edge trim
+const C_BEZEL = '#e0d8cc'; // off-white monitor shell (matches PC tower)
+const C_BEZEL_DARK = '#c8c0b4'; // slightly darker bezel rim
+const C_SCREEN_BG = '#0d1117'; // screen itself stays dark (the content is dark)
+const C_GLOW_IDLE = '#818cf8'; // indigo-300 — screen glow, idle
+const C_GLOW_NEAR = '#6366f1'; // indigo-500 — proximity
+const C_GLOW_SEL = '#fbbf24'; // amber-400 — selected (matches arcade)
+const C_KEYBOARD = '#d8d0c4'; // light grey keyboard body
 
 const DeskMonitorMesh: React.FC<BillboardProps> = ({
   position,
@@ -138,19 +146,19 @@ const DeskMonitorMesh: React.FC<BillboardProps> = ({
     <group position={position as [number, number, number]} rotation={rotationArray}>
       {/* ── FUTURE GLTF: replace everything in this group with <DeskGLTF /> ── */}
 
-      {/* Desk surface */}
+      {/* Desk surface — honey oak top */}
       <mesh position={[0, DESK_Y, 0]} castShadow receiveShadow>
         <boxGeometry args={[DESK_W, DESK_H, DESK_D]} />
-        <meshStandardMaterial color={C_DESK_BODY} roughness={0.3} metalness={0.6} />
+        <meshStandardMaterial color={C_DESK_TOP} roughness={0.55} metalness={0.0} />
       </mesh>
 
-      {/* Desk edge trim — thin front-face strip */}
+      {/* Desk edge trim — darker wood strip on front face */}
       <mesh position={[0, DESK_Y, DESK_D / 2 - 0.01]} castShadow>
         <boxGeometry args={[DESK_W, DESK_H + 0.02, 0.03]} />
-        <meshStandardMaterial color={C_DESK_EDGE} roughness={0.5} metalness={0.4} />
+        <meshStandardMaterial color={C_DESK_EDGE} roughness={0.6} metalness={0.0} />
       </mesh>
 
-      {/* Desk legs (4 corners) */}
+      {/* Desk legs — same honey-oak as body */}
       {(
         [
           [-DESK_W / 2 + 0.12, -DESK_D / 2 + 0.12],
@@ -161,58 +169,58 @@ const DeskMonitorMesh: React.FC<BillboardProps> = ({
       ).map(([lx, lz], i) => (
         <mesh key={i} position={[lx, DESK_Y / 2, lz]} castShadow>
           <boxGeometry args={[LEG_W, LEG_H, LEG_W]} />
-          <meshStandardMaterial color={C_DESK_BODY} roughness={0.3} metalness={0.6} />
+          <meshStandardMaterial color={C_DESK_BODY} roughness={0.55} metalness={0.0} />
         </mesh>
       ))}
 
       {/* ── FUTURE GLTF: replace this group with <MonitorGLTF /> ── */}
 
-      {/* Monitor stand post */}
+      {/* Monitor stand post — off-white metal */}
       <mesh position={[0, DESK_Y + 0.35 / 2 + DESK_H / 2, -0.05]} castShadow>
         <boxGeometry args={[0.08, 0.35, 0.08]} />
-        <meshStandardMaterial color={C_DESK_BODY} roughness={0.3} metalness={0.7} />
+        <meshStandardMaterial color={C_BEZEL_DARK} roughness={0.4} metalness={0.3} />
       </mesh>
 
       {/* Monitor stand base */}
       <mesh position={[0, DESK_Y + DESK_H / 2 + 0.02, 0.05]} castShadow>
         <boxGeometry args={[0.5, 0.04, 0.3]} />
-        <meshStandardMaterial color={C_DESK_BODY} roughness={0.3} metalness={0.7} />
+        <meshStandardMaterial color={C_BEZEL_DARK} roughness={0.4} metalness={0.3} />
       </mesh>
 
-      {/* Monitor bezel shell */}
+      {/* Monitor bezel shell — off-white, glows at screen edge */}
       <mesh position={[0, MON_Y, 0]} castShadow>
         <boxGeometry args={[MON_W + 0.08, MON_H + 0.08, MON_D]} />
         <meshStandardMaterial
           color={C_BEZEL}
           emissive={bezelColor}
-          emissiveIntensity={bezelEmissive}
-          roughness={0.3}
-          metalness={0.5}
+          emissiveIntensity={bezelEmissive * 0.5} // subdued on light shell
+          roughness={0.5}
+          metalness={0.1}
         />
       </mesh>
 
-      {/* Screen backing */}
+      {/* Screen backing (stays dark — the content is dark-bg) */}
       <mesh position={[0, MON_Y, MON_D / 2 + 0.01]}>
         <boxGeometry args={[SCREEN_W, SCREEN_H, 0.01]} />
         <meshStandardMaterial color={C_SCREEN_BG} roughness={0.9} metalness={0.0} />
       </mesh>
 
-      {/* Keyboard */}
+      {/* Keyboard — light grey, matches off-white room */}
       <mesh position={[0, DESK_Y + DESK_H / 2 + 0.02, DESK_D / 2 - 0.2]} castShadow>
         <boxGeometry args={[1.0, 0.04, 0.35]} />
-        <meshStandardMaterial color={C_KEYBOARD} roughness={0.7} metalness={0.2} />
+        <meshStandardMaterial color={C_KEYBOARD} roughness={0.7} metalness={0.05} />
       </mesh>
 
-      {/* Keyboard indicator light (tiny emissive dot) */}
+      {/* Keyboard indicator LED — tiny purple dot, visible but not dominant */}
       <mesh position={[0.44, DESK_Y + DESK_H / 2 + 0.03, DESK_D / 2 - 0.06]}>
         <boxGeometry args={[0.04, 0.02, 0.04]} />
-        <meshStandardMaterial color={C_GLOW_IDLE} emissive={C_GLOW_IDLE} emissiveIntensity={1.2} />
+        <meshStandardMaterial color={C_GLOW_IDLE} emissive={C_GLOW_IDLE} emissiveIntensity={1.4} />
       </mesh>
 
-      {/* Under-desk LED strip */}
+      {/* Under-desk LED strip — purple accent, same token as screen CSS */}
       <mesh position={[0, DESK_Y - DESK_H / 2 - 0.01, 0]}>
         <boxGeometry args={[DESK_W - 0.1, 0.03, 0.03]} />
-        <meshStandardMaterial color={bezelColor} emissive={bezelColor} emissiveIntensity={0.8} />
+        <meshStandardMaterial color={bezelColor} emissive={bezelColor} emissiveIntensity={0.6} />
       </mesh>
 
       {/* ── Screen Html portal ───────────────────────────────────────── */}
