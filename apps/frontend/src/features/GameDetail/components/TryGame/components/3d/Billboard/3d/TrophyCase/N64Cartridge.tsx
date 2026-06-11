@@ -42,7 +42,6 @@ export const N64Cartridge: React.FC<RotatingGameAssetProps> = ({ game }) => {
 
     const labelTexture = rawTexture.clone();
     labelTexture.colorSpace = THREE.SRGBColorSpace;
-    labelTexture.flipY = false;
     labelTexture.needsUpdate = true;
 
     logoMat.map = labelTexture;
@@ -59,36 +58,8 @@ export const N64Cartridge: React.FC<RotatingGameAssetProps> = ({ game }) => {
   });
 
   return (
-    <group scale={[0.0022, 0.0022, 0.0022]} dispose={null}>
-      <group position={[-288.571, 0, 156.584]} rotation={[Math.PI, -1.36, Math.PI]} scale={100}>
-        <mesh
-          castShadow
-          receiveShadow
-          geometry={nodes.BezierCurve002_Material_0.geometry}
-          material={customMaterials.plasticMat}
-        />
-        <mesh
-          castShadow
-          receiveShadow
-          geometry={nodes.BezierCurve002_LogoMaterial_0.geometry}
-          material={customMaterials.logoMat}
-        />
-      </group>
-      <group position={[-59.642, 0, -75.148]} rotation={[0, 0.483, 0]} scale={100}>
-        <mesh
-          castShadow
-          receiveShadow
-          geometry={nodes.BezierCurve001_Material_0.geometry}
-          material={customMaterials.plasticMat}
-        />
-        <mesh
-          castShadow
-          receiveShadow
-          geometry={nodes.BezierCurve001_LogoMaterial_0.geometry}
-          material={customMaterials.logoMat}
-        />
-      </group>
-      <group ref={cartOneRef} rotation={[-Math.PI / 2, 0, 0]} scale={100}>
+    <group scale={[0.002, 0.002, 0.002]} dispose={null}>
+      <group ref={cartOneRef} position={[0, 230, -10]} rotation={[-Math.PI / 2, 0, 0]} scale={100}>
         <mesh
           castShadow
           receiveShadow

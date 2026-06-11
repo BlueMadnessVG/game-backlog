@@ -50,8 +50,10 @@ export const ARCADE_CAMERA_LOCAL = {
 //
 
 export const TROPHY_CASE_CAMERA_LOCAL = {
-  eyeOffset: new THREE.Vector3(0, 1.2, 4),
-  screenOffset: new THREE.Vector3(0, 1.55, 0.35),
+  eyeOffset: new THREE.Vector3(-0.322, 4.42, 3.905),
+
+  // Local screen/lookAt focus target relative to the mesh base
+  screenOffset: new THREE.Vector3(0.045, 3.795, 2.949),
 } as const;
 
 // ── Lerp speeds ───────────────────────────────────────────────────────────────
@@ -73,4 +75,5 @@ export const CAMERA_ARRIVAL_SQ = {
 export const CAMERA_FOV = {
   driving: 60,
   arcade: 35,
+  TrophyCase: 60,
 } as const;

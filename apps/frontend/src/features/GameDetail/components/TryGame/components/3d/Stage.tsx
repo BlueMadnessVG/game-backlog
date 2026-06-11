@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { Billboards3D } from './Billboard/3d/Billboards3D';
@@ -429,6 +430,45 @@ export const Stage: React.FC<StageProps> = ({ physicsConfig = DEFAULT_PHYSICS_CO
   const cameraMode = useCameraMode();
   const { carControlsRef, arcadeControlsRef } = useInputRouter(cameraMode.modeRef);
 
+  const { camera } = useThree();
+
+  // Inside Stage.tsx - replace your current useEffect key listener block:
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'p') {
+        // The exact world configuration of your completed billboard
+        const billboardPos = new THREE.Vector3(20, 2, -15);
+        const billboardRotY = Math.PI / 8;
+
+        // 1. Get the camera direction target point
+        const globalLookAt = new THREE.Vector3();
+        camera.getWorldDirection(globalLookAt);
+        globalLookAt.multiplyScalar(1.2).add(camera.position); // Focus target distance
+
+        // 2. Subtract the billboard position to get relative distance
+        const relCamPos = camera.position.clone().sub(billboardPos);
+        const relLookAt = globalLookAt.clone().sub(billboardPos);
+
+        // 3. Unwind the Y rotation matrix to transform global space back to local space
+        const unwindMatrix = new THREE.Matrix4().makeRotationY(-billboardRotY);
+        const localEye = relCamPos.applyMatrix4(unwindMatrix);
+        const localScreen = relLookAt.applyMatrix4(unwindMatrix);
+
+        console.log('── COPY AND PASTE THIS INTO types/camera.ts ──');
+        console.log(
+          `eyeOffset: new THREE.Vector3(${localEye.x.toFixed(3)}, ${localEye.y.toFixed(3)}, ${localEye.z.toFixed(3)}),`,
+        );
+        console.log(
+          `screenOffset: new THREE.Vector3(${localScreen.x.toFixed(3)}, ${localScreen.y.toFixed(3)}, ${localScreen.z.toFixed(3)}),`,
+        );
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [camera]);
+
   return (
     <>
       {/* ── Lighting ────────────────────────────────────────────────────
@@ -485,6 +525,8 @@ export const Stage: React.FC<StageProps> = ({ physicsConfig = DEFAULT_PHYSICS_CO
         currentSpeedRef={carSpeedRef}
         modeControls={cameraMode}
       />
+
+      {/* <OrbitControls /> */}
 
       <Car
         sharedRootRef={carRootRef}

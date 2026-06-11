@@ -85,7 +85,6 @@ export const Billboards3D: React.FC<Billboards3DProps> = ({
   const proximity = useBillboardProximity(carPositionRef, DEFAULT_BILLBOARDS);
   const keyHandledRef = useRef(false);
 
-  // Pre-compute poses for ALL interactive structures — stable across renders
   const poses = useMemo(
     () => ({
       playing: computePose(
