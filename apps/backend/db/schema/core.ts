@@ -7,6 +7,7 @@ import {
   real,
   pgEnum,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const statusEnum = pgEnum("game_status", [
@@ -44,7 +45,7 @@ export const games = pgTable(
   "games",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    title: text("title").notNull().unique(),
+    title: text("title").notNull(),
     platform: platformEnum("platform").default("steam"),
     status: statusEnum("status").default("backlog"),
     iconUrl: text("icon_url"),
@@ -57,5 +58,9 @@ export const games = pgTable(
   },
   (table) => ({
     titleIdx: index("title_idx").on(table.title),
+    titlePlatformUnique: uniqueIndex("title_platform_unique_idx").on(
+      table.title,
+      table.platform,
+    ),
   }),
 );
