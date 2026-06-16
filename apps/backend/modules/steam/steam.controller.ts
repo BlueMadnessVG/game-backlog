@@ -69,43 +69,47 @@ export const createSteamController = (steamService: SteamService) => {
     }
   });
 
-  app.post(
-    "/sync",
-    /* authMiddleware, */
-    vValidator("json", SteamSyncSchema),
-    async (c) => {
-      const { steamId } = c.req.valid("json");
+  // steam.controller.ts
+  app.post("/sync", vValidator("json", SteamSyncSchema), async (c) => {
+    const { steamId } = c.req.valid("json");
+    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
 
-      /* const userId = c.get("userId"); */
-      const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
-      console.log("DEBUG: Current User ID is:", userId);
+    try {
+      const [profile, games] = await Promise.all([
+        steamService.syncUserProfile(userId, steamId),
+        steamService.syncUserGames(userId, steamId),
+      ]);
 
-      try {
-        const [profile, games] = await Promise.all([
-          steamService.syncUserProfile(userId, steamId),
-          steamService.syncUserGames(userId, steamId),
-        ]);
+      // ✅ Respond immediately — achievements sync in the background
+      c.status(200);
+      const response = c.json({
+        status: "SUCCESS",
+        message: "Library synced. Achievement data syncing in background.",
+        data: {
+          profile,
+          gamesCount: games.length,
+        },
+      });
 
-        return c.json(
-          {
-            status: "SUCCESS",
-            message: "Tactical data synchronized",
-            data: {
-              profile,
-              gamesCount: games.length,
-            },
-          },
-          200,
-        );
-      } catch (error) {
-        console.error(
-          `[SteamController] Sync failed for user ${userId}:`,
-          error,
-        );
-        throw error;
-      }
-    },
-  );
+      // ✅ Fire-and-forget — not awaited, won't block or timeout the request
+      steamService
+        .syncAllGameAchievements(
+          userId,
+          games.map((g) => g.id),
+        )
+        .catch((err) => {
+          console.error(
+            "[SteamController] Background achievement sync failed:",
+            err,
+          );
+        });
+
+      return response;
+    } catch (error) {
+      console.error(`[SteamController] Sync failed for user ${userId}:`, error);
+      throw error;
+    }
+  });
 
   app.post("/games/:gameId/sync-achievements", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";

@@ -16,6 +16,7 @@ import type {
   AchievementSort,
   Game,
 } from "@repo/shared";
+import { deriveGameStatus } from "./steam.utils";
 
 export class SteamService {
   constructor(
@@ -140,8 +141,8 @@ export class SteamService {
     const steamGamesList = await this.provider.getOwnedGames(steamId);
     if (!steamGamesList.length) return [];
 
-    return await this.db.transaction(async (tx) => {
-      const insertedGames = await tx
+    const insertedGames = await this.db.transaction(async (tx) => {
+      const inserted = await tx
         .insert(games)
         .values(
           steamGamesList.map((g) => ({
@@ -149,8 +150,15 @@ export class SteamService {
             platform: "steam" as const,
             iconUrl: g.iconUrl,
             coverUrl: g.coverUrl,
+            bannerUrl: `https://cdn.akamai.steamstatic.com/steam/apps/${g.steamAppId}/library_hero.jpg`,
             playTime: g.playtimeMinutes,
             lastPlayedAt: g.lastPlayedAt,
+            status: deriveGameStatus({
+              completionPercentage: 0,
+              hasAchievements: true, // corrected below after achievement sync
+              playTimeMinutes: g.playtimeMinutes,
+              lastPlayedAt: g.lastPlayedAt ?? null,
+            }),
           })),
         )
         .onConflictDoUpdate({
@@ -158,13 +166,15 @@ export class SteamService {
           set: {
             coverUrl: sql`excluded.cover_url`,
             iconUrl: sql`excluded.icon_url`,
+            bannerUrl: sql`excluded.banner_url`,
             playTime: sql`excluded.play_time`,
             lastPlayedAt: sql`excluded.last_played_at`,
+            status: sql`excluded.status`,
           },
         })
         .returning();
 
-      const steamToInternalMap = insertedGames.map((gameRecord) => {
+      const steamToInternalMap = inserted.map((gameRecord) => {
         const steamGame = steamGamesList.find(
           (sg) => sg.name === gameRecord.title,
         );
@@ -184,8 +194,35 @@ export class SteamService {
         .set({ lastSync: new Date() })
         .where(eq(steamAccounts.steamId, steamId));
 
-      return insertedGames;
+      return inserted;
     });
+
+    return insertedGames;
+  }
+
+  async syncAllGameAchievements(localUserId: string, gameIds: string[]) {
+    const BATCH_SIZE = 5;
+    const DELAY_MS = 200;
+
+    for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
+      const batch = gameIds.slice(i, i + BATCH_SIZE);
+
+      await Promise.allSettled(
+        batch.map((gameId) =>
+          this.syncGameAchievements(localUserId, gameId).catch((err) => {
+            // Don't let one failed game abort the whole sync
+            console.warn(
+              `[SteamService] Achievement sync skipped for game ${gameId}:`,
+              err,
+            );
+          }),
+        ),
+      );
+
+      if (i + BATCH_SIZE < gameIds.length) {
+        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+      }
+    }
   }
 
   async syncGameAchievements(localUserId: string, gameId: string) {
@@ -280,9 +317,30 @@ export class SteamService {
       const completionPercentage =
         totalCount > 0 ? (achievedCount / totalCount) * 100 : 0;
 
+      // Fetch current playtime + lastPlayedAt so deriveGameStatus has full context.
+      // Done inside the transaction so we read the row as it stands right now.
+      const [gameRow] = await tx
+        .select({
+          playTime: games.playTime,
+          lastPlayedAt: games.lastPlayedAt,
+        })
+        .from(games)
+        .where(eq(games.id, gameId))
+        .limit(1);
+
+      const refinedStatus = deriveGameStatus({
+        completionPercentage,
+        hasAchievements: totalCount > 0,
+        playTimeMinutes: gameRow?.playTime ?? 0,
+        lastPlayedAt: gameRow?.lastPlayedAt ?? null,
+      });
+
       await tx
         .update(games)
-        .set({ completionPercentage })
+        .set({
+          completionPercentage,
+          status: refinedStatus,
+        })
         .where(eq(games.id, gameId));
 
       return upsertedAchievements;
