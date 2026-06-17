@@ -162,7 +162,7 @@ export class SteamService {
           })),
         )
         .onConflictDoUpdate({
-          target: [games.title],
+          target: [games.title, games.platform],
           set: {
             coverUrl: sql`excluded.cover_url`,
             iconUrl: sql`excluded.icon_url`,
