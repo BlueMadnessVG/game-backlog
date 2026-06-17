@@ -49,7 +49,7 @@ export const xboxAchievements = pgTable(
     iconUnlockedUrl: text("icon_unlocked_url"),
     globalPercentage: real("global_percentage"),
     gamerscore: real("gamerscore").default(0),
-    ...timestamp,
+    ...timestamps,
   },
   (table) => ({
     xboxAppAchievementUnique: unique("xbox_app_achievement_unique").on(
