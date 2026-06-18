@@ -18,7 +18,7 @@ export const createXboxController = (xboxService: XboxService) => {
 
   // GET /xbox/games
   app.get("/games", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = "2533274968382425";
 
     const limit = Number(c.req.query("limit")) || 50;
     const offset = Number(c.req.query("offset")) || 0;
@@ -47,7 +47,7 @@ export const createXboxController = (xboxService: XboxService) => {
 
   // GET /xbox/games/:id
   app.get("/games/:id", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = "2533274968382425";
     const gameId = c.req.param("id");
 
     try {
@@ -110,7 +110,7 @@ export const createXboxController = (xboxService: XboxService) => {
 
   // POST /xbox/games/:gameId/sync-achievements
   app.post("/games/:gameId/sync-achievements", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = "2533274968382425";
     const gameId = c.req.param("gameId");
 
     try {
@@ -127,7 +127,7 @@ export const createXboxController = (xboxService: XboxService) => {
 
   // POST /xbox/games/:gameId/achievements
   app.post("/games/:gameId/achievements", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = "2533274968382425";
     const gameId = c.req.param("gameId");
 
     const filterResult = v.safeParse(

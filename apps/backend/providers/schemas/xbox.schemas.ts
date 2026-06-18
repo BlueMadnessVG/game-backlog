@@ -1,4 +1,3 @@
-import { settings } from "node:cluster";
 import * as v from "valibot";
 
 const XboxSettingSchema = v.object({
@@ -6,16 +5,22 @@ const XboxSettingSchema = v.object({
   value: v.string(),
 });
 
-export const XboxProfileSchema = v.object({
-  profileUsers: v.array(
-    v.object({
-      id: v.string(),
-      settings: v.array(XboxSettingSchema),
-      isSponsoredUser: v.optional(v.boolean()),
-    }),
-  ),
+// ✅ All OpenXBL responses are wrapped: { content: { ... }, code: number }
+const XboxProfileUserSchema = v.object({
+  id: v.string(),
+  hostId: v.optional(v.string()),
+  settings: v.array(XboxSettingSchema),
+  isSponsoredUser: v.optional(v.boolean()),
 });
 
+export const XboxProfileSchema = v.object({
+  content: v.object({
+    profileUsers: v.array(XboxProfileUserSchema),
+  }),
+  code: v.optional(v.number()),
+});
+
+// Title history uses the same envelope
 export const XboxTitleSchema = v.object({
   titleId: v.string(),
   name: v.string(),
@@ -38,9 +43,13 @@ export const XboxTitleSchema = v.object({
 });
 
 export const XboxTitleHistorySchema = v.object({
-  title: v.optional(v.array(XboxTitleSchema), []),
+  content: v.object({
+    titles: v.optional(v.array(XboxTitleSchema), []),
+  }),
+  code: v.optional(v.number()),
 });
 
+// Achievements response — add the same envelope to be safe
 export const XboxAchievementSchema = v.object({
   id: v.string(),
   name: v.string(),
@@ -52,7 +61,7 @@ export const XboxAchievementSchema = v.object({
       v.object({
         type: v.optional(v.string()),
         value: v.optional(v.string()),
-        mediaAsset: v.optional(
+        mediaAsset: v.nullish(
           v.object({
             url: v.optional(v.string()),
             type: v.optional(v.string()),
@@ -74,50 +83,41 @@ export const XboxAchievementSchema = v.object({
   ),
 });
 
-export const XboxAchievementResponseSchema = v.object({
-  achievements: v.optional(v.array(XboxAchievementSchema), []),
-  pagingInfo: v.optional(
-    v.object({
-      continuationToken: v.nullable(v.string()),
-      totalRecords: v.optional(v.number(), 0),
-    }),
-  ),
+export const XboxAchievementsResponseSchema = v.object({
+  content: v.object({
+    achievements: v.optional(v.array(XboxAchievementSchema), []),
+    pagingInfo: v.optional(
+      v.object({
+        continuationToken: v.nullable(v.string()),
+        totalRecords: v.optional(v.number(), 0),
+      }),
+    ),
+  }),
+  code: v.optional(v.number()),
 });
 
 export const XboxPlayerStatSchema = v.object({
-  groups: v.optional(
-    v.array(
-      v.object({
-        name: v.optional(v.string()),
-        titleId: v.optional(v.string()),
-        stats: v.optional(
-          v.array(
-            v.object({
-              name: v.string(),
-              value: v.optional(v.string()),
-              type: v.optional(v.string()),
-            }),
+  content: v.object({
+    statlistscollection: v.optional(
+      v.array(
+        v.object({
+          arrangebyfield: v.optional(v.string()),
+          arrangebyfieldid: v.optional(v.string()),
+          stats: v.optional(
+            v.array(
+              v.object({
+                titleid: v.optional(v.string()), // ✅ lowercase, not camelCase
+                name: v.string(),
+                value: v.optional(v.string()), // missing = no playtime recorded
+                type: v.optional(v.string()),
+              }),
+            ),
+            [],
           ),
-          [],
-        ),
-      }),
+        }),
+      ),
+      [],
     ),
-    [],
-  ),
-  statlistscollection: v.optional(
-    v.array(
-      v.object({
-        arrangedSpecs: v.optional(
-          v.array(
-            v.object({
-              name: v.optional(v.string()),
-              value: v.optional(v.string()),
-            }),
-          ),
-          [],
-        ),
-      }),
-    ),
-    [],
-  ),
+  }),
+  code: v.optional(v.number()),
 });

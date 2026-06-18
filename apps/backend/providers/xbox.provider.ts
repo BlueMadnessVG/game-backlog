@@ -2,8 +2,8 @@ import * as v from "valibot";
 import {
   XboxProfileSchema,
   XboxTitleHistorySchema,
-  XboxAchievementResponseSchema,
   XboxPlayerStatSchema,
+  XboxAchievementsResponseSchema,
 } from "./schemas/xbox.schemas";
 
 export class XboxProvider {
@@ -56,13 +56,14 @@ export class XboxProvider {
 
     if (!result.success) {
       console.error(
-        "[XboxProvider][getPlayerProfile] schema error:",
+        "[XboxProvider][getPlayerProfile] Schema error:",
         JSON.stringify(v.flatten(result.issues).nested, null, 2),
       );
       throw new Error("OpenXBL API returned unexpected profile format");
     }
 
-    const user = result.output.profileUsers[0];
+    // ✅ unwrap content envelope
+    const user = result.output.content.profileUsers[0];
     if (!user) return null;
 
     return {
@@ -84,10 +85,10 @@ export class XboxProvider {
         "[XboxProvider][getOwnedGames] Schema error:",
         v.flatten(result.issues),
       );
-      throw new Error("OpenXBL API return unexpected title history format");
+      throw new Error("OpenXBL API returned unexpected title history format");
     }
 
-    const titles = result.output.title ?? [];
+    const titles = result.output.content.titles ?? [];
 
     return titles.map((title) => {
       const lastPlayedRaw = title.titleHistory?.lastTimePlayed;
@@ -98,10 +99,8 @@ export class XboxProvider {
         titleId: title.titleId,
         name: title.name,
         coverUrl: title.displayImage ?? null,
-        // Xbox doesn't expose raw playtime in title history — fetched separately via player/stats
         playtimeMinutes: 0,
         lastPlayedAt,
-        // Pre-computed completion from achievement summary in title history
         completionPercentage: title.achievement?.progressPercentage ?? 0,
       };
     });
@@ -134,19 +133,19 @@ export class XboxProvider {
 
     if (!result.success) {
       console.warn(
-        "[XboxProvider][getPlaytimeMinutes] Schema mismatch — returning empty map",
+        "[XboxProvider][getPlaytimeMinutes] Schema mismatch:",
+        v.flatten(result.issues),
       );
       return new Map();
     }
 
     const playtimeMap = new Map<string, number>();
 
-    for (const group of result.output.groups ?? []) {
-      const titleId = group.titleId;
-      if (!titleId) continue;
-      const minutesStat = group.stats?.find((s) => s.name === "MinutesPlayed");
-      if (minutesStat?.value) {
-        playtimeMap.set(titleId, Math.round(Number(minutesStat.value)));
+    const stats = result.output.content.statlistscollection?.[0]?.stats ?? [];
+
+    for (const stat of stats) {
+      if (stat.name === "MinutesPlayed" && stat.titleid && stat.value) {
+        playtimeMap.set(stat.titleid, Math.round(Number(stat.value)));
       }
     }
 
@@ -156,7 +155,7 @@ export class XboxProvider {
   async getPlayerAchievements(xuid: string, titleId: string) {
     const url = `${this.baseUrl}/achievements/player/${xuid}/${titleId}`;
     const rawData = await this.fetch(url);
-    const result = v.safeParse(XboxAchievementResponseSchema, rawData);
+    const result = v.safeParse(XboxAchievementsResponseSchema, rawData);
 
     if (!result.success) {
       console.error(
@@ -166,17 +165,15 @@ export class XboxProvider {
       return null;
     }
 
-    const achievements = result.output.achievements ?? [];
+    const achievements = result.output.content.achievements ?? [];
     if (!achievements.length) return null;
 
     return achievements.map((a) => {
-      // Gamerscore sits in rewards array — find the "Gamerscore" type entry
       const gamerscoreReward = a.rewards?.find((r) => r.type === "Gamerscore");
       const gamerscore = gamerscoreReward
         ? Number(gamerscoreReward.value ?? 0)
         : 0;
 
-      // Icon URL is also in rewards — find the "Art" type with a mediaAsset
       const iconReward = a.rewards?.find((r) => r.mediaAsset?.type === "Icon");
       const iconUrl = iconReward?.mediaAsset?.url ?? null;
 
@@ -185,7 +182,7 @@ export class XboxProvider {
       const unlockedAt = achieved ? new Date(timeUnlocked) : null;
 
       return {
-        apiName: a.id, // Xbox uses numeric id as the key
+        apiName: a.id,
         name: a.name,
         description: a.description ?? null,
         isSecret: a.isSecret ?? false,

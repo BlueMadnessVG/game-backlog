@@ -43,6 +43,13 @@
       "when": 1781579622463,
       "tag": "0005_chunky_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781746827607,
+      "tag": "0006_open_enchantress",
+      "breakpoints": true
     }
   ]
 }

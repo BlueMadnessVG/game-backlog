@@ -166,24 +166,39 @@ export class XboxService {
       playtimeMinutes: playtimeMap.get(t.titleId) ?? 0,
     }));
 
+    const deduplicatedTitles = Array.from(
+      titlesWithPlaytime
+        .reduce((map, title) => {
+          const existing = map.get(title.name);
+          if (!existing) {
+            map.set(title.name, title);
+          } else {
+            const existingTime = existing.lastPlayedAt?.getTime() ?? 0;
+            const currentTime = title.lastPlayedAt?.getTime() ?? 0;
+            if (currentTime > existingTime) {
+              map.set(title.name, title);
+            }
+          }
+          return map;
+        }, new Map<string, (typeof titlesWithPlaytime)[number]>())
+        .values(),
+    );
+
     const insertedGames = await this.db.transaction(async (tx) => {
       const inserted = await tx
         .insert(games)
         .values(
-          titlesWithPlaytime.map((g) => ({
+          deduplicatedTitles.map((g) => ({
             title: g.name,
             platform: "xbox" as const,
             coverUrl: g.coverUrl,
-            // Xbox provides the same image for cover and banner — no separate CDN URL
             bannerUrl: g.coverUrl,
             playTime: g.playtimeMinutes,
             lastPlayedAt: g.lastPlayedAt,
-            // completionPercentage comes from title history achievement summary —
-            // already a real value unlike Steam which starts at 0
             completionPercentage: g.completionPercentage,
             status: deriveGameStatus({
               completionPercentage: g.completionPercentage,
-              hasAchievements: true, // refined after syncGameAchievements
+              hasAchievements: true,
               playTimeMinutes: g.playtimeMinutes,
               lastPlayedAt: g.lastPlayedAt ?? null,
             }),
@@ -203,12 +218,13 @@ export class XboxService {
         .returning();
 
       const xboxToInternalMap = inserted.map((gameRecord) => {
-        const xboxGames = titlesWithPlaytime.find(
+        const xboxGame = deduplicatedTitles.find(
+          // ✅ use deduplicatedTitles
           (t) => t.name === gameRecord.title,
         );
         return {
           gameId: gameRecord.id,
-          titleId: xboxGames!.titleId,
+          titleId: xboxGame!.titleId,
         };
       });
 
