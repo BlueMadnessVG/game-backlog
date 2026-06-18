@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { vValidator } from "@hono/valibot-validator";
-import { AchievementFilterSchema, AchievementSchema } from "@repo/shared";
+import { AchievementFilterSchema, AchievementSortSchema } from "@repo/shared";
 import { XboxService } from "./xbox.services";
 import * as v from "valibot";
 
