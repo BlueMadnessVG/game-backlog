@@ -110,6 +110,56 @@ describe("deriveGameStatus", () => {
     });
   });
 
+  describe("platinumEarned override (PlayStation)", () => {
+    it("returns completed when platinumEarned is true regardless of percentage", () => {
+      expect(
+        deriveGameStatus({
+          completionPercentage: 80,
+          hasAchievements: true,
+          playTimeMinutes: 200,
+          lastPlayedAt: daysAgo(400), // would be retired otherwise
+          platinumEarned: true,
+        }),
+      ).toBe("completed");
+    });
+
+    it("returns completed when platinumEarned is true and never played", () => {
+      expect(
+        deriveGameStatus({
+          completionPercentage: 0,
+          hasAchievements: true,
+          playTimeMinutes: 0,
+          lastPlayedAt: null,
+          platinumEarned: true,
+        }),
+      ).toBe("completed");
+    });
+
+    it("does NOT short-circuit when platinumEarned is false", () => {
+      expect(
+        deriveGameStatus({
+          completionPercentage: 0,
+          hasAchievements: true,
+          playTimeMinutes: 0,
+          lastPlayedAt: null,
+          platinumEarned: false,
+        }),
+      ).toBe("backlog");
+    });
+
+    it("does NOT short-circuit when platinumEarned is undefined (non-PS game)", () => {
+      expect(
+        deriveGameStatus({
+          completionPercentage: 50,
+          hasAchievements: true,
+          playTimeMinutes: 200,
+          lastPlayedAt: daysAgo(400),
+          // platinumEarned not passed
+        }),
+      ).toBe("retired");
+    });
+  });
+
   // ── In-progress ───────────────────────────────────────────────────────────
   describe("in-progress", () => {
     it("returns in-progress when played within last 30 days", () => {

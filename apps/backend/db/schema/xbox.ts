@@ -11,7 +11,6 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { users, games, timestamps } from "./core";
-import { description } from "valibot";
 
 export const xboxAccounts = pgTable(
   "xbox_accounts",
@@ -19,7 +18,6 @@ export const xboxAccounts = pgTable(
     userId: uuid("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .primaryKey(),
-    // Xbox User ID — the stable numeric identifier from Xbox Live
     xuid: varchar("xuid", { length: 255 }).notNull().unique(),
     gamertag: varchar("gamertag", { length: 255 }),
     lastSync: timestamp("last_sync"),
