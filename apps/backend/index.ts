@@ -8,10 +8,13 @@ import { db } from "./db";
 import { SteamProvider } from "./providers/steam.provider";
 import { SteamService } from "./modules/steam/steam.services";
 import { createSteamController } from "./modules/steam/steam.controller";
-import { XboxProvider } from "./providers/xbox.provider"; // ✅ new
-import { XboxService } from "./modules/xbox/xbox.services"; // ✅ new
-import { createXboxController } from "./modules/xbox/xbox.controller"; // ✅ new
+import { XboxProvider } from "./providers/xbox.provider";
+import { XboxService } from "./modules/xbox/xbox.services";
+import { createXboxController } from "./modules/xbox/xbox.controller";
 import { errorHandler } from "./middleware/error.handler";
+import { PsnProvider } from "./providers/psn.provider";
+import { PsnService } from "./modules/psn/psn.services";
+import { createPsnController } from "./modules/psn/psn.controller";
 
 /**
  * 1. Dependency Injection / Composition Root
@@ -20,8 +23,11 @@ import { errorHandler } from "./middleware/error.handler";
 const steamProvider = new SteamProvider(process.env.STEAM_API_KEY!);
 const steamService = new SteamService(db, steamProvider);
 
-const xboxProvider = new XboxProvider(process.env.OPENXBL_API_KEY!); // ✅ new
-const xboxService = new XboxService(db, xboxProvider); // ✅ new
+const xboxProvider = new XboxProvider(process.env.OPENXBL_API_KEY!);
+const xboxService = new XboxService(db, xboxProvider);
+
+const psnProvider = new PsnProvider();
+const psnService = new PsnService(db, psnProvider);
 
 /**
  * 2. App Initialization
@@ -62,7 +68,8 @@ app.get("/health", (c) => {
 const apiV1 = new Hono();
 
 apiV1.route("/steam", createSteamController(steamService));
-apiV1.route("/xbox", createXboxController(xboxService)); // ✅ new
+apiV1.route("/xbox", createXboxController(xboxService));
+apiV1.route("/psn", createPsnController(psnService));
 
 app.route("/api/v1", apiV1);
 
