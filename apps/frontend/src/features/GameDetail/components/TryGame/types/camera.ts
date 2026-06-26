@@ -75,5 +75,5 @@ export const CAMERA_ARRIVAL_SQ = {
 export const CAMERA_FOV = {
   driving: 60,
   arcade: 35,
-  TrophyCase: 60,
+  TrophyCase: 50,
 } as const;

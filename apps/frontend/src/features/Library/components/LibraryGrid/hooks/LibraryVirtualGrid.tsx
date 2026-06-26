@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 const CARD_HEIGHT = 320;
-const COLUMNS = 4;
+const COLUMNS = 6;
 const GAP = 20;
 
 interface UseLibraryVirtualGridOptions {
@@ -28,6 +28,7 @@ export function useLibraryVirtualGrid({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => CARD_HEIGHT + GAP,
+    measureElement: (el) => (el as HTMLElement)?.offsetHeight ?? 0,
     overscan: 2,
   });
 

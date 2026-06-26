@@ -31,15 +31,19 @@ function LibraryGrid({ games }: LibraryGridProps) {
           return (
             <div
               key={virtualRow.key}
+              ref={(el) => virtualizer.measureElement(el)}
+              data-index={virtualRow.index}
               style={{
                 position: 'absolute',
-                top: virtualRow.start,
+                top: 0,
                 left: 0,
                 right: 0,
+                height: 'auto',
+                transform: `translateY(${virtualRow.start}px)`,
                 display: 'grid',
                 gridTemplateColumns: `repeat(${COLUMNS}, 1fr)`,
                 gap: '1.5rem',
-                padding: '0 1.5rem',
+                padding: '0 1.5rem 3.5rem 1.5rem',
               }}
             >
               {rowGames.map((game) => (
