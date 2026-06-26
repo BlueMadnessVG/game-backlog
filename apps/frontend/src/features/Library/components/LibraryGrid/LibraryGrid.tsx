@@ -43,7 +43,7 @@ function LibraryGrid({ games }: LibraryGridProps) {
                 display: 'grid',
                 gridTemplateColumns: `repeat(${COLUMNS}, 1fr)`,
                 gap: '1.5rem',
-                padding: '0 1.5rem 3.5rem 1.5rem',
+                padding: '0 1.5rem 1.5rem 1.5rem',
               }}
             >
               {rowGames.map((game) => (

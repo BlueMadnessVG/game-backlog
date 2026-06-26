@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-const CARD_HEIGHT = 320;
-const COLUMNS = 6;
-const GAP = 20;
+import { getColumnCount } from '../utils/getColumnCount';
+
+const CARD_GAP = 24;
+const ROW_GAP = 20;
 
 interface UseLibraryVirtualGridOptions {
   totalItems: number;
@@ -22,12 +23,31 @@ export function useLibraryVirtualGrid({
   'use no memo';
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerWidth(entry.contentRect.width);
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const COLUMNS = getColumnCount({
+    containerWidth,
+    gap: CARD_GAP,
+  });
+
   const rowCount = Math.ceil(totalItems / COLUMNS);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => CARD_HEIGHT + GAP,
+    estimateSize: () => 320 + ROW_GAP,
     measureElement: (el) => (el as HTMLElement)?.offsetHeight ?? 0,
     overscan: 2,
   });
