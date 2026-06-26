@@ -1,51 +1,71 @@
+/*
+  Backlog HUD theme
+  ------------------
+  This design system is a single dark "HUD" theme (deep space navy +
+  neon violet/magenta/green accents), so the old prefers-color-scheme
+  light/dark split has been removed — there's no light variant defined
+  in the spec. If you want a light fallback later, say so and I'll add one.
+
+  Fonts: Space Grotesk (headings), Inter (body), Space Mono (data/code).
+  Add these via Google Fonts, either in your HTML <head>:
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=Space+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  ...or with an @import at the very top of this file:
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=Space+Mono:wght@500;700&display=swap');
+*/
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* base text/surface */
+  --text: #cbc3d7; /* on-surface-variant */
+  --text-h: #e4e1f0; /* on-surface */
+  --bg: #12121d; /* background */
+  --border: rgba(139, 92, 246, 0.18); /* hairline / "glass-etched" border, per spec */
+  --code-bg: #1b1b25; /* surface-container-low */
+  --accent: #d0bcff; /* primary (violet) */
+  --accent-bg: rgba(208, 188, 255, 0.1);
+  --accent-border: rgba(208, 188, 255, 0.5);
+  --social-bg: rgba(31, 31, 41, 0.5); /* surface-container @ 50% */
+  --shadow: rgba(208, 188, 255, 0.2) 0 0 15px; /* inner glow per "Elevation & Depth" */
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* extra tokens from the design system, in case you need them elsewhere */
+  --secondary: #ffafd3; /* magenta — rare/legendary/high-priority */
+  --tertiary: #45dfa4; /* green — success / unlocked / 100% */
+  --error: #ffb4ab;
+  --surface-raised: #1f1f29; /* surface-container */
+  --surface-highest: #34343f; /* surface-container-highest */
+  --outline: #958ea0;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
+  --sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: 'Space Grotesk', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'Space Mono', ui-monospace, Consolas, monospace;
+
+  /*
+    Fluid type scale — clamp(mobile-size, scales-with-viewport, desktop-size)
+    Calculated between a 360px and 1440px viewport, so text scales smoothly
+    instead of jumping at a single breakpoint. Use these on font-size
+    anywhere in component CSS instead of hardcoding px/rem.
+  */
+  --font-display-lg: clamp(2rem, 1.67rem + 1.48vw, 3rem); /* 32px → 48px */
+  --font-display-md: clamp(1.5rem, 1.33rem + 0.74vw, 2rem); /* 24px → 32px */
+  --font-headline-lg: clamp(1.25rem, 1.17rem + 0.37vw, 1.5rem); /* 20px → 24px */
+  --font-headline-sm: clamp(1.125rem, 1.08rem + 0.19vw, 1.25rem); /* 18px → 20px */
+  --font-body-lg: clamp(1rem, 0.96rem + 0.19vw, 1.125rem); /* 16px → 18px */
+  --font-body-md: clamp(0.9375rem, 0.92rem + 0.09vw, 1rem); /* 15px → 16px */
+  --font-body-sm: 0.875rem; /* 14px — static, too small to bother scaling */
+  --font-data-mono: 0.875rem; /* 14px — static so numbers stay aligned across breakpoints */
+  --font-label-caps: 0.75rem; /* 12px — static */
+
+  font: var(--font-body-md)/150% var(--sans);
+  letter-spacing: normal;
+  color-scheme: dark;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
 }
 
 html,
@@ -62,28 +82,24 @@ body {
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
   color: var(--text-h);
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
+  font-size: var(--font-display-lg);
+  font-weight: 700;
+  line-height: 1.167; /* 56/48, scales proportionally with the fluid font-size */
+  letter-spacing: -0.02em;
   margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
 }
+
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
+  font-size: var(--font-headline-lg);
+  font-weight: 600;
+  line-height: 1.333; /* 32/24 */
   margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
 }
+
 p {
   margin: 0;
 }
@@ -92,13 +108,15 @@ code,
 .counter {
   font-family: var(--mono);
   display: inline-flex;
-  border-radius: 4px;
+  border-radius: 0; /* sharp/geometric corners, per "Shapes" */
   color: var(--text-h);
 }
 
 code {
-  font-size: 15px;
-  line-height: 135%;
+  font-size: var(--font-data-mono); /* 14px, static — keeps numbers aligned */
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0.05em;
   padding: 4px 8px;
   background: var(--code-bg);
 }

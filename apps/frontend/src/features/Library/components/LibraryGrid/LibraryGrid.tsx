@@ -1,3 +1,4 @@
+import styles from './css/LibraryGrid.module.css';
 import { useLibraryVirtualGrid } from './hooks/LibraryVirtualGrid';
 import { useLibrary } from '../../hooks/useLibrary.hook';
 import GameCard from '../GameCard/GameCard';
@@ -22,7 +23,9 @@ function LibraryGrid({ games }: LibraryGridProps) {
   });
 
   return (
-    <div ref={scrollRef} style={{ height: '100vh', overflowY: 'auto' }}>
+    <div ref={scrollRef} className={styles.library_grid_container}>
+      <h1 className={styles.library_header}>LIBRARY DATABASE</h1>
+
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const startIndex = virtualRow.index * COLUMNS;

@@ -6,8 +6,8 @@
   width: clamp(42px, 4vw, 64px);
   padding: 0 10px;
   height: 100%;
-  background-color: #09090b;
-  border-right: 1px solid #27272a;
+  background-color: var(--bg);
+  border-right: 1px solid var(--border);
   z-index: 50;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
@@ -25,13 +25,15 @@
 
 .sidebar_container:hover {
   width: 280px; /* Expanded width */
-  background: rgba(9, 9, 11, 0.9);
-  box-shadow: 20px 0 50px rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  box-shadow:
+    20px 0 50px rgba(0, 0, 0, 0.5),
+    var(--shadow);
 }
 
 .sidebar_container[data-expanded='true'] {
   width: 280px;
-  background: rgba(9, 9, 11, 0.9);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
 }
 
 .sidebar_container:hover .sidebar_content {
@@ -40,9 +42,10 @@
 }
 
 .sidebar_title {
-  font-size: 1.25rem;
+  font-family: var(--heading);
+  font-size: var(--font-headline-sm);
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-h);
   margin-bottom: 40px;
   letter-spacing: 0.1em;
 }
@@ -57,7 +60,7 @@
   background: none;
   border: none;
   text-align: left;
-  color: #a1a1aa; /* text-zinc-400 */
+  color: var(--outline); /* was #a1a1aa */
   font-weight: 500;
   cursor: pointer;
   transition:
@@ -66,7 +69,7 @@
 }
 
 .nav_item:hover {
-  color: #ffffff;
+  color: var(--text-h);
   transform: translateX(4px);
 }
 

@@ -1,5 +1,5 @@
 .profile_container {
-  margin-top: auto; /* Push to bottom */
+  margin-top: auto;
   padding: 16px 8px;
   width: 100%;
   margin-bottom: 1rem;
@@ -10,8 +10,8 @@
   align-items: center;
   gap: 12px;
   padding: 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0;
+  background: var(--social-bg);
   transition: background 0.2s ease;
 }
 
@@ -23,9 +23,9 @@
 .avatar_image {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-  box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+  border-radius: 0;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--secondary) 100%);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .status_indicator {
@@ -34,8 +34,8 @@
   right: -2px;
   width: 10px;
   height: 10px;
-  background: #22c55e; /* Green */
-  border: 2px solid #09090b;
+  background: var(--tertiary);
+  border: 2px solid var(--bg);
   border-radius: 50%;
 }
 
@@ -46,15 +46,15 @@
 }
 
 .username {
-  color: #ffffff;
-  font-size: 0.85rem;
+  color: var(--text-h);
+  font-size: var(--font-body-sm);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .rank {
-  color: #71717a;
-  font-size: 0.7rem;
+  color: var(--outline);
+  font-size: var(--font-label-caps);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -64,17 +64,17 @@
   justify-content: space-around;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  border-top: 1px solid var(--border);
 }
 
 .action_btn {
   background: none;
   border: none;
-  color: #52525b;
+  color: var(--outline); /* was #52525b */
   cursor: pointer;
   transition: color 0.2s ease;
 }
 
 .action_btn:hover {
-  color: #ffffff;
+  color: var(--text-h);
 }
