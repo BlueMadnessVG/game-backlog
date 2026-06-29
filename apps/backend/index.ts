@@ -15,6 +15,8 @@ import { errorHandler } from "./middleware/error.handler";
 import { PsnProvider } from "./providers/psn.provider";
 import { PsnService } from "./modules/psn/psn.services";
 import { createPsnController } from "./modules/psn/psn.controller";
+import { LibraryService } from "./modules/library/library.services"; // ✅ new
+import { createLibraryController } from "./modules/library/library.controller";
 
 /**
  * 1. Dependency Injection / Composition Root
@@ -28,6 +30,8 @@ const xboxService = new XboxService(db, xboxProvider);
 
 const psnProvider = new PsnProvider();
 const psnService = new PsnService(db, psnProvider);
+
+const libraryService = new LibraryService(db);
 
 /**
  * 2. App Initialization
@@ -70,6 +74,8 @@ const apiV1 = new Hono();
 apiV1.route("/steam", createSteamController(steamService));
 apiV1.route("/xbox", createXboxController(xboxService));
 apiV1.route("/psn", createPsnController(psnService));
+
+apiV1.route("/library", createLibraryController(libraryService));
 
 app.route("/api/v1", apiV1);
 

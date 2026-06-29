@@ -4,3 +4,4 @@ export * from "./src/schemas/xbox.schema";
 export * from "./src/schemas/psn.schema";
 
 export * from "./src/schemas/achievement.schema";
+export * from "./src/schemas/stats.schema";
