@@ -1,20 +1,7 @@
 /*
   Backlog HUD theme
-  ------------------
-  This design system is a single dark "HUD" theme (deep space navy +
-  neon violet/magenta/green accents), so the old prefers-color-scheme
-  light/dark split has been removed — there's no light variant defined
-  in the spec. If you want a light fallback later, say so and I'll add one.
-
-  Fonts: Space Grotesk (headings), Inter (body), Space Mono (data/code).
-  Add these via Google Fonts, either in your HTML <head>:
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=Space+Mono:wght@500;700&display=swap" rel="stylesheet">
-
-  ...or with an @import at the very top of this file:
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=Space+Mono:wght@500;700&display=swap');
 */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=Space+Mono:wght@500;700&display=swap');
 
 :root {
   /* base text/surface */

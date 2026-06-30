@@ -2,6 +2,7 @@ import styles from './css/LibraryGrid.module.css';
 import { useLibraryVirtualGrid } from './hooks/LibraryVirtualGrid';
 import { useLibrary } from '../../hooks/useLibrary.hook';
 import GameCard from '../GameCard/GameCard';
+import { LibraryHeader } from '../LibraryHeader/LibraryHeader';
 import LibrarySkeleton from '../ui/LibrarySkeleton/LibraryGameCardSkeleton';
 
 import type { Game } from '@repo/shared';
@@ -24,6 +25,9 @@ function LibraryGrid({ games }: LibraryGridProps) {
 
   return (
     <div ref={scrollRef} className={styles.library_grid_container}>
+      <div className={styles.library_stats_wrapper}>
+        <LibraryHeader />
+      </div>
       <h1 className={styles.library_header}>LIBRARY DATABASE</h1>
 
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>

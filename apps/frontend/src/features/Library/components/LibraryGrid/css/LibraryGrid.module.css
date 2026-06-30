@@ -4,6 +4,11 @@
   padding: 0 0.5rem 0 2rem;
 }
 
+.library_stats_wrapper {
+  padding: 2rem 1.5rem 0;
+  margin-bottom: 2.5rem;
+}
+
 .library_header {
   display: flex;
   align-items: center;
@@ -16,7 +21,7 @@
   margin-left: 1.5rem;
 
   color: var(--text-h);
-  font-size: var(--font-headline-sm);
+  font-size: var(--font-headline-lg);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;

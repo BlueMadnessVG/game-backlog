@@ -1,0 +1,113 @@
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  transition: box-shadow 150ms ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: var(--font-label-caps);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.value {
+  font-family: var(--sans);
+  font-size: var(--font-display-md);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-h);
+}
+
+.valueSkeleton {
+  display: inline-block;
+  width: 3.5ch;
+  height: 1em;
+  font-size: var(--font-display-md);
+  background: linear-gradient(
+    90deg,
+    var(--surface-highest) 25%,
+    var(--code-bg) 50%,
+    var(--surface-highest) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  color: var(--outline);
+}
+
+/* ── Accent variants ──────────────────────────────────────────────────────── */
+
+.accent-green {
+  border-color: var(--tertiary);
+}
+.accent-green .label,
+.accent-green .value,
+.accent-green .icon {
+  color: var(--tertiary);
+}
+
+.accent-violet {
+  border-color: var(--accent);
+}
+.accent-violet .label,
+.accent-violet .value,
+.accent-violet .icon {
+  color: var(--accent);
+}
+
+.accent-magenta {
+  border-color: var(--secondary);
+}
+.accent-magenta .label,
+.accent-magenta .value,
+.accent-magenta .icon {
+  color: var(--secondary);
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .valueSkeleton {
+    animation: none;
+    background: var(--surface-highest);
+  }
+  .card {
+    transition: none;
+  }
+}

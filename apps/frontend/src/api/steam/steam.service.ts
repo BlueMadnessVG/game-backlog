@@ -1,6 +1,6 @@
 import { type AchievementsResponse, type Game, type GamesResponse } from '@repo/shared';
 
-import { apiClient } from '../api.client.';
+import { apiClient } from '../api.client';
 
 interface ApiResponse<T> {
   status: string;

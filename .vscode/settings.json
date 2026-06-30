@@ -21,6 +21,8 @@
     "glsl",
     "picklist",
     "scanline",
-    "Scanlines"
+    "Scanlines",
+    "Statcard",
+    "Statscard"
   ]
 }
