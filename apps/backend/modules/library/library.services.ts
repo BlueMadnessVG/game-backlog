@@ -14,10 +14,141 @@ import {
   psnUserTrophies,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
-import type { PlatformStats, Stats } from "@repo/shared";
+import type { Game, PlatformStats, Stats } from "@repo/shared";
 
 export class LibraryService {
   constructor(private readonly db: DbClient) {}
+
+  // ── Combined games list ──────────────────────────────────────────────────
+
+  async getUserGames(userId: string): Promise<Game[]> {
+    const [steamRows, xboxRows, psnRows] = await Promise.all([
+      this.getSteamGames(userId),
+      this.getXboxGames(userId),
+      this.getPsnGames(userId),
+    ]);
+
+    const combined = [...steamRows, ...xboxRows, ...psnRows];
+
+    combined.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+
+    return combined;
+  }
+
+  private async getSteamGames(userId: string): Promise<Game[]> {
+    const rows = await this.db
+      .select({
+        id: games.id,
+        title: games.title,
+        platform: games.platform,
+        status: games.status,
+        iconUrl: games.iconUrl,
+        coverUrl: games.coverUrl,
+        bannerUrl: games.bannerUrl,
+        playTime: games.playTime,
+        completionPercentage: games.completionPercentage,
+        lastPlayedAt: games.lastPlayedAt,
+        addedAt: games.createdAt,
+        updatedAt: games.updatedAt,
+        externalId: steamGames.steamAppId,
+      })
+      .from(games)
+      .innerJoin(steamGames, eq(games.id, steamGames.gameId))
+      .innerJoin(steamAccounts, eq(steamAccounts.userId, userId))
+      .where(eq(steamAccounts.userId, userId));
+
+    return rows.map((row) => this.mapRowToGame(row, "steam"));
+  }
+
+  private async getXboxGames(userId: string): Promise<Game[]> {
+    const rows = await this.db
+      .select({
+        id: games.id,
+        title: games.title,
+        platform: games.platform,
+        status: games.status,
+        iconUrl: games.iconUrl,
+        coverUrl: games.coverUrl,
+        bannerUrl: games.bannerUrl,
+        playTime: games.playTime,
+        completionPercentage: games.completionPercentage,
+        lastPlayedAt: games.lastPlayedAt,
+        addedAt: games.createdAt,
+        updatedAt: games.updatedAt,
+        externalId: xboxGames.titleId,
+      })
+      .from(games)
+      .innerJoin(xboxGames, eq(games.id, xboxGames.gameId))
+      .innerJoin(xboxAccounts, eq(xboxAccounts.userId, userId))
+      .where(eq(xboxAccounts.userId, userId));
+
+    return rows.map((row) => this.mapRowToGame(row, "xbox"));
+  }
+
+  private async getPsnGames(userId: string): Promise<Game[]> {
+    const rows = await this.db
+      .select({
+        id: games.id,
+        title: games.title,
+        platform: games.platform,
+        status: games.status,
+        iconUrl: games.iconUrl,
+        coverUrl: games.coverUrl,
+        bannerUrl: games.bannerUrl,
+        playTime: games.playTime,
+        completionPercentage: games.completionPercentage,
+        lastPlayedAt: games.lastPlayedAt,
+        addedAt: games.createdAt,
+        updatedAt: games.updatedAt,
+        externalId: psnGames.npCommunicationId,
+      })
+      .from(games)
+      .innerJoin(psnGames, eq(games.id, psnGames.gameId))
+      .innerJoin(psnAccounts, eq(psnAccounts.userId, userId))
+      .where(eq(psnAccounts.userId, userId));
+
+    return rows.map((row) => this.mapRowToGame(row, "playstation"));
+  }
+
+  private mapRowToGame(
+    row: {
+      id: string;
+      title: string;
+      platform: string | null;
+      status: string | null;
+      iconUrl: string | null;
+      coverUrl: string | null;
+      bannerUrl: string | null;
+      playTime: number | null;
+      completionPercentage: number | null;
+      lastPlayedAt: Date | null;
+      addedAt: Date;
+      updatedAt: Date;
+      externalId: string;
+    },
+    fallbackPlatform: "steam" | "xbox" | "playstation",
+  ): Game {
+    return {
+      id: row.id,
+      externalId: row.externalId,
+      title: row.title,
+      platform: (row.platform ?? fallbackPlatform) as Game["platform"],
+      status: (row.status ?? "backlog") as Game["status"],
+      iconUrl: row.iconUrl ?? null,
+      coverUrl: row.coverUrl ?? null,
+      bannerUrl: row.bannerUrl ?? null,
+      playTime: row.playTime ?? 0,
+      completionPercentage: row.completionPercentage ?? 0,
+      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
+      addedAt: row.addedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  // ── Stats (unchanged) ─────────────────────────────────────────────────────
 
   async getStats(userId: string): Promise<Stats> {
     const [steam, xbox, playstation] = await Promise.all([
@@ -30,7 +161,6 @@ export class LibraryService {
 
     const total: PlatformStats = {
       games: totalGames,
-      // Weighted average — a platform with 300 games weighs more than one with 5
       completionPercentage:
         totalGames > 0
           ? Math.round(
@@ -49,8 +179,6 @@ export class LibraryService {
 
     return { total, breakdown: { steam, xbox, playstation } };
   }
-
-  // ── Steam ─────────────────────────────────────────────────────────────────
 
   private async getSteamStats(userId: string): Promise<PlatformStats> {
     const [gameStats] = await this.db
@@ -94,8 +222,6 @@ export class LibraryService {
     };
   }
 
-  // ── Xbox ──────────────────────────────────────────────────────────────────
-
   private async getXboxStats(userId: string): Promise<PlatformStats> {
     const [gameStats] = await this.db
       .select({
@@ -137,8 +263,6 @@ export class LibraryService {
       achievements: achStats?.achievements ?? 0,
     };
   }
-
-  // ── PlayStation ───────────────────────────────────────────────────────────
 
   private async getPlaystationStats(userId: string): Promise<PlatformStats> {
     const [gameStats] = await this.db

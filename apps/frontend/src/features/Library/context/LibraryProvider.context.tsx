@@ -29,7 +29,12 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  console.log({ hasNextPage, pagesLoaded: data?.pages.length, total: data?.pages[0]?.meta.total });
+  console.log({
+    hasNextPage,
+    pagesLoaded: data?.pages.length,
+    total: data?.pages[0]?.meta.total,
+    data,
+  });
 
   const games = useMemo<Game[]>(() => data?.pages.flatMap((page) => page.data) ?? [], [data]);
 
