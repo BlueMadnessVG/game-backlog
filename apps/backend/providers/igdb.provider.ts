@@ -10,6 +10,8 @@ export class IgdbProvider {
   private readonly baseUrl = "https://api.igdb.com/v4";
   private readonly tokenUrl = "https://id.twitch.tv/oauth2/token";
 
+  // IGDB is a Twitch product — the app token lasts ~60 days,
+  // so we cache it in memory rather than re-fetching per request.
   private cachedToken: { accessToken: string; expiresAt: number } | null = null;
 
   constructor(clientId: string, clientSecret: string) {
@@ -21,6 +23,7 @@ export class IgdbProvider {
   }
 
   private async getAccessToken(): Promise<string> {
+    // Reuse the cached token until 5 minutes before it expires
     if (
       this.cachedToken &&
       Date.now() < this.cachedToken.expiresAt - 5 * 60_000
@@ -65,75 +68,43 @@ export class IgdbProvider {
     };
   }
 
-  // Removes trademark symbols and collapses whitespace — "Modern Warfare®"
-  // and "EA Sports™ FIFA Street" search poorly on IGDB with these intact.
-  private sanitizeTitle(title: string): string {
-    return title.replace(/[™®©]/g, "").replace(/\s+/g, " ").trim();
-  }
-
-  // Strips edition suffixes and parenthetical platform tags —
-  // "Diablo IV (Xbox Series X)" or "Skyrim - Special Edition" often
-  // fail to match while the base title succeeds.
-  private stripEditionSuffix(title: string): string {
-    return title
-      .replace(/\s*\([^)]*\)/g, "")
-      .replace(
-        /\s*[-–—]\s*(Game of the Year|GOTY|Deluxe|Definitive|Ultimate|Remastered|Complete|Standard)\s*(Edition)?$/i,
-        "",
-      )
-      .trim();
-  }
-
-  private async queryIgdb(title: string): Promise<string | null> {
-    const headers = await this.headers();
-    const query = `search "${title.replace(/"/g, '\\"')}"; fields name,cover.image_id; limit 1;`;
-
-    const response = await fetch(`${this.baseUrl}/games`, {
-      method: "POST",
-      headers,
-      body: query,
-    });
-
-    if (response.status === 429) {
-      console.warn(`[IgdbProvider] Rate limit hit, skipping "${title}"`);
-      return null;
-    }
-    if (!response.ok) {
-      console.warn(
-        `[IgdbProvider] Search failed for "${title}": ${response.statusText}`,
-      );
-      return null;
-    }
-
-    const rawData = await response.json();
-    const result = v.safeParse(IgdbGamesResponseSchema, rawData);
-
-    if (!result.success || result.output.length === 0) return null;
-
-    const match = result.output[0];
-    if (!match!.cover?.image_id) return null;
-
-    return `https://images.igdb.com/igdb/image/upload/t_cover_big/${match!.cover.image_id}.jpg`;
-  }
-
-  // Tries the sanitized title first, then a stripped-down variant
-  // (no edition suffix, no parenthetical tags) if the first attempt misses.
-  // Returns null if neither matches — some titles (dashboard apps, obscure
-  // Xbox 360 utilities) genuinely have no IGDB entry, and that's expected.
+  // Searches IGDB by title and returns a consistent portrait cover URL
+  // (264x374, ~2:3 ratio — matches Steam's own 600x900 ratio closely).
+  // Returns null on no match, no cover, or rate limit — caller decides fallback.
   async searchGameCover(title: string): Promise<string | null> {
     try {
-      const sanitized = this.sanitizeTitle(title);
+      const headers = await this.headers();
 
-      const firstAttempt = await this.queryIgdb(sanitized);
-      if (firstAttempt) return firstAttempt;
+      // Apicalypse query language — request only name + cover.image_id
+      const query = `search "${title.replace(/"/g, '\\"')}"; fields name,cover.image_id; limit 1;`;
 
-      const stripped = this.stripEditionSuffix(sanitized);
-      if (stripped !== sanitized && stripped.length > 0) {
-        const secondAttempt = await this.queryIgdb(stripped);
-        if (secondAttempt) return secondAttempt;
+      const response = await fetch(`${this.baseUrl}/games`, {
+        method: "POST",
+        headers,
+        body: query,
+      });
+
+      if (response.status === 429) {
+        console.warn(`[IgdbProvider] Rate limit hit, skipping "${title}"`);
+        return null;
+      }
+      if (!response.ok) {
+        console.warn(
+          `[IgdbProvider] Search failed for "${title}": ${response.statusText}`,
+        );
+        return null;
       }
 
-      return null;
+      const rawData = await response.json();
+      const result = v.safeParse(IgdbGamesResponseSchema, rawData);
+
+      if (!result.success || result.output.length === 0) return null;
+
+      const match = result.output[0];
+      if (!match!.cover?.image_id) return null;
+
+      // t_cover_big = 264x374 — the standard portrait cover size IGDB serves
+      return `https://images.igdb.com/igdb/image/upload/t_cover_big/${match!.cover.image_id}.jpg`;
     } catch (error) {
       console.error(
         `[IgdbProvider][searchGameCover] Failed for "${title}":`,

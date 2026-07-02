@@ -7,6 +7,7 @@ import {
 } from "@repo/shared";
 import { PsnService } from "./psn.services";
 import * as v from "valibot";
+import type { LibraryService } from "../library/library.services";
 
 type PsnSyncRequest = {
   npsso: string;
@@ -20,7 +21,10 @@ type Bindings = {
   };
 };
 
-export const createPsnController = (psnService: PsnService) => {
+export const createPsnController = (
+  psnService: PsnService,
+  libraryService: LibraryService,
+) => {
   const app = new Hono<Bindings>();
 
   // GET /psn/games
@@ -105,6 +109,17 @@ export const createPsnController = (psnService: PsnService) => {
         )
         .catch((err) => {
           console.error("[PsnController] Background trophy sync failed:", err);
+        });
+
+      libraryService
+        .enrichGameCovers(userId)
+        .then((result) => {
+          console.log(
+            `[PsnController] Cover enrichment: ${result.enriched} enriched, ${result.skipped} skipped`,
+          );
+        })
+        .catch((err) => {
+          console.error("[PsnController] Cover enrichment failed:", err);
         });
 
       return response;

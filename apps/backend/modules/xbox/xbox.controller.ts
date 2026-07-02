@@ -5,6 +5,7 @@ import { XboxService } from "./xbox.services";
 import * as v from "valibot";
 
 import { XboxSyncSchema } from "@repo/shared";
+import type { LibraryService } from "../library/library.services";
 
 type Bindings = {
   Variables: {
@@ -13,7 +14,10 @@ type Bindings = {
   };
 };
 
-export const createXboxController = (xboxService: XboxService) => {
+export const createXboxController = (
+  xboxService: XboxService,
+  libraryService: LibraryService,
+) => {
   const app = new Hono<Bindings>();
 
   // GET /xbox/games
@@ -82,13 +86,9 @@ export const createXboxController = (xboxService: XboxService) => {
       const response = c.json({
         status: "SUCCESS",
         message: "Xbox library synced. Achievement data syncing in background.",
-        data: {
-          profile,
-          gamesCount: games.length,
-        },
+        data: { profile, gamesCount: games.length },
       });
 
-      // Fire-and-forget — 500ms delay between batches keeps OpenXBL rate limit safe
       xboxService
         .syncAllGameAchievements(
           userId,
@@ -99,6 +99,18 @@ export const createXboxController = (xboxService: XboxService) => {
             "[XboxController] Background achievement sync failed:",
             err,
           );
+        });
+
+      // ✅ new — enrich Xbox covers automatically after every sync
+      libraryService
+        .enrichGameCovers(userId)
+        .then((result) => {
+          console.log(
+            `[XboxController] Cover enrichment: ${result.enriched} enriched, ${result.skipped} skipped`,
+          );
+        })
+        .catch((err) => {
+          console.error("[XboxController] Cover enrichment failed:", err);
         });
 
       return response;
