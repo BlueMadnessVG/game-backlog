@@ -15,8 +15,9 @@ import { errorHandler } from "./middleware/error.handler";
 import { PsnProvider } from "./providers/psn.provider";
 import { PsnService } from "./modules/psn/psn.services";
 import { createPsnController } from "./modules/psn/psn.controller";
-import { LibraryService } from "./modules/library/library.services"; // ✅ new
+import { LibraryService } from "./modules/library/library.services";
 import { createLibraryController } from "./modules/library/library.controller";
+import { IgdbProvider } from "./providers/igdb.provider";
 
 /**
  * 1. Dependency Injection / Composition Root
@@ -31,7 +32,12 @@ const xboxService = new XboxService(db, xboxProvider);
 const psnProvider = new PsnProvider();
 const psnService = new PsnService(db, psnProvider);
 
-const libraryService = new LibraryService(db);
+const igdbProvider = new IgdbProvider(
+  process.env.IGDB_CLIENT_ID!,
+  process.env.IGDB_CLIENT_SECRET!,
+);
+
+const libraryService = new LibraryService(db, igdbProvider);
 
 /**
  * 2. App Initialization

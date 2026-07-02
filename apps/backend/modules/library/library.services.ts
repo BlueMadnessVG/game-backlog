@@ -15,9 +15,16 @@ import {
 } from "../../db/schema";
 import type { DbClient } from "../../db";
 import type { Game, PlatformStats, Stats } from "@repo/shared";
+import { IgdbProvider } from "../../providers/igdb.provider";
+
+const IGDB_BATCH_SIZE = 4; // IGDB free tier: 4 req/sec
+const IGDB_DELAY_MS = 1100;
 
 export class LibraryService {
-  constructor(private readonly db: DbClient) {}
+  constructor(
+    private readonly db: DbClient,
+    private readonly igdbProvider: IgdbProvider,
+  ) {}
 
   // ── Combined games list ──────────────────────────────────────────────────
 
@@ -324,5 +331,51 @@ export class LibraryService {
       completedGames: gameStats?.completedGames ?? 0,
       achievements: achStats?.achievements ?? 0,
     };
+  }
+
+  // Replace only the enrichGameCovers method — everything else in the class stays the same
+
+  async enrichGameCovers(
+    userId: string,
+  ): Promise<{ enriched: number; skipped: number }> {
+    const [xboxRows, psnRows] = await Promise.all([
+      this.getXboxGames(userId),
+      this.getPsnGames(userId),
+    ]);
+
+    // Skip games already enriched in a previous run — prevents burning
+    // IGDB's rate limit re-matching the same games on every sync
+    const targetGames = [...xboxRows, ...psnRows]
+      .filter((g) => !g.coverUrl?.includes("images.igdb.com"))
+      .map((g) => ({ id: g.id, title: g.title }));
+
+    let enriched = 0;
+    let skipped = 0;
+
+    for (let i = 0; i < targetGames.length; i += IGDB_BATCH_SIZE) {
+      const batch = targetGames.slice(i, i + IGDB_BATCH_SIZE);
+
+      await Promise.allSettled(
+        batch.map(async (game) => {
+          const coverUrl = await this.igdbProvider.searchGameCover(game.title);
+
+          if (coverUrl) {
+            await this.db
+              .update(games)
+              .set({ coverUrl })
+              .where(eq(games.id, game.id));
+            enriched++;
+          } else {
+            skipped++;
+          }
+        }),
+      );
+
+      if (i + IGDB_BATCH_SIZE < targetGames.length) {
+        await new Promise((resolve) => setTimeout(resolve, IGDB_DELAY_MS));
+      }
+    }
+
+    return { enriched, skipped };
   }
 }
