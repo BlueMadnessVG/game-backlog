@@ -40,10 +40,10 @@ export const GameSchema = v.object({
   playTime: v.pipe(v.number(), v.minValue(0)),
   completionPercentage: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
 
-  // Dates
-  lastPlayedAt: v.nullable(v.pipe(v.string(), v.isoDateTime())),
-  addedAt: v.pipe(v.string(), v.isoDateTime()),
-  updatedAt: v.pipe(v.string(), v.isoDateTime()),
+  // Dates — ✅ isoTimestamp, not isoDateTime (matches .toISOString() output)
+  lastPlayedAt: v.nullable(v.pipe(v.string(), v.isoTimestamp())),
+  addedAt: v.pipe(v.string(), v.isoTimestamp()),
+  updatedAt: v.pipe(v.string(), v.isoTimestamp()),
 });
 
 export const PaginationMetaSchema = v.object({

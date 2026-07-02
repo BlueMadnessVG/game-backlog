@@ -21,6 +21,9 @@ export class LibraryService {
 
   // ── Combined games list ──────────────────────────────────────────────────
 
+  // Merges games across all three platforms into a single list.
+  // Mirrors the shape returned by SteamService/XboxService/PsnService.getUserGames,
+  // just fetched from all three and combined.
   async getUserGames(userId: string): Promise<Game[]> {
     const [steamRows, xboxRows, psnRows] = await Promise.all([
       this.getSteamGames(userId),
@@ -30,6 +33,8 @@ export class LibraryService {
 
     const combined = [...steamRows, ...xboxRows, ...psnRows];
 
+    // Sort by most recently updated first — gives a consistent, deterministic
+    // order across platforms rather than grouping by platform
     combined.sort(
       (a, b) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
@@ -113,6 +118,15 @@ export class LibraryService {
     return rows.map((row) => this.mapRowToGame(row, "playstation"));
   }
 
+  // Normalizes an empty string to null. Some platforms (Xbox especially)
+  // return "" instead of null for missing images, which fails URL validation
+  // downstream in the shared GameSchema (v.nullable expects null, not "").
+  private normalizeUrl(url: string | null): string | null {
+    return url && url.trim() !== "" ? url : null;
+  }
+
+  // Shared row → Game mapper, same normalization pattern used across
+  // SteamService/XboxService/PsnService
   private mapRowToGame(
     row: {
       id: string;
@@ -137,9 +151,9 @@ export class LibraryService {
       title: row.title,
       platform: (row.platform ?? fallbackPlatform) as Game["platform"],
       status: (row.status ?? "backlog") as Game["status"],
-      iconUrl: row.iconUrl ?? null,
-      coverUrl: row.coverUrl ?? null,
-      bannerUrl: row.bannerUrl ?? null,
+      iconUrl: this.normalizeUrl(row.iconUrl),
+      coverUrl: this.normalizeUrl(row.coverUrl),
+      bannerUrl: this.normalizeUrl(row.bannerUrl),
       playTime: row.playTime ?? 0,
       completionPercentage: row.completionPercentage ?? 0,
       lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
@@ -148,7 +162,7 @@ export class LibraryService {
     };
   }
 
-  // ── Stats (unchanged) ─────────────────────────────────────────────────────
+  // ── Stats ─────────────────────────────────────────────────────────────────
 
   async getStats(userId: string): Promise<Stats> {
     const [steam, xbox, playstation] = await Promise.all([
