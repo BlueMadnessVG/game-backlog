@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { motion } from 'framer-motion';
 
-import styles from './css/GameCard.module.css';
+import styles from './css/GameCardPoster.module.css';
 
 interface GameCardPosterProps {
   src: string | null;

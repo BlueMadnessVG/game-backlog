@@ -1,0 +1,19 @@
+.card_link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--card-radius, 8px);
+  container-type: inline-size;
+}
+
+.card_root {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  width: 100%;
+  max-width: 100%;
+  border-radius: var(--card-radius, 8px);
+  cursor: pointer;
+  display: block;
+  --card-aspect: 2 / 3;
+  --card-radius: 8px;
+}

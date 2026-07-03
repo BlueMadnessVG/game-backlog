@@ -1,0 +1,33 @@
+:root {
+  --color-hud-accent: #00ffff;
+  --color-card-bg: #0a0a0a;
+  --color-card-border: rgba(255, 255, 255, 0.08);
+  --color-hud-accent-border: rgba(0, 255, 255, 0.4);
+  --color-hud-accent-bg: rgba(0, 0, 0, 0.85);
+  --color-stats-gradient: rgba(0, 0, 0, 0.95);
+  --color-playtime-muted: #888;
+  --color-platform-tag: rgba(255, 255, 255, 0.4);
+  --font-hud: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.hud_overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+@keyframes fadeInGrid {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

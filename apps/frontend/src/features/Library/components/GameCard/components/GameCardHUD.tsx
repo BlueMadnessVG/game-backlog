@@ -1,7 +1,8 @@
-import { motion } from 'framer-motion';
-
-import styles from './css/GameCard.module.css';
+import styles from './css/GameCardHUD.module.css';
+import GameCardCornerBadge from './GameCardCornerBadge';
 import { GameCardMetadata } from './GameCardMetadata';
+import GameCardPlatformTag from './GameCardPlatformTag';
+import { getPercentageRank } from '../utils/getPercentageRank';
 
 interface GameCardHUDProps {
   title: string;
@@ -11,16 +12,13 @@ interface GameCardHUDProps {
 }
 
 function GameCardHUD({ title, percentage, playtime, platform }: GameCardHUDProps) {
+  const rank = getPercentageRank(percentage);
+
   return (
     <div className={styles.hud_overlay}>
-      <motion.div
-        className={styles.corner_percentage}
-        whileHover={{ scale: 1.1, borderColor: '#00ffff' }}
-      >
-        {Math.round(percentage)}%
-      </motion.div>
-
-      <GameCardMetadata title={title} playTime={playtime} platform={platform} />
+      <GameCardCornerBadge percentage={percentage} rank={rank} />
+      <GameCardPlatformTag platform={platform} rank={rank} />
+      <GameCardMetadata title={title} playTime={playtime} />
     </div>
   );
 }

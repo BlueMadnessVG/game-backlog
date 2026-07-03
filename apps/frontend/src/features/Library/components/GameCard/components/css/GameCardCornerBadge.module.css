@@ -1,0 +1,49 @@
+.corner_badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 3;
+
+  padding: 0.25rem 0.65rem;
+  border-radius: 0.3rem;
+
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: var(--font-data-mono);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+
+  background: var(--rank-color, #d4d4d8);
+  color: #0a0a0f;
+
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 12px 1px var(--rank-glow, rgba(212, 212, 216, 0.45));
+
+  pointer-events: none;
+  user-select: none;
+}
+
+.corner_badge[data-rank='platinum'] {
+  --rank-color: #ff3d9a;
+  --rank-glow: rgba(255, 61, 154, 0.55);
+  color: #ffffff;
+}
+
+.corner_badge[data-rank='gold'] {
+  --rank-color: #2dd4bf;
+  --rank-glow: rgba(45, 212, 191, 0.5);
+  color: #04201c;
+}
+
+.corner_badge[data-rank='silver'] {
+  --rank-color: #8b7cf6;
+  --rank-glow: rgba(139, 124, 246, 0.5);
+  color: #ffffff;
+}
+
+.corner_badge[data-rank='bronze'] {
+  --rank-color: #d4d4d8;
+  --rank-glow: rgba(212, 212, 216, 0.4);
+  color: #18181b;
+}

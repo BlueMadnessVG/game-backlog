@@ -1,0 +1,52 @@
+.platform_tag {
+  position: absolute;
+  left: 0.7rem;
+  bottom: 3.8rem;
+  z-index: 3;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+
+  background: rgba(10, 10, 15, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(4px);
+
+  pointer-events: none;
+  user-select: none;
+}
+
+.platform_icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex-shrink: 0;
+  color: #e4e4e7;
+}
+
+.platform_label {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: var(--font-label-caps);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e4e4e7;
+}
+
+.platform_tag[data-rank='platinum'] .platform_icon {
+  color: #ff3d9a;
+}
+
+.platform_tag[data-rank='gold'] .platform_icon {
+  color: #2dd4bf;
+}
+
+.platform_tag[data-rank='silver'] .platform_icon {
+  color: #8b7cf6;
+}
+
+.platform_tag[data-rank='bronze'] .platform_icon {
+  color: #d4d4d8;
+}

@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router';
 import { HoloCardRoot } from 'holo-card';
 
-import styles from './components/css/GameCard.module.css';
 import GameCardHUD from './components/GameCardHUD';
 import GameCardPoster from './components/GameCardPoster';
+import styles from './css/GameCard.module.css';
 import { getHoloTier } from './utils/getHoloTier';
 
 import type { Game } from '@repo/shared';
