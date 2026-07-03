@@ -258,9 +258,9 @@ export class PsnService {
         .onConflictDoUpdate({
           target: [games.title, games.platform],
           set: {
+            // Don't overwrite coverUrl/bannerUrl — they may have been
+            // enriched via IGDB after a previous sync
             iconUrl: sql`excluded.icon_url`,
-            coverUrl: sql`excluded.cover_url`,
-            bannerUrl: sql`excluded.banner_url`,
             lastPlayedAt: sql`excluded.last_played_at`,
             completionPercentage: sql`excluded.completion_percentage`,
             status: sql`excluded.status`,

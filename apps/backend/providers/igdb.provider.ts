@@ -68,15 +68,44 @@ export class IgdbProvider {
     };
   }
 
-  // Searches IGDB by title and returns a consistent portrait cover URL
-  // (264x374, ~2:3 ratio — matches Steam's own 600x900 ratio closely).
+  private normalize(str: string): string {
+    return str.toLowerCase().trim().replace(/\s+/g, " ");
+  }
+
+  private nameSimilarity(searchTitle: string, returnedName: string): number {
+    const a = this.normalize(searchTitle);
+    const b = this.normalize(returnedName);
+
+    if (a === b) return 1;
+    if (a.includes(b) || b.includes(a)) return 0.9;
+
+    const wordsA = a.split(/\s+/);
+    const wordsB = b.split(/\s+/);
+    const setB = new Set(wordsB);
+    const common = wordsA.filter((w) => setB.has(w)).length;
+    if (common === 0) return 0;
+
+    return common / Math.max(wordsA.length, wordsB.length);
+  }
+
+  private static readonly EXCLUDED_CATEGORIES = new Set<number>([
+    1, 2, 3, 5, 6, 7, 13,
+  ]);
+
+  // Searches IGDB by title and returns a portrait cover URL (t_cover_large,
+  // ~680x1000, ~2:3 ratio — matches Steam's 600x900 ratio closely).
   // Returns null on no match, no cover, or rate limit — caller decides fallback.
   async searchGameCover(title: string): Promise<string | null> {
     try {
       const headers = await this.headers();
 
-      // Apicalypse query language — request only name + cover.image_id
-      const query = `search "${title.replace(/"/g, '\\"')}"; fields name,cover.image_id; limit 1;`;
+      // Fetch top 5 results, exclude DLC/expansions/bundles,
+      // then score remaining by name similarity
+      const query = [
+        `search "${title.replace(/"/g, '\\"')}";`,
+        "fields name,cover.image_id,category;",
+        "limit 5;",
+      ].join(" ");
 
       const response = await fetch(`${this.baseUrl}/games`, {
         method: "POST",
@@ -100,11 +129,26 @@ export class IgdbProvider {
 
       if (!result.success || result.output.length === 0) return null;
 
-      const match = result.output[0];
-      if (!match!.cover?.image_id) return null;
+      const scored = result.output
+        .filter((g) => !IgdbProvider.EXCLUDED_CATEGORIES.has(g.category))
+        .map((g) => ({
+          game: g,
+          score: this.nameSimilarity(title, g.name),
+        }))
+        .sort((a, b) => b.score - a.score);
 
-      // t_cover_big = 264x374 — the standard portrait cover size IGDB serves
-      return `https://images.igdb.com/igdb/image/upload/t_cover_big/${match!.cover.image_id}.jpg`;
+      const best = scored[0];
+      if (!best || best.score < 0.5) {
+        console.warn(
+          `[IgdbProvider] No good match for "${title}" (best: ${best?.game.name ?? "none"}, score: ${best?.score ?? 0})`,
+        );
+        return null;
+      }
+
+      if (!best.game.cover?.image_id) return null;
+
+      // t_cover_large = ~680x1000 — matches Steam's 600x900 ratio (~2:3)
+      return `https://images.igdb.com/igdb/image/upload/t_cover_large/${best.game.cover.image_id}.jpg`;
     } catch (error) {
       console.error(
         `[IgdbProvider][searchGameCover] Failed for "${title}":`,
