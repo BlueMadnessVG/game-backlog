@@ -16,6 +16,10 @@ import {
 import type { DbClient } from "../../db";
 import type { Game, PlatformStats, Stats } from "@repo/shared";
 import { IgdbProvider } from "../../providers/igdb.provider";
+import {
+  deleteGameAndRelations,
+  deleteGamesAndRelations,
+} from "../../lib/game-deletion.utils";
 
 const IGDB_BATCH_SIZE = 4; // IGDB free tier: 4 req/sec
 const IGDB_DELAY_MS = 1100;
@@ -385,5 +389,13 @@ export class LibraryService {
     }
 
     return { enriched, alreadyEnriched: alreadyEnrichedRows.length, noMatch };
+  }
+
+  async removeGame(gameId: string): Promise<void> {
+    await deleteGameAndRelations(this.db, gameId);
+  }
+
+  async removeGames(gameIds: string[]): Promise<number> {
+    return deleteGamesAndRelations(this.db, gameIds);
   }
 }

@@ -14,6 +14,11 @@ import type {
   PsnTrophy,
 } from "./schemas/psn.schemas";
 
+type GameTrophiesResult =
+  | { status: "ok"; trophies: PsnTrophy[] }
+  | { status: "empty" }
+  | { status: "error" };
+
 export class PsnProvider {
   // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -82,13 +87,32 @@ export class PsnProvider {
     const auth = { accessToken };
 
     try {
-      // PSN max per call is 800 — fetch all in one shot
       const { trophyTitles } = await getUserTitles(auth, "me", {
         limit: 800,
         offset: 0,
       });
 
-      return trophyTitles.map((title) => {
+      const withTrophies = trophyTitles.filter((title) => {
+        const defined = title.definedTrophies;
+        const total =
+          (defined?.bronze ?? 0) +
+          (defined?.silver ?? 0) +
+          (defined?.gold ?? 0) +
+          (defined?.platinum ?? 0);
+        if (total === 0) {
+          console.debug(
+            `[PsnProvider] Skipping "${title.trophyTitleName}" — no trophies defined`,
+          );
+          return false;
+        }
+        return true;
+      });
+
+      console.debug(
+        `[PsnProvider] getOwnedGames: ${trophyTitles.length} titles → ${withTrophies.length} with trophies`,
+      );
+
+      return withTrophies.map((title) => {
         const npServiceName: "trophy" | "trophy2" =
           title.npServiceName === "trophy2" ? "trophy2" : "trophy";
         const platinumEarned = (title.earnedTrophies?.platinum ?? 0) >= 1;
@@ -111,11 +135,12 @@ export class PsnProvider {
   }
 
   // ── Trophies ──────────────────────────────────────────────────────────────
+
   async getGameTrophies(
     accessToken: string,
     npCommunicationId: string,
     npServiceName: "trophy" | "trophy2",
-  ): Promise<PsnTrophy[] | null> {
+  ): Promise<GameTrophiesResult> {
     const auth = { accessToken };
     const serviceOptions =
       npServiceName === "trophy" ? { npServiceName: "trophy" as const } : {};
@@ -132,13 +157,15 @@ export class PsnProvider {
         ),
       ]);
 
-      if (!metaResponse.trophies?.length) return null;
+      if (!metaResponse.trophies?.length) {
+        return { status: "empty" };
+      }
 
       const earnedMap = new Map(
         (earnedResponse.trophies ?? []).map((t) => [t.trophyId, t]),
       );
 
-      return metaResponse.trophies.map((meta) => {
+      const trophies: PsnTrophy[] = metaResponse.trophies.map((meta) => {
         const earned = earnedMap.get(meta.trophyId);
 
         const earnedDateTime =
@@ -166,12 +193,14 @@ export class PsnProvider {
           earnedDateTime,
         };
       });
+
+      return { status: "ok", trophies };
     } catch (error) {
       console.error(
         `[PsnProvider][getGameTrophies] Failed for ${npCommunicationId}:`,
         error,
       );
-      return null;
+      return { status: "error" };
     }
   }
 }

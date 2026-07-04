@@ -4,7 +4,25 @@ import {
   XboxTitleHistorySchema,
   XboxPlayerStatSchema,
   XboxAchievementsResponseSchema,
+  type XboxAchievementSchema,
 } from "./schemas/xbox.schemas";
+
+type XboxAchievementResult = {
+  apiName: string;
+  name: string;
+  description: string | null;
+  isSecret: boolean;
+  iconUrl: string | null;
+  gamerscore: number;
+  achieved: boolean;
+  unlockedAt: Date | null;
+  globalPercentage: number | null;
+};
+
+type PlayerAchievementsResult =
+  | { status: "ok"; achievements: XboxAchievementResult[] }
+  | { status: "empty" }
+  | { status: "error" };
 
 export class XboxProvider {
   private readonly apiKey: string;
@@ -50,6 +68,34 @@ export class XboxProvider {
     return settings.find((s) => s.id === key)?.value ?? null;
   }
 
+  private mapAchievement(
+    a: v.InferOutput<typeof XboxAchievementSchema>,
+  ): XboxAchievementResult {
+    const gamerscoreReward = a.rewards?.find((r) => r.type === "Gamerscore");
+    const gamerscore = gamerscoreReward
+      ? Number(gamerscoreReward.value ?? 0)
+      : 0;
+
+    const iconReward = a.rewards?.find((r) => r.mediaAsset?.type === "Icon");
+    const iconUrl = iconReward?.mediaAsset?.url ?? null;
+
+    const timeUnlocked = a.progression?.timeUnlocked;
+    const achieved = !!timeUnlocked && timeUnlocked !== "";
+    const unlockedAt = achieved ? new Date(timeUnlocked) : null;
+
+    return {
+      apiName: a.id,
+      name: a.name,
+      description: a.description ?? null,
+      isSecret: a.isSecret ?? false,
+      iconUrl,
+      gamerscore,
+      achieved,
+      unlockedAt,
+      globalPercentage: a.rarity?.currentPercentage ?? null,
+    };
+  }
+
   async getPlayerProfile(xuid: string) {
     const rawData = await this.fetch(`${this.baseUrl}/account/${xuid}`);
     const result = v.safeParse(XboxProfileSchema, rawData);
@@ -89,7 +135,22 @@ export class XboxProvider {
 
     const titles = result.output.content.titles ?? [];
 
-    return titles.map((title) => {
+    const withAchievements = titles.filter((title) => {
+      const total = title.achievement?.totalAchievements ?? 0;
+      if (total === 0) {
+        console.debug(
+          `[XboxProvider] Skipping "${title.name}" — no achievements defined`,
+        );
+        return false;
+      }
+      return true;
+    });
+
+    console.debug(
+      `[XboxProvider] getOwnedGames: ${titles.length} titles → ${withAchievements.length} with achievements`,
+    );
+
+    return withAchievements.map((title) => {
       const lastPlayedRaw = title.titleHistory?.lastTimePlayed;
       const lastPlayedAt =
         lastPlayedRaw && lastPlayedRaw !== "" ? new Date(lastPlayedRaw) : null;
@@ -151,9 +212,23 @@ export class XboxProvider {
     return playtimeMap;
   }
 
-  async getPlayerAchievements(xuid: string, titleId: string) {
-    const url = `${this.baseUrl}/achievements/player/${xuid}/${titleId}`;
-    const rawData = await this.fetch(url);
+  async getPlayerAchievements(
+    xuid: string,
+    titleId: string,
+  ): Promise<PlayerAchievementsResult> {
+    let rawData: unknown;
+    try {
+      rawData = await this.fetch(
+        `${this.baseUrl}/achievements/player/${xuid}/${titleId}`,
+      );
+    } catch (error) {
+      console.error(
+        `[XboxProvider][getPlayerAchievements] Fetch failed for title ${titleId}:`,
+        error,
+      );
+      return { status: "error" };
+    }
+
     const result = v.safeParse(XboxAchievementsResponseSchema, rawData);
 
     if (!result.success) {
@@ -161,36 +236,18 @@ export class XboxProvider {
         "[XboxProvider][getPlayerAchievements] Schema error:",
         v.flatten(result.issues),
       );
-      return null;
+      return { status: "error" };
     }
 
     const achievements = result.output.content.achievements ?? [];
-    if (!achievements.length) return null;
 
-    return achievements.map((a) => {
-      const gamerscoreReward = a.rewards?.find((r) => r.type === "Gamerscore");
-      const gamerscore = gamerscoreReward
-        ? Number(gamerscoreReward.value ?? 0)
-        : 0;
+    if (!achievements.length) {
+      return { status: "empty" };
+    }
 
-      const iconReward = a.rewards?.find((r) => r.mediaAsset?.type === "Icon");
-      const iconUrl = iconReward?.mediaAsset?.url ?? null;
-
-      const timeUnlocked = a.progression?.timeUnlocked;
-      const achieved = !!timeUnlocked && timeUnlocked !== "";
-      const unlockedAt = achieved ? new Date(timeUnlocked) : null;
-
-      return {
-        apiName: a.id,
-        name: a.name,
-        description: a.description ?? null,
-        isSecret: a.isSecret ?? false,
-        iconUrl,
-        gamerscore,
-        achieved,
-        unlockedAt,
-        globalPercentage: a.rarity?.currentPercentage ?? null,
-      };
-    });
+    return {
+      status: "ok",
+      achievements: achievements.map((a) => this.mapAchievement(a)),
+    };
   }
 }

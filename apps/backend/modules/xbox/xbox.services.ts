@@ -17,6 +17,7 @@ import type {
   Game,
 } from "@repo/shared";
 import { deriveGameStatus } from "./xbox.utils";
+import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
@@ -282,12 +283,27 @@ export class XboxService {
         `No Xbox mapping found for game ${gameId} / user ${localUserId}`,
       );
 
-    const playerAchievements = await this.provider.getPlayerAchievements(
+    const result = await this.provider.getPlayerAchievements(
       row.xuid,
       row.titleId,
     );
 
-    if (!playerAchievements) return [];
+    if (result.status === "error") {
+      // Transient fetch/schema failure — leave the game as-is. Deleting
+      // here would remove legitimate games on a rate-limit hit or a
+      // one-off API error, which is worse than the original bug.
+      return [];
+    }
+
+    if (result.status === "empty") {
+      console.debug(
+        `[XboxService] Game ${gameId} (title ${row.titleId}) has zero achievements — removing from library`,
+      );
+      await deleteGameAndRelations(this.db, gameId);
+      return [];
+    }
+
+    const playerAchievements = result.achievements;
 
     return await this.db.transaction(async (tx) => {
       const achievementValues = playerAchievements.map((a) => ({
@@ -399,7 +415,6 @@ export class XboxService {
   ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
     const { filter = "all", sort = "rarity", limit = 50, offset = 0 } = options;
 
-    // Lazy sync — if no achievement rows exist yet, fetch from Xbox now
     const [existing] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(xboxUserAchievements)
@@ -485,17 +500,15 @@ export class XboxService {
 
     const { total, unlocked } = totals[0] ?? { total: 0, unlocked: 0 };
 
-    // Map to the shared Achievement type — Xbox-specific fields (gamerscore, isSecret)
-    // map to the closest shared equivalents (hidden, iconGrayUrl left null)
     const data: Achievement[] = rows.map((row) => ({
       id: row.id,
       externalId: row.apiName,
       gameId: row.gameId,
       name: row.name,
       description: row.description ?? null,
-      hidden: row.isSecret ?? false, // isSecret → hidden (shared type)
+      hidden: row.isSecret ?? false,
       iconUrl: row.iconUrl ?? null,
-      iconGrayUrl: null, // Xbox doesn't have a locked/gray variant
+      iconGrayUrl: null,
       achieved: row.achieved ?? false,
       unlockedAt: row.unlockedAt?.toISOString() ?? null,
       globalPercentage: row.globalPercentage ?? null,

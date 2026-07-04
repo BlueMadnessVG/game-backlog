@@ -17,6 +17,7 @@ import type {
   Game,
 } from "@repo/shared";
 import { deriveGameStatus } from "./steam.utils";
+import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 
 export class SteamService {
   constructor(
@@ -245,6 +246,14 @@ export class SteamService {
       this.provider.getPlayerAchievements(row.steamId, row.steamAppId),
       this.provider.getGameSchema(row.steamAppId),
     ]);
+
+    if (schemaMap.size === 0) {
+      console.debug(
+        `[SteamService] Game ${gameId} (appId ${row.steamAppId}) has no achievement definitions — removing from library`,
+      );
+      await deleteGameAndRelations(this.db, gameId);
+      return [];
+    }
 
     if (!playerAchievements) return [];
 

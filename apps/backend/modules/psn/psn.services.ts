@@ -17,6 +17,7 @@ import type {
   Game,
 } from "@repo/shared";
 import { deriveGameStatus } from "./psn.utils";
+import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
@@ -217,7 +218,6 @@ export class PsnService {
           if (!existing) {
             map.set(title.npCommunicationId, title);
           } else {
-            // Keep whichever has the higher completion percentage
             if (title.completionPercentage > existing.completionPercentage) {
               map.set(title.npCommunicationId, title);
             }
@@ -326,13 +326,26 @@ export class PsnService {
 
     const accessToken = await this.getValidAccessToken(localUserId);
 
-    const trophyList = await this.provider.getGameTrophies(
+    const result = await this.provider.getGameTrophies(
       accessToken,
       row.npCommunicationId,
       (row.npServiceName ?? "trophy2") as "trophy" | "trophy2",
     );
 
-    if (!trophyList) return [];
+    if (result.status === "error") {
+      // Transient fetch/auth failure — leave the game as-is.
+      return [];
+    }
+
+    if (result.status === "empty") {
+      console.debug(
+        `[PsnService] Game ${gameId} (${row.npCommunicationId}) has zero trophies — removing from library`,
+      );
+      await deleteGameAndRelations(this.db, gameId);
+      return [];
+    }
+
+    const trophyList = result.trophies;
 
     return await this.db.transaction(async (tx) => {
       const trophyValues = trophyList.map((t) => ({

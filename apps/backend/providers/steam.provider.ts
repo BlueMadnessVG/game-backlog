@@ -86,7 +86,19 @@ export class SteamProvider {
 
       const games = result.output.response.games ?? [];
 
-      return games.map((game) => ({
+      // has_community_visible_stats is Steam's own signal for "this game has
+      // a stats/achievements page." It's not 100% authoritative — some games
+      // omit it even with real achievements — so this is a cheap first-pass
+      // filter, not the final word. The definitive check still has to happen
+      // per-game via getGameSchema(), since that's the only place Steam
+      // actually enumerates achievement definitions.
+      const withStats = games.filter((g) => g.has_community_visible_stats);
+
+      console.debug(
+        `[SteamProvider] getOwnedGames: ${games.length} games → ${withStats.length} with visible stats`,
+      );
+
+      return withStats.map((game) => ({
         steamAppId: String(game.appid),
         name: game.name,
         playtimeMinutes: game.playtime_forever,
@@ -94,7 +106,7 @@ export class SteamProvider {
           ? `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg`
           : null,
         coverUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/library_600x900.jpg`,
-        lastPlayedAt: game.rtime_last_played // <-- add this
+        lastPlayedAt: game.rtime_last_played
           ? new Date(game.rtime_last_played * 1000)
           : null,
       }));
@@ -189,6 +201,12 @@ export class SteamProvider {
     const schemaDefs = schemaResult.success
       ? (schemaResult.output.game.availableGameStats?.achievements ?? [])
       : [];
+
+    if (schemaDefs.length === 0) {
+      console.debug(
+        `[SteamProvider] getGameSchema(${appId}) — no achievement definitions found`,
+      );
+    }
 
     const globalData = await globalRes.json();
     const globalResult = v.safeParse(SteamGlobalAchievementSchema, globalData);
