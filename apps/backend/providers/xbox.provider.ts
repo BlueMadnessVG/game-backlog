@@ -62,7 +62,6 @@ export class XboxProvider {
       throw new Error("OpenXBL API returned unexpected profile format");
     }
 
-    // ✅ unwrap content envelope
     const user = result.output.content.profileUsers[0];
     if (!user) return null;
 

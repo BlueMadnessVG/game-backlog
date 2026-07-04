@@ -333,24 +333,32 @@ export class LibraryService {
     };
   }
 
-  // Replace only the enrichGameCovers method — everything else in the class stays the same
-
-  async enrichGameCovers(
-    userId: string,
-  ): Promise<{ enriched: number; skipped: number }> {
+  async enrichGameCovers(userId: string): Promise<{
+    enriched: number;
+    alreadyEnriched: number;
+    noMatch: number;
+  }> {
     const [xboxRows, psnRows] = await Promise.all([
       this.getXboxGames(userId),
       this.getPsnGames(userId),
     ]);
 
-    // Skip games already enriched in a previous run — prevents burning
-    // IGDB's rate limit re-matching the same games on every sync
-    const targetGames = [...xboxRows, ...psnRows]
+    const allRows = [...xboxRows, ...psnRows];
+
+    const alreadyEnrichedRows = allRows.filter((g) =>
+      g.coverUrl?.includes("images.igdb.com"),
+    );
+    const targetGames = allRows
       .filter((g) => !g.coverUrl?.includes("images.igdb.com"))
       .map((g) => ({ id: g.id, title: g.title }));
 
+    console.debug(
+      `[LibraryService] enrichGameCovers: xbox=${xboxRows.length} psn=${psnRows.length}, ` +
+        `already enriched=${alreadyEnrichedRows.length}, targeting=${targetGames.length}`,
+    );
+
     let enriched = 0;
-    let skipped = 0;
+    let noMatch = 0;
 
     for (let i = 0; i < targetGames.length; i += IGDB_BATCH_SIZE) {
       const batch = targetGames.slice(i, i + IGDB_BATCH_SIZE);
@@ -366,7 +374,7 @@ export class LibraryService {
               .where(eq(games.id, game.id));
             enriched++;
           } else {
-            skipped++;
+            noMatch++;
           }
         }),
       );
@@ -376,6 +384,6 @@ export class LibraryService {
       }
     }
 
-    return { enriched, skipped };
+    return { enriched, alreadyEnriched: alreadyEnrichedRows.length, noMatch };
   }
 }

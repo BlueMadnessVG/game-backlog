@@ -191,8 +191,6 @@ export class XboxService {
           deduplicatedTitles.map((g) => ({
             title: g.name,
             platform: "xbox" as const,
-            coverUrl: g.coverUrl,
-            bannerUrl: g.coverUrl,
             playTime: g.playtimeMinutes,
             lastPlayedAt: g.lastPlayedAt,
             completionPercentage: g.completionPercentage,
