@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, ilike, sql } from "drizzle-orm";
 import {
   games,
   userAchievements,
@@ -21,8 +21,18 @@ import {
   deleteGamesAndRelations,
 } from "../../lib/game-deletion.utils";
 
-const IGDB_BATCH_SIZE = 4; // IGDB free tier: 4 req/sec
+const IGDB_BATCH_SIZE = 4;
 const IGDB_DELAY_MS = 1100;
+
+// Filter for querying the user's library. All fields optional — combine
+// as many as needed. `title` does a case-insensitive partial match;
+// everything else is an exact match.
+export type GameLibraryFilter = {
+  id?: string;
+  title?: string;
+  platform?: "steam" | "xbox" | "playstation";
+  status?: "backlog" | "in-progress" | "completed" | "retired";
+};
 
 export class LibraryService {
   constructor(
@@ -32,20 +42,34 @@ export class LibraryService {
 
   // ── Combined games list ──────────────────────────────────────────────────
 
-  // Merges games across all three platforms into a single list.
-  // Mirrors the shape returned by SteamService/XboxService/PsnService.getUserGames,
-  // just fetched from all three and combined.
-  async getUserGames(userId: string): Promise<Game[]> {
+  // Merges games across all three platforms into a single list, optionally
+  // filtered by any combination of id/title/platform/status.
+  //
+  // If filter.platform is set, only that platform is queried at all —
+  // no point joining steamAccounts/xboxAccounts/psnAccounts when the
+  // caller already told us which one they want.
+  async getUserGames(
+    userId: string,
+    filter: GameLibraryFilter = {},
+  ): Promise<Game[]> {
+    const platformsToQuery = filter.platform
+      ? [filter.platform]
+      : (["steam", "xbox", "playstation"] as const);
+
     const [steamRows, xboxRows, psnRows] = await Promise.all([
-      this.getSteamGames(userId),
-      this.getXboxGames(userId),
-      this.getPsnGames(userId),
+      platformsToQuery.includes("steam")
+        ? this.getSteamGames(userId, filter)
+        : Promise.resolve([]),
+      platformsToQuery.includes("xbox")
+        ? this.getXboxGames(userId, filter)
+        : Promise.resolve([]),
+      platformsToQuery.includes("playstation")
+        ? this.getPsnGames(userId, filter)
+        : Promise.resolve([]),
     ]);
 
     const combined = [...steamRows, ...xboxRows, ...psnRows];
 
-    // Sort by most recently updated first — gives a consistent, deterministic
-    // order across platforms rather than grouping by platform
     combined.sort(
       (a, b) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
@@ -54,7 +78,21 @@ export class LibraryService {
     return combined;
   }
 
-  private async getSteamGames(userId: string): Promise<Game[]> {
+  // Shared conditions applicable to any platform query — id/title/status
+  // all live on the `games` table itself, so they apply identically
+  // regardless of which platform join is in play.
+  private buildFilterConditions(filter: GameLibraryFilter) {
+    const conditions = [];
+    if (filter.id) conditions.push(eq(games.id, filter.id));
+    if (filter.title) conditions.push(ilike(games.title, `%${filter.title}%`));
+    if (filter.status) conditions.push(eq(games.status, filter.status));
+    return conditions;
+  }
+
+  private async getSteamGames(
+    userId: string,
+    filter: GameLibraryFilter = {},
+  ): Promise<Game[]> {
     const rows = await this.db
       .select({
         id: games.id,
@@ -74,12 +112,20 @@ export class LibraryService {
       .from(games)
       .innerJoin(steamGames, eq(games.id, steamGames.gameId))
       .innerJoin(steamAccounts, eq(steamAccounts.userId, userId))
-      .where(eq(steamAccounts.userId, userId));
+      .where(
+        and(
+          eq(steamAccounts.userId, userId),
+          ...this.buildFilterConditions(filter),
+        ),
+      );
 
     return rows.map((row) => this.mapRowToGame(row, "steam"));
   }
 
-  private async getXboxGames(userId: string): Promise<Game[]> {
+  private async getXboxGames(
+    userId: string,
+    filter: GameLibraryFilter = {},
+  ): Promise<Game[]> {
     const rows = await this.db
       .select({
         id: games.id,
@@ -99,12 +145,20 @@ export class LibraryService {
       .from(games)
       .innerJoin(xboxGames, eq(games.id, xboxGames.gameId))
       .innerJoin(xboxAccounts, eq(xboxAccounts.userId, userId))
-      .where(eq(xboxAccounts.userId, userId));
+      .where(
+        and(
+          eq(xboxAccounts.userId, userId),
+          ...this.buildFilterConditions(filter),
+        ),
+      );
 
     return rows.map((row) => this.mapRowToGame(row, "xbox"));
   }
 
-  private async getPsnGames(userId: string): Promise<Game[]> {
+  private async getPsnGames(
+    userId: string,
+    filter: GameLibraryFilter = {},
+  ): Promise<Game[]> {
     const rows = await this.db
       .select({
         id: games.id,
@@ -124,20 +178,20 @@ export class LibraryService {
       .from(games)
       .innerJoin(psnGames, eq(games.id, psnGames.gameId))
       .innerJoin(psnAccounts, eq(psnAccounts.userId, userId))
-      .where(eq(psnAccounts.userId, userId));
+      .where(
+        and(
+          eq(psnAccounts.userId, userId),
+          ...this.buildFilterConditions(filter),
+        ),
+      );
 
     return rows.map((row) => this.mapRowToGame(row, "playstation"));
   }
 
-  // Normalizes an empty string to null. Some platforms (Xbox especially)
-  // return "" instead of null for missing images, which fails URL validation
-  // downstream in the shared GameSchema (v.nullable expects null, not "").
   private normalizeUrl(url: string | null): string | null {
     return url && url.trim() !== "" ? url : null;
   }
 
-  // Shared row → Game mapper, same normalization pattern used across
-  // SteamService/XboxService/PsnService
   private mapRowToGame(
     row: {
       id: string;
@@ -174,6 +228,8 @@ export class LibraryService {
   }
 
   // ── Stats ─────────────────────────────────────────────────────────────────
+  // (unchanged — omitted here for brevity, keep your existing getStats,
+  // getSteamStats, getXboxStats, getPlaystationStats as-is)
 
   async getStats(userId: string): Promise<Stats> {
     const [steam, xbox, playstation] = await Promise.all([
