@@ -1,0 +1,131 @@
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+  transition: background 0.15s;
+}
+
+.rowUnlocked {
+  background: rgba(99, 102, 241, 0.04);
+}
+.rowLocked {
+  opacity: 0.5;
+}
+.row:last-child {
+  border-bottom: none;
+}
+
+.icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.iconLocked {
+  filter: grayscale(100%) brightness(0.4);
+}
+
+.iconPlaceholder {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #6366f1;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  font-family: monospace;
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Achievement name — brightest readable text */
+.name {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #e0e7ff;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nameLocked {
+  color: #4c4f7a;
+}
+
+/* Description — clearly readable secondary */
+.description {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  color: #a5b4fc;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Unlock date — purple accent, distinct from description */
+.unlockedDate {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: #c084fc;
+}
+
+.rarityColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.rarityBadge {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 2px 4px;
+  border: 1px solid;
+  letter-spacing: 0.04em;
+}
+
+/* Rarity tiers — distinct colors, all readable on dark bg */
+.rarityLEGENDARY {
+  color: #fbbf24;
+  border-color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+}
+.rarityRARE {
+  color: #c084fc;
+  border-color: #c084fc;
+  background: rgba(192, 132, 252, 0.1);
+}
+.rarityUNCOMMON {
+  color: #818cf8;
+  border-color: #818cf8;
+  background: rgba(129, 140, 248, 0.1);
+}
+.rarityCOMMON {
+  color: #4c4f7a;
+  border-color: #4c4f7a;
+}
+.rarityUNKNOWN {
+  color: #4c4f7a;
+  border-color: #3a3a5c;
+}
+
+.rarityPct {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: #818cf8;
+}
