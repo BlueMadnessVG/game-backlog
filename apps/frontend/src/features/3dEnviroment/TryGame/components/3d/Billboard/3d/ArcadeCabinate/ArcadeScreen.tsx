@@ -9,7 +9,7 @@ import { ScreenOpen } from './components/states/ScreenOpen';
 import styles from './css/ArcadeScreen.module.css';
 import { useArcadeScreenControls } from './hooks/useArcadeScreenControls';
 
-import type { ArcadeControls } from '@/features/GameDetail/components/TryGame/types/input';
+import type { ArcadeControls } from '@/features/3dEnviroment/TryGame/types/input';
 import type { Game } from '@repo/shared';
 
 // ── Types ─────────────────────────────────────────────────────────────────────

@@ -15,9 +15,19 @@ const LIBRARY_STATS_ENDPOINT = '/library/stats';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type GamePlatform = 'steam' | 'xbox' | 'playstation';
+type GameStatus = 'backlog' | 'in-progress' | 'completed' | 'retired';
+
 interface GamesParams {
   limit?: number;
   offset?: number;
+  // Filter fields — combine any of these. Mirrors GameLibraryFilter on the
+  // backend: id/status are exact match, title is a case-insensitive
+  // partial match, platform (if set) restricts which platform is queried.
+  id?: string;
+  title?: string;
+  platform?: GamePlatform;
+  status?: GameStatus;
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -70,13 +80,30 @@ function parseGamesResponse(rawData: unknown): GamesResponse {
   return result.output;
 }
 
+// Builds the query params object, omitting any filter field the caller
+// didn't provide — avoids sending `id=undefined`/`title=undefined` etc.
+// as literal query string values.
+function buildGamesQueryParams(params?: GamesParams): Record<string, string | number> {
+  const query: Record<string, string | number> = {
+    limit: params?.limit ?? 50,
+    offset: params?.offset ?? 0,
+  };
+
+  if (params?.id) query.id = params.id;
+  if (params?.title) query.title = params.title;
+  if (params?.platform) query.platform = params.platform;
+  if (params?.status) query.status = params.status;
+
+  return query;
+}
+
 // ── Service ───────────────────────────────────────────────────────────────────
 
 export const libraryService = {
   async getGames(params?: GamesParams, signal?: AbortSignal): Promise<GamesResponse> {
     const { data } = await apiClient.get<unknown>(LIBRARY_GAMES_ENDPOINT, {
       signal,
-      params: { limit: params?.limit ?? 50, offset: params?.offset ?? 0 },
+      params: buildGamesQueryParams(params),
     });
     return parseGamesResponse(data);
   },
