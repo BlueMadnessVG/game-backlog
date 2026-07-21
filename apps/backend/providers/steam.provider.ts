@@ -1,12 +1,17 @@
 import * as v from "valibot";
 import {
-  SteamGameSchemaSchema,
+  SteamAchievementDefinitionsSchema,
   SteamGlobalAchievementSchema,
-  SteamOwnedGamesResponse,
+  SteamOwnedGamesResponseSchema,
   SteamPlayerAchievementsSchema,
   SteamPlayerSchema,
   SteamRecentlyPlayedSchema,
 } from "./schemas/steam.schemas";
+import {
+  ProviderAuthError,
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+} from "../lib/provider-error.utils";
 
 export class SteamProvider {
   private readonly apiKey: string;
@@ -17,130 +22,165 @@ export class SteamProvider {
     this.apiKey = apiKey;
   }
 
-  async getPlayerSummary(steamId: string) {
-    const url = new URL(`${this.baseUrl}/ISteamUser/GetPlayerSummaries/v0002/`);
-    url.searchParams.append("key", this.apiKey);
-    url.searchParams.append("steamids", steamId);
+  // ── Shared request helpers ─────────────────────────────────────────────
 
+  // Every authenticated Steam endpoint needs the same `key` param —
+  // centralizing it here means a new method can't forget to add it.
+  private buildUrl(path: string, params: Record<string, string>): URL {
+    const url = new URL(`${this.baseUrl}${path}`);
+    url.searchParams.set("key", this.apiKey);
+    for (const [name, value] of Object.entries(params)) {
+      url.searchParams.set(name, value);
+    }
+    return url;
+  }
+
+  // Centralizes status handling so every method fails the same way for the
+  // same conditions, instead of each one hand-rolling its own checks.
+  // `toleratedStatuses` lets a caller mark specific codes as "expected,
+  // return null" rather than a real failure — e.g. Steam's 400/500 for
+  // private profiles or games with no stats page.
+  private async fetchJson(
+    url: URL,
+    options: { toleratedStatuses?: number[] } = {},
+  ): Promise<unknown> {
+    const response = await fetch(url.toString());
+
+    if (response.status === 401 || response.status === 403) {
+      throw new ProviderAuthError("SteamProvider");
+    }
+    if (response.status === 429) {
+      throw new ProviderRateLimitError("SteamProvider");
+    }
+    if (options.toleratedStatuses?.includes(response.status)) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new ProviderUnavailableError(
+        "SteamProvider",
+        `HTTP ${response.status}: ${response.statusText}`,
+      );
+    }
+
+    return response.json();
+  }
+
+  // For endpoints where a failure shouldn't be fatal to the caller (global
+  // achievement percentages are a nice-to-have, not required data) — logs
+  // and returns null instead of throwing, no matter what went wrong.
+  private async safeFetchJson(url: URL, context: string): Promise<unknown> {
     try {
-      const response = await fetch(url.toString());
-
-      if (!response.ok) {
-        throw new Error(`Steam API error: ${response.statusText}`);
-      }
-
-      const rawData = await response.json();
-      const result = v.safeParse(SteamPlayerSchema, rawData);
-
-      if (!result.success) {
-        console.error(
-          "❌ Valibot Schema Error:",
-          JSON.stringify(v.flatten(result.issues).nested, null, 2),
-        );
-        throw new Error("Steam API returned an unexpected data format");
-      }
-
-      const player = result.output.response.players[0];
-
-      if (!player) {
-        return null;
-      }
-
-      return {
-        steamId: player.steamid,
-        displayName: player.personaname,
-        avatar: player.avatarfull,
-        profileUrl: player.profileurl,
-      };
+      return await this.fetchJson(url);
     } catch (error) {
-      console.error(
-        `[SteamProvider][getPlayerSummary] Failed for ID: ${steamId}`,
+      console.warn(
+        `[SteamProvider] ${context}: fetch failed, continuing with empty data`,
         error,
       );
-      throw error;
+      return null;
     }
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────
+
+  async getPlayerSummary(steamId: string) {
+    const url = this.buildUrl("/ISteamUser/GetPlayerSummaries/v0002/", {
+      steamids: steamId,
+    });
+
+    const rawData = await this.fetchJson(url);
+    const result = v.safeParse(SteamPlayerSchema, rawData);
+
+    if (!result.success) {
+      console.error(
+        "[SteamProvider][getPlayerSummary] Schema error:",
+        JSON.stringify(v.flatten(result.issues).nested, null, 2),
+      );
+      throw new ProviderUnavailableError(
+        "SteamProvider",
+        "Player summary response did not match expected schema",
+      );
+    }
+
+    const player = result.output.response.players[0];
+    if (!player) return null;
+
+    return {
+      steamId: player.steamid,
+      displayName: player.personaname,
+      avatar: player.avatarfull,
+      profileUrl: player.profileurl,
+    };
   }
 
   async getOwnedGames(steamId: string) {
-    const url = new URL(`${this.baseUrl}/IPlayerService/GetOwnedGames/v0001/`);
-    url.searchParams.append("key", this.apiKey);
-    url.searchParams.append("steamid", steamId);
-    url.searchParams.append("include_appinfo", "true");
-    url.searchParams.append("include_played_free_games", "true");
-    url.searchParams.append("format", "json");
+    const url = this.buildUrl("/IPlayerService/GetOwnedGames/v0001/", {
+      steamid: steamId,
+      include_appinfo: "true",
+      include_played_free_games: "true",
+      format: "json",
+    });
 
-    try {
-      const response = await fetch(url.toString());
+    const rawData = await this.fetchJson(url);
+    const result = v.safeParse(SteamOwnedGamesResponseSchema, rawData);
 
-      if (!response.ok) {
-        throw new Error(`Steam API error: ${response.statusText}`);
-      }
-
-      const rawData = await response.json();
-      const result = v.safeParse(SteamOwnedGamesResponse, rawData);
-
-      if (!result.success) {
-        console.error(v.flatten(result.issues));
-        throw new Error("Steam API Data Validation Failed");
-      }
-
-      const games = result.output.response.games ?? [];
-
-      // has_community_visible_stats is Steam's own signal for "this game has
-      // a stats/achievements page." It's not 100% authoritative — some games
-      // omit it even with real achievements — so this is a cheap first-pass
-      // filter, not the final word. The definitive check still has to happen
-      // per-game via getGameSchema(), since that's the only place Steam
-      // actually enumerates achievement definitions.
-      const withStats = games.filter((g) => g.has_community_visible_stats);
-
-      console.debug(
-        `[SteamProvider] getOwnedGames: ${games.length} games → ${withStats.length} with visible stats`,
-      );
-
-      return withStats.map((game) => ({
-        steamAppId: String(game.appid),
-        name: game.name,
-        playtimeMinutes: game.playtime_forever,
-        iconUrl: game.img_icon_url
-          ? `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg`
-          : null,
-        coverUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/library_600x900.jpg`,
-        lastPlayedAt: game.rtime_last_played
-          ? new Date(game.rtime_last_played * 1000)
-          : null,
-      }));
-    } catch (error) {
+    if (!result.success) {
       console.error(
-        `[SteamProvider] Failed to fetch games for ${steamId}:`,
-        error,
+        "[SteamProvider][getOwnedGames] Schema error:",
+        v.flatten(result.issues),
       );
-      throw error;
+      throw new ProviderUnavailableError(
+        "SteamProvider",
+        "Owned games response did not match expected schema",
+      );
     }
+
+    const games = result.output.response.games ?? [];
+
+    // has_community_visible_stats is Steam's own signal for "this game has
+    // a stats/achievements page." It's not 100% authoritative — some games
+    // omit it even with real achievements — so this is a cheap first-pass
+    // filter, not the final word. The definitive check still has to happen
+    // per-game via getGameSchema(), since that's the only place Steam
+    // actually enumerates achievement definitions.
+    const withStats = games.filter((g) => g.has_community_visible_stats);
+
+    console.debug(
+      `[SteamProvider] getOwnedGames: ${games.length} games → ${withStats.length} with visible stats`,
+    );
+
+    return withStats.map((game) => ({
+      steamAppId: String(game.appid),
+      name: game.name,
+      playtimeMinutes: game.playtime_forever,
+      iconUrl: game.img_icon_url
+        ? `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg`
+        : null,
+      coverUrl: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/library_600x900.jpg`,
+      lastPlayedAt: game.rtime_last_played
+        ? new Date(game.rtime_last_played * 1000)
+        : null,
+    }));
   }
 
-  async getRecentlyPlayedGames(steamId: string) {
-    const url = new URL(
-      `${this.baseUrl}/IPlayerService/GetRecentlyPlayedGames/v0001/`,
-    );
-    url.searchParams.append("key", this.apiKey);
-    url.searchParams.append("steamid", steamId);
-    url.searchParams.append("count", "0");
+  async getRecentlyPlayedGames(steamId: string): Promise<Map<string, Date>> {
+    const url = this.buildUrl("/IPlayerService/GetRecentlyPlayedGames/v0001/", {
+      steamid: steamId,
+      count: "0",
+    });
 
-    const response = await fetch(url.toString());
-    if (!response.ok)
-      throw new Error(`Steam API error: ${response.statusText}`);
+    const rawData = await this.safeFetchJson(url, "getRecentlyPlayedGames");
+    if (rawData === null) return new Map();
 
-    const rawData = await response.json();
     const result = v.safeParse(SteamRecentlyPlayedSchema, rawData);
 
     if (!result.success) {
       console.error(
-        "[SteamProvider] RecentlyPlayed schema error",
+        "[SteamProvider][getRecentlyPlayedGames] Schema error:",
         v.flatten(result.issues),
       );
-      return new Map<string, Date>();
+      return new Map();
     }
+
     return new Map(
       result.output.response.games.map((g) => [
         String(g.appid),
@@ -150,27 +190,26 @@ export class SteamProvider {
   }
 
   async getPlayerAchievements(steamId: string, appId: string) {
-    const url = new URL(
-      `${this.baseUrl}/ISteamUserStats/GetPlayerAchievements/v0001/`,
-    );
-    url.searchParams.append("key", this.apiKey);
-    url.searchParams.append("steamid", steamId);
-    url.searchParams.append("appid", appId);
-    url.searchParams.append("l", "english");
+    const url = this.buildUrl("/ISteamUserStats/GetPlayerAchievements/v0001/", {
+      steamid: steamId,
+      appid: appId,
+      l: "english",
+    });
 
-    const response = await fetch(url.toString());
+    // Steam returns 400 for games with no stats/achievements schema, and
+    // 500 for private profiles or profiles that have never launched the
+    // game. Both are routine "nothing to report" cases, not failures.
+    const rawData = await this.fetchJson(url, {
+      toleratedStatuses: [400, 500],
+    });
+    if (rawData === null) return null;
 
-    if (response.status === 400 || response.status === 500) return null;
-    if (!response.ok)
-      throw new Error(`Steam API error: ${response.statusText}`);
-
-    const rawData = await response.json();
     const result = v.safeParse(SteamPlayerAchievementsSchema, rawData);
 
     if (!result.success || !result.output.playerstats.achievements) {
       if (!result.success) {
         console.error(
-          "[SteamProvider] PlayerAchievements schema error",
+          "[SteamProvider][getPlayerAchievements] Schema error:",
           v.flatten(result.issues),
         );
       }
@@ -187,17 +226,28 @@ export class SteamProvider {
   }
 
   async getGameSchema(appId: string) {
-    const [schemaRes, globalRes] = await Promise.all([
-      fetch(
-        `${this.baseUrl}/ISteamUserStats/GetSchemaForGame/v2/?key=${this.apiKey}&appid=${appId}&l=english`,
+    const [schemaData, globalData] = await Promise.all([
+      this.safeFetchJson(
+        this.buildUrl("/ISteamUserStats/GetSchemaForGame/v2/", {
+          appid: appId,
+          l: "english",
+        }),
+        "getGameSchema:schema",
       ),
-      fetch(
-        `${this.baseUrl}/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/?gameid=${appId}`,
+      // No `key` param — this endpoint is unauthenticated, so it bypasses
+      // buildUrl rather than forcing an unused param onto it.
+      this.safeFetchJson(
+        new URL(
+          `${this.baseUrl}/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/?gameid=${appId}`,
+        ),
+        "getGameSchema:globalPercentages",
       ),
     ]);
 
-    const schemaData = await schemaRes.json();
-    const schemaResult = v.safeParse(SteamGameSchemaSchema, schemaData);
+    const schemaResult = v.safeParse(
+      SteamAchievementDefinitionsSchema,
+      schemaData,
+    );
     const schemaDefs = schemaResult.success
       ? (schemaResult.output.game.availableGameStats?.achievements ?? [])
       : [];
@@ -208,7 +258,6 @@ export class SteamProvider {
       );
     }
 
-    const globalData = await globalRes.json();
     const globalResult = v.safeParse(SteamGlobalAchievementSchema, globalData);
     const globalMap = new Map(
       globalResult.success

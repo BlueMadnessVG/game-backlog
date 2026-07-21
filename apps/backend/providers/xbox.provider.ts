@@ -6,6 +6,11 @@ import {
   XboxAchievementsResponseSchema,
   type XboxAchievementSchema,
 } from "./schemas/xbox.schemas";
+import {
+  ProviderAuthError,
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+} from "../lib/provider-error.utils";
 
 type XboxAchievementResult = {
   apiName: string;
@@ -24,6 +29,10 @@ type PlayerAchievementsResult =
   | { status: "empty" }
   | { status: "error" };
 
+type XboxAchievementRewards = v.InferOutput<
+  typeof XboxAchievementSchema
+>["rewards"];
+
 export class XboxProvider {
   private readonly apiKey: string;
   private readonly baseUrl = "https://xbl.io/api/v2";
@@ -41,24 +50,113 @@ export class XboxProvider {
     };
   }
 
-  private async fetch<T>(url: string): Promise<T> {
-    const response = await fetch(url, { headers: this.headers() });
+  // ── Shared request helpers ─────────────────────────────────────────────
+
+  // Centralizes status handling for both GET (`get`) and POST (`post`) so
+  // every method fails the same way for the same conditions.
+  private async request<T>(url: string, init: RequestInit = {}): Promise<T> {
+    const response = await fetch(url, {
+      ...init,
+      headers: { ...this.headers(), ...(init.headers ?? {}) },
+    });
 
     if (response.status === 401) {
-      throw new Error("[XboxProvider] Invalid or expired OpenXBL API key");
+      throw new ProviderAuthError(
+        "XboxProvider",
+        "Invalid or expired OpenXBL API key",
+      );
     }
     if (response.status === 429) {
-      throw new Error(
-        "[XboxProvider] OpenXBL rate limit exceeded (150 req/hr on free tier)",
+      throw new ProviderRateLimitError(
+        "XboxProvider",
+        "OpenXBL rate limit exceeded (150 req/hr on free tier)",
       );
     }
     if (!response.ok) {
-      throw new Error(
-        `[XboxProvider] HTTP ${response.status}: ${response.statusText}`,
+      throw new ProviderUnavailableError(
+        "XboxProvider",
+        `HTTP ${response.status}: ${response.statusText}`,
       );
     }
 
     return response.json() as Promise<T>;
+  }
+
+  private get<T>(url: string): Promise<T> {
+    return this.request<T>(url);
+  }
+
+  private post<T>(url: string, body: unknown): Promise<T> {
+    return this.request<T>(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  // For endpoints where a failure shouldn't be fatal to the caller — logs
+  // and returns null instead of throwing, whatever went wrong.
+  private async safeRequest<T>(
+    url: string,
+    init: RequestInit,
+    context: string,
+  ): Promise<T | null> {
+    try {
+      return await this.request<T>(url, init);
+    } catch (error) {
+      console.warn(
+        `[XboxProvider] ${context}: request failed, continuing without this data`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  // OpenXBL wraps every response in { content, code }. A non-ok HTTP status
+  // already throws inside request(); this catches the other failure mode —
+  // HTTP 200 with a failure signaled inside the envelope itself.
+  private isEnvelopeOk(code: number | undefined, context: string): boolean {
+    if (code !== undefined && code >= 400) {
+      console.error(
+        `[XboxProvider][${context}] OpenXBL envelope reported code=${code}`,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  // Guards against a malformed numeric string silently becoming NaN and
+  // flowing into the DB.
+  private toSafeNumber(
+    value: string | null | undefined,
+    context: string,
+  ): number {
+    if (value === null || value === undefined) return 0;
+    const parsed = Number(value);
+    if (Number.isNaN(parsed)) {
+      console.warn(
+        `[XboxProvider] ${context}: could not parse "${value}" as a number, defaulting to 0`,
+      );
+      return 0;
+    }
+    return parsed;
+  }
+
+  // Guards against an unparseable date string becoming an Invalid Date that
+  // only fails much later, wherever something calls .toISOString() on it.
+  private parseDateSafe(
+    value: string | null | undefined,
+    context: string,
+  ): Date | null {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      console.warn(
+        `[XboxProvider] ${context}: could not parse "${value}" as a date`,
+      );
+      return null;
+    }
+    return parsed;
   }
 
   private getSetting(
@@ -68,36 +166,50 @@ export class XboxProvider {
     return settings.find((s) => s.id === key)?.value ?? null;
   }
 
+  private extractGamerscore(rewards: XboxAchievementRewards): number {
+    const reward = rewards?.find((r) => r.type === "Gamerscore");
+    return this.toSafeNumber(reward?.value, "achievement gamerscore reward");
+  }
+
+  private extractIconUrl(rewards: XboxAchievementRewards): string | null {
+    const reward = rewards?.find((r) => r.mediaAsset?.type === "Icon");
+    return reward?.mediaAsset?.url ?? null;
+  }
+
   private mapAchievement(
     a: v.InferOutput<typeof XboxAchievementSchema>,
+    titleId: string,
   ): XboxAchievementResult {
-    const gamerscoreReward = a.rewards?.find((r) => r.type === "Gamerscore");
-    const gamerscore = gamerscoreReward
-      ? Number(gamerscoreReward.value ?? 0)
-      : 0;
-
-    const iconReward = a.rewards?.find((r) => r.mediaAsset?.type === "Icon");
-    const iconUrl = iconReward?.mediaAsset?.url ?? null;
-
     const timeUnlocked = a.progression?.timeUnlocked;
-    const achieved = !!timeUnlocked && timeUnlocked !== "";
-    const unlockedAt = achieved ? new Date(timeUnlocked) : null;
+    const hasUnlockTime = !!timeUnlocked && timeUnlocked !== "";
+    const unlockedAt = hasUnlockTime
+      ? this.parseDateSafe(
+          timeUnlocked,
+          `achievement ${a.id} (title ${titleId}) unlock time`,
+        )
+      : null;
+    // Only count it as achieved if we actually got a usable unlock time —
+    // an unparseable timestamp shouldn't produce achieved=true with a null
+    // date, which would be an inconsistent state for a caller to handle.
+    const achieved = hasUnlockTime && unlockedAt !== null;
 
     return {
       apiName: a.id,
       name: a.name,
       description: a.description ?? null,
       isSecret: a.isSecret ?? false,
-      iconUrl,
-      gamerscore,
+      iconUrl: this.extractIconUrl(a.rewards),
+      gamerscore: this.extractGamerscore(a.rewards),
       achieved,
       unlockedAt,
       globalPercentage: a.rarity?.currentPercentage ?? null,
     };
   }
 
+  // ── Public API ────────────────────────────────────────────────────────
+
   async getPlayerProfile(xuid: string) {
-    const rawData = await this.fetch(`${this.baseUrl}/account/${xuid}`);
+    const rawData = await this.get(`${this.baseUrl}/account/${xuid}`);
     const result = v.safeParse(XboxProfileSchema, rawData);
 
     if (!result.success) {
@@ -105,7 +217,17 @@ export class XboxProvider {
         "[XboxProvider][getPlayerProfile] Schema error:",
         JSON.stringify(v.flatten(result.issues).nested, null, 2),
       );
-      throw new Error("OpenXBL API returned unexpected profile format");
+      throw new ProviderUnavailableError(
+        "XboxProvider",
+        "Profile response did not match expected schema",
+      );
+    }
+
+    if (!this.isEnvelopeOk(result.output.code, "getPlayerProfile")) {
+      throw new ProviderUnavailableError(
+        "XboxProvider",
+        "OpenXBL reported a failure fetching the profile",
+      );
     }
 
     const user = result.output.content.profileUsers[0];
@@ -115,12 +237,15 @@ export class XboxProvider {
       xuid: user.id,
       gamertag: this.getSetting(user.settings, "Gamertag") ?? "Unknown",
       avatarUrl: this.getSetting(user.settings, "GameDisplayPicRaw"),
-      gamerscore: Number(this.getSetting(user.settings, "Gamerscore") ?? 0),
+      gamerscore: this.toSafeNumber(
+        this.getSetting(user.settings, "Gamerscore"),
+        "profile gamerscore",
+      ),
     };
   }
 
   async getOwnedGames(xuid: string) {
-    const rawData = await this.fetch(
+    const rawData = await this.get(
       `${this.baseUrl}/player/titleHistory/${xuid}`,
     );
     const result = v.safeParse(XboxTitleHistorySchema, rawData);
@@ -130,7 +255,17 @@ export class XboxProvider {
         "[XboxProvider][getOwnedGames] Schema error:",
         v.flatten(result.issues),
       );
-      throw new Error("OpenXBL API returned unexpected title history format");
+      throw new ProviderUnavailableError(
+        "XboxProvider",
+        "Title history response did not match expected schema",
+      );
+    }
+
+    if (!this.isEnvelopeOk(result.output.code, "getOwnedGames")) {
+      throw new ProviderUnavailableError(
+        "XboxProvider",
+        "OpenXBL reported a failure fetching title history",
+      );
     }
 
     const titles = result.output.content.titles ?? [];
@@ -150,20 +285,17 @@ export class XboxProvider {
       `[XboxProvider] getOwnedGames: ${titles.length} titles → ${withAchievements.length} with achievements`,
     );
 
-    return withAchievements.map((title) => {
-      const lastPlayedRaw = title.titleHistory?.lastTimePlayed;
-      const lastPlayedAt =
-        lastPlayedRaw && lastPlayedRaw !== "" ? new Date(lastPlayedRaw) : null;
-
-      return {
-        titleId: title.titleId,
-        name: title.name,
-        coverUrl: title.displayImage ?? null,
-        playtimeMinutes: 0,
-        lastPlayedAt,
-        completionPercentage: title.achievement?.progressPercentage ?? 0,
-      };
-    });
+    return withAchievements.map((title) => ({
+      titleId: title.titleId,
+      name: title.name,
+      coverUrl: title.displayImage ?? null,
+      playtimeMinutes: 0,
+      lastPlayedAt: this.parseDateSafe(
+        title.titleHistory?.lastTimePlayed,
+        `title ${title.titleId} lastTimePlayed`,
+      ),
+      completionPercentage: title.achievement?.progressPercentage ?? 0,
+    }));
   }
 
   async getPlaytimeMinutes(
@@ -172,23 +304,24 @@ export class XboxProvider {
   ): Promise<Map<string, number>> {
     if (!titleIds.length) return new Map();
 
-    const response = await fetch(`${this.baseUrl}/player/stats`, {
-      method: "POST",
-      headers: { ...this.headers(), "Content-Type": "application/json" },
-      body: JSON.stringify({
-        xuids: [xuid],
-        stats: titleIds.map((titleId) => ({ name: "MinutesPlayed", titleId })),
-      }),
-    });
+    const rawData = await this.safeRequest<unknown>(
+      `${this.baseUrl}/player/stats`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          xuids: [xuid],
+          stats: titleIds.map((titleId) => ({
+            name: "MinutesPlayed",
+            titleId,
+          })),
+        }),
+      },
+      "getPlaytimeMinutes",
+    );
 
-    if (!response.ok) {
-      console.warn(
-        `[XboxProvider][getPlaytimeMinutes] Failed: ${response.statusText}`,
-      );
-      return new Map();
-    }
+    if (rawData === null) return new Map();
 
-    const rawData = await response.json();
     const result = v.safeParse(XboxPlayerStatSchema, rawData);
 
     if (!result.success) {
@@ -199,13 +332,21 @@ export class XboxProvider {
       return new Map();
     }
 
-    const playtimeMap = new Map<string, number>();
+    if (!this.isEnvelopeOk(result.output.code, "getPlaytimeMinutes")) {
+      return new Map();
+    }
 
+    const playtimeMap = new Map<string, number>();
     const stats = result.output.content.statlistscollection?.[0]?.stats ?? [];
 
     for (const stat of stats) {
       if (stat.name === "MinutesPlayed" && stat.titleid && stat.value) {
-        playtimeMap.set(stat.titleid, Math.round(Number(stat.value)));
+        playtimeMap.set(
+          stat.titleid,
+          Math.round(
+            this.toSafeNumber(stat.value, `playtime for title ${stat.titleid}`),
+          ),
+        );
       }
     }
 
@@ -218,7 +359,7 @@ export class XboxProvider {
   ): Promise<PlayerAchievementsResult> {
     let rawData: unknown;
     try {
-      rawData = await this.fetch(
+      rawData = await this.get(
         `${this.baseUrl}/achievements/player/${xuid}/${titleId}`,
       );
     } catch (error) {
@@ -239,15 +380,31 @@ export class XboxProvider {
       return { status: "error" };
     }
 
+    if (!this.isEnvelopeOk(result.output.code, "getPlayerAchievements")) {
+      return { status: "error" };
+    }
+
     const achievements = result.output.content.achievements ?? [];
+    const totalRecords = result.output.content.pagingInfo?.totalRecords ?? 0;
 
     if (!achievements.length) {
+      // OpenXBL can return an empty achievements array alongside a nonzero
+      // totalRecords — a partial/truncated response, not genuine emptiness.
+      // Only trust "empty" when totalRecords agrees; otherwise this looks
+      // like a transient failure, and the caller (which deletes the game on
+      // a genuine "empty" status) shouldn't act on it as if it were one.
+      if (totalRecords > 0) {
+        console.warn(
+          `[XboxProvider][getPlayerAchievements] title ${titleId}: empty achievements array but totalRecords=${totalRecords} — treating as a transient failure, not genuine emptiness`,
+        );
+        return { status: "error" };
+      }
       return { status: "empty" };
     }
 
     return {
       status: "ok",
-      achievements: achievements.map((a) => this.mapAchievement(a)),
+      achievements: achievements.map((a) => this.mapAchievement(a, titleId)),
     };
   }
 }
