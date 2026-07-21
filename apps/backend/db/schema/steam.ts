@@ -16,7 +16,7 @@ export const steamAccounts = pgTable(
   "steam_accounts",
   {
     userId: uuid("user_id")
-      .references(() => users.id)
+      .references(() => users.id, { onDelete: "cascade" })
       .primaryKey(),
     steamId: varchar("steam_id", { length: 255 }).notNull().unique(),
     lastSync: timestamp("last_sync"),
@@ -29,7 +29,7 @@ export const steamAccounts = pgTable(
 
 export const steamGames = pgTable("steam_games", {
   gameId: uuid("game_id")
-    .references(() => games.id)
+    .references(() => games.id, { onDelete: "cascade" })
     .primaryKey(),
   steamAppId: varchar("steam_app_id", { length: 255 }).notNull().unique(),
 });

@@ -18,4 +18,5 @@ export const IgdbGameSchema = v.object({
 
 export const IgdbGamesResponseSchema = v.array(IgdbGameSchema);
 
+export type IgdbGamesResponse = v.InferOutput<typeof IgdbGamesResponseSchema>;
 export type IgdbGame = v.InferOutput<typeof IgdbGameSchema>;

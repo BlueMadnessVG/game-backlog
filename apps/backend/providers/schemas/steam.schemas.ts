@@ -16,7 +16,7 @@ export const SteamPlayerSchema = v.object({
   }),
 });
 
-export const SteamOwnedGamesResponse = v.object({
+export const SteamOwnedGamesResponseSchema = v.object({
   response: v.object({
     game_count: v.optional(v.number(), 0),
     games: v.optional(
@@ -69,7 +69,7 @@ export const SteamPlayerAchievementsSchema = v.object({
   }),
 });
 
-export const SteamGameSchemaSchema = v.object({
+export const SteamAchievementDefinitionsSchema = v.object({
   game: v.object({
     availableGameStats: v.optional(
       v.object({
