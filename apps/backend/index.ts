@@ -37,7 +37,13 @@ const igdbProvider = new IgdbProvider(
   process.env.IGDB_CLIENT_SECRET!,
 );
 
-const libraryService = new LibraryService(db, igdbProvider);
+const libraryService = new LibraryService(
+  db,
+  igdbProvider,
+  steamService,
+  xboxService,
+  psnService,
+);
 
 /**
  * 2. App Initialization

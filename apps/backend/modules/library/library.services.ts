@@ -14,19 +14,33 @@ import {
   psnUserTrophies,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
-import type { Game, PlatformStats, Stats } from "@repo/shared";
+import type {
+  Achievement,
+  AchievementFilter,
+  AchievementSort,
+  Game,
+  PlatformStats,
+  Stats,
+} from "@repo/shared";
 import { IgdbProvider } from "../../providers/igdb.provider";
 import {
   deleteGameAndRelations,
   deleteGamesAndRelations,
 } from "../../lib/game-deletion.utils";
+import type { SteamService } from "../steam/steam.services";
+import type { PsnService } from "../psn/psn.services";
+import type { XboxService } from "../xbox/xbox.services";
 
 const IGDB_BATCH_SIZE = 4;
 const IGDB_DELAY_MS = 1100;
 
-// Filter for querying the user's library. All fields optional — combine
-// as many as needed. `title` does a case-insensitive partial match;
-// everything else is an exact match.
+export class GameNotFoundError extends Error {
+  constructor(gameId: string) {
+    super(`Game not found: ${gameId}`);
+    this.name = "GameNotFoundError";
+  }
+}
+
 export type GameLibraryFilter = {
   id?: string;
   title?: string;
@@ -38,16 +52,13 @@ export class LibraryService {
   constructor(
     private readonly db: DbClient,
     private readonly igdbProvider: IgdbProvider,
+    private readonly steamService: SteamService,
+    private readonly xboxService: XboxService,
+    private readonly psnService: PsnService,
   ) {}
 
   // ── Combined games list ──────────────────────────────────────────────────
 
-  // Merges games across all three platforms into a single list, optionally
-  // filtered by any combination of id/title/platform/status.
-  //
-  // If filter.platform is set, only that platform is queried at all —
-  // no point joining steamAccounts/xboxAccounts/psnAccounts when the
-  // caller already told us which one they want.
   async getUserGames(
     userId: string,
     filter: GameLibraryFilter = {},
@@ -78,9 +89,6 @@ export class LibraryService {
     return combined;
   }
 
-  // Shared conditions applicable to any platform query — id/title/status
-  // all live on the `games` table itself, so they apply identically
-  // regardless of which platform join is in play.
   private buildFilterConditions(filter: GameLibraryFilter) {
     const conditions = [];
     if (filter.id) conditions.push(eq(games.id, filter.id));
@@ -228,8 +236,6 @@ export class LibraryService {
   }
 
   // ── Stats ─────────────────────────────────────────────────────────────────
-  // (unchanged — omitted here for brevity, keep your existing getStats,
-  // getSteamStats, getXboxStats, getPlaystationStats as-is)
 
   async getStats(userId: string): Promise<Stats> {
     const [steam, xbox, playstation] = await Promise.all([
@@ -453,5 +459,75 @@ export class LibraryService {
 
   async removeGames(gameIds: string[]): Promise<number> {
     return deleteGamesAndRelations(this.db, gameIds);
+  }
+
+  // ── Achievements (cross-platform dispatch) ────────────────────────────────
+
+  private async getGamePlatform(
+    gameId: string,
+  ): Promise<Game["platform"] | null> {
+    const [row] = await this.db
+      .select({ platform: games.platform })
+      .from(games)
+      .where(eq(games.id, gameId))
+      .limit(1);
+
+    return (row?.platform as Game["platform"] | undefined) ?? null;
+  }
+
+  async getGameAchievements(
+    userId: string,
+    gameId: string,
+    options: {
+      filter?: AchievementFilter;
+      sort?: AchievementSort;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
+    const platform = await this.getGamePlatform(gameId);
+    if (!platform) throw new GameNotFoundError(gameId);
+
+    switch (platform) {
+      case "steam":
+        return this.steamService.getGameAchievements(userId, gameId, options);
+      case "xbox":
+        return this.xboxService.getGameAchievements(userId, gameId, options);
+      case "playstation":
+        return this.psnService.getGameTrophies(userId, gameId, options);
+      default:
+        throw new Error(`Unsupported platform for achievements: ${platform}`);
+    }
+  }
+
+  async syncGameAchievements(
+    userId: string,
+    gameId: string,
+  ): Promise<{ synced: number }> {
+    const platform = await this.getGamePlatform(gameId);
+    if (!platform) throw new GameNotFoundError(gameId);
+
+    switch (platform) {
+      case "steam": {
+        const result = await this.steamService.syncGameAchievements(
+          userId,
+          gameId,
+        );
+        return { synced: result.length };
+      }
+      case "xbox": {
+        const result = await this.xboxService.syncGameAchievements(
+          userId,
+          gameId,
+        );
+        return { synced: result.length };
+      }
+      case "playstation": {
+        const result = await this.psnService.syncGameTrophies(userId, gameId);
+        return { synced: result.length };
+      }
+      default:
+        throw new Error(`Unsupported platform for achievements: ${platform}`);
+    }
   }
 }

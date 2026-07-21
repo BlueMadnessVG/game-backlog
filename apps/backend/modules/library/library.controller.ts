@@ -1,5 +1,9 @@
 import { Hono } from "hono";
-import { LibraryService, type GameLibraryFilter } from "./library.services";
+import {
+  GameNotFoundError,
+  LibraryService,
+  type GameLibraryFilter,
+} from "./library.services";
 
 type Bindings = {
   Variables: {
@@ -14,6 +18,9 @@ const VALID_STATUSES = [
   "completed",
   "retired",
 ] as const;
+
+const VALID_ACHIEVEMENT_FILTERS = ["all", "unlocked", "locked"] as const;
+const VALID_ACHIEVEMENT_SORTS = ["unlock-date", "name", "rarity"] as const;
 
 function parseGameFilter(query: Record<string, string | undefined>): {
   filter: GameLibraryFilter;
@@ -45,6 +52,48 @@ function parseGameFilter(query: Record<string, string | undefined>): {
   }
 
   return { filter };
+}
+
+function parseAchievementOptions(query: Record<string, string | undefined>): {
+  options: {
+    filter?: (typeof VALID_ACHIEVEMENT_FILTERS)[number];
+    sort?: (typeof VALID_ACHIEVEMENT_SORTS)[number];
+    limit: number;
+    offset: number;
+  };
+  error?: string;
+} {
+  const options: {
+    filter?: (typeof VALID_ACHIEVEMENT_FILTERS)[number];
+    sort?: (typeof VALID_ACHIEVEMENT_SORTS)[number];
+    limit: number;
+    offset: number;
+  } = {
+    limit: Number(query.limit) || 50,
+    offset: Number(query.offset) || 0,
+  };
+
+  if (query.filter) {
+    if (!VALID_ACHIEVEMENT_FILTERS.includes(query.filter as any)) {
+      return {
+        options,
+        error: `Invalid filter "${query.filter}". Must be one of: ${VALID_ACHIEVEMENT_FILTERS.join(", ")}`,
+      };
+    }
+    options.filter = query.filter as (typeof VALID_ACHIEVEMENT_FILTERS)[number];
+  }
+
+  if (query.sort) {
+    if (!VALID_ACHIEVEMENT_SORTS.includes(query.sort as any)) {
+      return {
+        options,
+        error: `Invalid sort "${query.sort}". Must be one of: ${VALID_ACHIEVEMENT_SORTS.join(", ")}`,
+      };
+    }
+    options.sort = query.sort as (typeof VALID_ACHIEVEMENT_SORTS)[number];
+  }
+
+  return { options };
 }
 
 export const createLibraryController = (libraryService: LibraryService) => {
@@ -147,6 +196,87 @@ export const createLibraryController = (libraryService: LibraryService) => {
     } catch (error) {
       console.error(`[LibraryController] Failed to fetch stats:`, error);
       throw error;
+    }
+  });
+
+  // GET /library/games/:gameId/achievements
+  // Fetches achievements/trophies for a single game, resolving the correct
+  // platform service (steam/xbox/psn) from the game's stored platform.
+  //
+  //   ?filter=all|unlocked|locked
+  //   ?sort=unlock-date|name|rarity
+  //   ?limit=<number>   ?offset=<number>
+  app.get("/games/:gameId/achievements", async (c) => {
+    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const gameId = c.req.param("gameId");
+
+    const { options, error } = parseAchievementOptions({
+      filter: c.req.query("filter"),
+      sort: c.req.query("sort"),
+      limit: c.req.query("limit"),
+      offset: c.req.query("offset"),
+    });
+
+    if (error) {
+      return c.json({ status: "ERROR", message: error }, 400);
+    }
+
+    try {
+      const { data, total, unlocked } =
+        await libraryService.getGameAchievements(userId, gameId, options);
+
+      return c.json(
+        {
+          status: "SUCCESS",
+          meta: {
+            total,
+            limit: options.limit,
+            offset: options.offset,
+            unlocked,
+          },
+          data,
+        },
+        200,
+      );
+    } catch (err) {
+      if (err instanceof GameNotFoundError) {
+        return c.json({ status: "ERROR", message: err.message }, 404);
+      }
+      console.error(
+        `[LibraryController] Failed to fetch achievements for game ${gameId}:`,
+        err,
+      );
+      throw err;
+    }
+  });
+
+  // POST /library/games/:gameId/achievements/sync
+  // Forces a fresh achievement/trophy sync for one game, dispatched to
+  // whichever platform (steam/xbox/psn) it belongs to.
+  app.post("/games/:gameId/achievements/sync", async (c) => {
+    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const gameId = c.req.param("gameId");
+
+    try {
+      const result = await libraryService.syncGameAchievements(userId, gameId);
+
+      return c.json(
+        {
+          status: "SUCCESS",
+          message: `Synced ${result.synced} achievement(s).`,
+          data: result,
+        },
+        200,
+      );
+    } catch (err) {
+      if (err instanceof GameNotFoundError) {
+        return c.json({ status: "ERROR", message: err.message }, 404);
+      }
+      console.error(
+        `[LibraryController] Failed to sync achievements for game ${gameId}:`,
+        err,
+      );
+      throw err;
     }
   });
 
