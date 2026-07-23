@@ -21,13 +21,43 @@ type Bindings = {
   };
 };
 
+/**
+ * Creates the Hono router for all PSN-related HTTP endpoints.
+ *
+ * @remarks
+ * This controller is a thin pass-through: it validates inputs, delegates
+ * to {@link PsnService} and {@link LibraryService}, and formats the
+ * JSON response. No business logic lives here.
+ *
+ * Hardcoded user IDs are placeholders replaced by auth middleware before
+ * this controller is reached.
+ *
+ * @param psnService - Service layer for PSN account, game, and trophy
+ *   operations.
+ * @param libraryService - Service layer for cross-platform cover enrichment.
+ * @returns A configured `Hono` app instance with all PSN routes mounted.
+ *
+ * @example
+ * ```ts
+ * const psn = createPsnController(psnService, libraryService);
+ * app.route("/psn", psn);
+ * ```
+ */
 export const createPsnController = (
   psnService: PsnService,
   libraryService: LibraryService,
 ) => {
   const app = new Hono<Bindings>();
 
-  // GET /psn/games
+  /**
+   * GET /psn/games
+   *
+   * Returns the authenticated user's PSN game library with pagination.
+   *
+   * @query limit - Maximum games to return (default `50`).
+   * @query offset - Row offset for pagination (default `0`).
+   * @returns 200 with `{ status, meta: { total, limit, offset }, data }`.
+   */
   app.get("/games", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
 
@@ -56,7 +86,14 @@ export const createPsnController = (
     }
   });
 
-  // GET /psn/games/:id
+  /**
+   * GET /psn/games/:id
+   *
+   * Returns a single PSN game from the user's library by UUID.
+   *
+   * @param id - The game UUID.
+   * @returns 200 with `{ status, data }`, or 404 when the game is not found.
+   */
   app.get("/games/:id", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
     const gameId = c.req.param("id");
@@ -78,7 +115,16 @@ export const createPsnController = (
     }
   });
 
-  // POST /psn/sync
+  /**
+   * POST /psn/sync
+   *
+   * Exchanges the NPSSO for PSN auth tokens, syncs the user's profile and
+   * game library, then fires background jobs for trophy sync and cover
+   * enrichment. Returns immediately after the profile+games upsert.
+   *
+   * @body PsnSyncSchema `{ npsso: string, onlineId: string }`
+   * @returns 200 with `{ status, message, data: { profile, gamesCount } }`.
+   */
   app.post("/sync", vValidator("json", PsnSyncSchema), async (c) => {
     const body = c.req.valid("json");
     const { npsso, onlineId } = body as PsnSyncRequest;
@@ -129,7 +175,16 @@ export const createPsnController = (
     }
   });
 
-  // POST /psn/games/:gameId/sync-trophies
+  /**
+   * POST /psn/games/:gameId/sync-trophies
+   *
+   * Triggers a full trophy sync for a single game, scoped to the
+   * requesting user's ownership.
+   *
+   * @param gameId - The game UUID to sync trophies for.
+   * @returns 200 on success, or rethrows service-layer errors (e.g.
+   *   `PsnGameNotFoundError`).
+   */
   app.post("/games/:gameId/sync-trophies", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
     const gameId = c.req.param("gameId");
@@ -146,7 +201,20 @@ export const createPsnController = (
     }
   });
 
-  // POST /psn/games/:gameId/trophies
+  /**
+   * POST /psn/games/:gameId/trophies
+   *
+   * Returns paginated, filterable, sortable trophies for a single game.
+   * Triggers a lazy sync when no cached data exists.
+   *
+   * @param gameId - The game UUID.
+   * @query filter - `'all'` | `'unlocked'` | `'locked'` (default `'all'`).
+   * @query sort - `'rarity'` | `'unlock-date'` | `'name'` (default `'rarity'`).
+   * @query limit - Maximum rows (default `50`, max `100`).
+   * @query offset - Row offset for pagination (default `0`).
+   * @returns 200 with `{ status, meta: { total, unlocked, limit, offset }, data }`,
+   *   or 400 when filter/sort values are invalid.
+   */
   app.post("/games/:gameId/trophies", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
     const gameId = c.req.param("gameId");

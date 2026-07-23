@@ -17,9 +17,39 @@ type Bindings = {
   };
 };
 
+/**
+ * Creates the Hono router for all Steam-related HTTP endpoints.
+ *
+ * @remarks
+ * This controller is a thin pass-through: it validates inputs, delegates
+ * to {@link SteamService}, and formats the JSON response. No business
+ * logic lives here.
+ *
+ * Hardcoded user IDs are placeholders replaced by auth middleware before
+ * this controller is reached.
+ *
+ * @param steamService - Service layer for Steam account, game, and
+ *   achievement operations.
+ * @returns A configured `Hono` app instance with all Steam routes mounted.
+ *
+ * @example
+ * ```ts
+ * const steam = createSteamController(steamService);
+ * app.route("/steam", steam);
+ * ```
+ */
 export const createSteamController = (steamService: SteamService) => {
   const app = new Hono<Bindings>();
 
+  /**
+   * GET /steam/games
+   *
+   * Returns the authenticated user's Steam game library with pagination.
+   *
+   * @query limit - Maximum games to return (default `50`).
+   * @query offset - Row offset for pagination (default `0`).
+   * @returns 200 with `{ status, meta: { total, limit, offset }, data }`.
+   */
   app.get("/games", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
 
@@ -48,6 +78,14 @@ export const createSteamController = (steamService: SteamService) => {
     }
   });
 
+  /**
+   * GET /steam/games/:id
+   *
+   * Returns a single Steam game from the user's library by UUID.
+   *
+   * @param id - The game UUID.
+   * @returns 200 with `{ status, data }`, or 404 when the game is not found.
+   */
   app.get("/games/:id", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
     const gameId = c.req.param("id");
@@ -69,7 +107,16 @@ export const createSteamController = (steamService: SteamService) => {
     }
   });
 
-  // steam.controller.ts
+  /**
+   * POST /steam/sync
+   *
+   * Syncs the user's Steam profile and game library, then fires a
+   * background job for achievement sync. Returns immediately after the
+   * profile+games upsert completes.
+   *
+   * @body SteamSyncSchema `{ steamId: string }`
+   * @returns 200 with `{ status, message, data: { profile, gamesCount } }`.
+   */
   app.post("/sync", vValidator("json", SteamSyncSchema), async (c) => {
     const { steamId } = c.req.valid("json");
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
@@ -80,7 +127,6 @@ export const createSteamController = (steamService: SteamService) => {
         steamService.syncUserGames(userId, steamId),
       ]);
 
-      // ✅ Respond immediately — achievements sync in the background
       c.status(200);
       const response = c.json({
         status: "SUCCESS",
@@ -91,7 +137,6 @@ export const createSteamController = (steamService: SteamService) => {
         },
       });
 
-      // ✅ Fire-and-forget — not awaited, won't block or timeout the request
       steamService
         .syncAllGameAchievements(
           userId,
@@ -111,6 +156,16 @@ export const createSteamController = (steamService: SteamService) => {
     }
   });
 
+  /**
+   * POST /steam/games/:gameId/sync-achievements
+   *
+   * Triggers a full achievement sync for a single game, scoped to the
+   * requesting user's ownership.
+   *
+   * @param gameId - The game UUID to sync achievements for.
+   * @returns 200 on success, or rethrows service-layer errors (e.g.
+   *   `SteamGameNotFoundError`).
+   */
   app.post("/games/:gameId/sync-achievements", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
     const gameId = c.req.param("gameId");
@@ -127,6 +182,20 @@ export const createSteamController = (steamService: SteamService) => {
     }
   });
 
+  /**
+   * POST /steam/games/:gameId/achievements
+   *
+   * Returns paginated, filterable, sortable achievements for a single game.
+   * Triggers a lazy sync when no cached data exists.
+   *
+   * @param gameId - The game UUID.
+   * @query filter - `'all'` | `'unlocked'` | `'locked'` (default `'all'`).
+   * @query sort - `'rarity'` | `'unlock-date'` | `'name'` (default `'rarity'`).
+   * @query limit - Maximum rows (default `50`, max `100`).
+   * @query offset - Row offset for pagination (default `0`).
+   * @returns 200 with `{ status, meta: { total, unlocked, limit, offset }, data }`,
+   *   or 400 when filter/sort values are invalid.
+   */
   app.post("/games/:gameId/achievements", async (c) => {
     const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
     const gameId = c.req.param("gameId");
