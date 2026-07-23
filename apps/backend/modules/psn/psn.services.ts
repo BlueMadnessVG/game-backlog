@@ -23,6 +23,15 @@ import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
 
+/**
+ * Custom error thrown when a PSN game cannot be found for a given user.
+ *
+ * @example
+ * ```ts
+ * throw new PsnGameNotFoundError("game-uuid", "user-uuid");
+ * // Error: No PSN game found for game game-uuid and user user-uuid — ...
+ * ```
+ */
 export class PsnGameNotFoundError extends Error {
   constructor(
     public readonly gameId: string,
@@ -51,15 +60,28 @@ type GameRow = {
   npCommunicationId: string;
 };
 
+/**
+ * Service layer for all PlayStation Network integrations.
+ *
+ * Handles PSN account linking, game library synchronisation, trophy fetching,
+ * and achievement-style read queries consumed by the frontend.
+ *
+ * @remarks
+ * All methods that touch the PSN API obtain a valid access token via
+ * {@link PsnService.getValidAccessToken}, which transparently refreshes
+ * expired tokens.
+ *
+ * @example
+ * ```ts
+ * const psn = new PsnService(db, psnProvider);
+ * const games = await psn.getUserGames("user-uuid");
+ * ```
+ */
 export class PsnService {
   constructor(
     private readonly db: DbClient,
     private readonly provider: PsnProvider,
   ) {}
-
-  // ── Token management ────────────────────────────────────────────────────
-  // Unaffected by the ownership fix — this is already correctly scoped by
-  // localUserId alone, with no game involved.
 
   private async getValidAccessToken(localUserId: string): Promise<string> {
     const [account] = await this.db
@@ -102,8 +124,6 @@ export class PsnService {
     return newTokens.accessToken;
   }
 
-  // ── READ ────────────────────────────────────────────────────────────────
-
   private mapRowToGame(row: GameRow): Game {
     return {
       id: row.id,
@@ -122,6 +142,20 @@ export class PsnService {
     };
   }
 
+  /**
+   * Returns every PSN game in the user's library, ordered by completion
+   * percentage (highest first).
+   *
+   * @param localUserId - Internal user identifier whose library to fetch.
+   * @returns Array of {@link Game} objects. An empty array is returned when
+   *   the user has no PSN titles.
+   *
+   * @example
+   * ```ts
+   * const games = await psnService.getUserGames("abc-123");
+   * console.log(games.length); // 42
+   * ```
+   */
   async getUserGames(localUserId: string): Promise<Game[]> {
     const rows = await this.db
       .select({
@@ -148,6 +182,22 @@ export class PsnService {
     return rows.map((row) => this.mapRowToGame(row));
   }
 
+  /**
+   * Returns a single PSN game from the user's library, or `null` if it does
+   * not exist.
+   *
+   * @param localUserId - Internal user identifier.
+   * @param gameId - UUID of the game to retrieve.
+   * @returns The matching {@link Game}, or `null` when no row is found.
+   *
+   * @example
+   * ```ts
+   * const game = await psnService.getUserGame("abc-123", "game-uuid");
+   * if (game) {
+   *   console.log(game.title);
+   * }
+   * ```
+   */
   async getUserGame(localUserId: string, gameId: string): Promise<Game | null> {
     const [row] = await this.db
       .select({
@@ -178,9 +228,29 @@ export class PsnService {
     return this.mapRowToGame(row);
   }
 
-  // ── SYNC — Profile ──────────────────────────────────────────────────────
-  // Unaffected — account-only, no game involved.
-
+  /**
+   * Exchanges an NPSSO token for PSN credentials, fetches the profile, and
+   * upserts both the local user record and the linked PSN account inside a
+   * single transaction.
+   *
+   * @param localUserId - Internal user identifier to link the PSN account to.
+   * @param npsso - The raw NPSSO cookie value obtained from the PSN sign-in
+   *   flow.
+   * @param onlineId - The PSN online ID (gamertag) to look up.
+   * @returns The merged profile and token data that was persisted.
+   * @throws {Error} If the PSN profile cannot be found for the given
+   *   `onlineId`.
+   *
+   * @example
+   * ```ts
+   * const result = await psnService.syncUserProfile(
+   *   "user-uuid",
+   *   "npsso-token-value",
+   *   "MyPsnId",
+   * );
+   * console.log(result.accountId);
+   * ```
+   */
   async syncUserProfile(localUserId: string, npsso: string, onlineId: string) {
     const tokens = await this.provider.exchangeNpsso(npsso);
 
@@ -228,16 +298,35 @@ export class PsnService {
     });
   }
 
-  // ── SYNC — Games ────────────────────────────────────────────────────────
-
+  /**
+   * Fetches the user's full owned-games list from PSN, deduplicates by
+   * `npCommunicationId`, and upserts the shared game catalog, PSN
+   * identifiers, and per-user ownership rows inside a single transaction.
+   *
+   * @remarks
+   * Deduplication uses `npCommunicationId` rather than title, preventing
+   * two genuinely different games that share a name from collapsing. The
+   * catalog upsert itself still matches on `(title, platform)`, which is
+   * the same limitation present across all platform providers.
+   *
+   * `playTime` is always set to `0` because the PSN API does not expose
+   * raw playtime; only trophy-sync recency is available.
+   *
+   * @param localUserId - Internal user identifier whose library to sync.
+   * @returns Array of upserted {@link userGames} rows. An empty array is
+   *   returned when the PSN API returns no titles.
+   *
+   * @example
+   * ```ts
+   * const synced = await psnService.syncUserGames("abc-123");
+   * console.log(`Synced ${synced.length} games`);
+   * ```
+   */
   async syncUserGames(localUserId: string) {
     const accessToken = await this.getValidAccessToken(localUserId);
     const titleList = await this.provider.getOwnedGames(accessToken);
     if (!titleList.length) return [];
 
-    // Deduped by npCommunicationId (PSN's real external id) rather than
-    // title — better than Steam/Xbox's title-based dedup, since this can't
-    // collapse two genuinely different games that happen to share a name.
     const deduplicated = Array.from(
       titleList
         .reduce((map, title) => {
@@ -255,7 +344,6 @@ export class PsnService {
     );
 
     return await this.db.transaction(async (tx) => {
-      // 1. Upsert the shared catalog — title/platform/icon only.
       const catalogRows = await tx
         .insert(games)
         .values(
@@ -271,15 +359,10 @@ export class PsnService {
         })
         .returning();
 
-      // Resolution back to a catalog row is still by title, even though
-      // the input list itself was deduped by npCommunicationId — this is
-      // the same limitation as Steam/Xbox: two different PSN games with an
-      // identical title would still shadow each other at this step.
       const titleToGameId = new Map(
         catalogRows.map((row) => [row.title, row.id]),
       );
 
-      // 2. Map each catalog row to its PSN identifiers.
       const psnMappingValues = deduplicated
         .map((g) => {
           const gameId = titleToGameId.get(g.name);
@@ -300,10 +383,6 @@ export class PsnService {
           .onConflictDoNothing();
       }
 
-      // 3. Upsert this user's ownership + personal state. playTime is
-      //    always 0 here — PSN's API doesn't expose raw playtime, only
-      //    trophy sync recency (lastUpdatedDateTime), so there's nothing
-      //    per-user to report beyond what's already captured below.
       const userGameValues = deduplicated
         .map((g) => {
           const gameId = titleToGameId.get(g.name);
@@ -350,8 +429,25 @@ export class PsnService {
     });
   }
 
-  // ── SYNC — Trophies ─────────────────────────────────────────────────────
-
+  /**
+   * Syncs trophies for multiple games in batches, respecting rate limits.
+   *
+   * Each batch contains up to {@link BATCH_SIZE} games and is followed by a
+   * {@link DELAY_MS} millisecond pause before the next batch. Individual
+   * failures are logged and skipped — the remaining games continue syncing.
+   *
+   * @param localUserId - Internal user identifier.
+   * @param gameIds - Array of game UUIDs to sync trophies for.
+   *
+   * @example
+   * ```ts
+   * await psnService.syncAllGameTrophies("user-uuid", [
+   *   "game-1",
+   *   "game-2",
+   *   "game-3",
+   * ]);
+   * ```
+   */
   async syncAllGameTrophies(localUserId: string, gameIds: string[]) {
     for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
       const batch = gameIds.slice(i, i + BATCH_SIZE);
@@ -373,14 +469,38 @@ export class PsnService {
     }
   }
 
+  /**
+   * Syncs the full trophy list for a single game, scoped to the requesting
+   * user's ownership.
+   *
+   * @remarks
+   * The query joins through `userGames` to verify ownership before touching
+   * the PSN API. If the user does not own the game, a
+   * {@link PsnGameNotFoundError} is thrown.
+   *
+   * When the PSN API reports zero trophies for a game the game is removed
+   * from the shared catalog via {@link deleteGameAndRelations}.
+   *
+   * After syncing, the user's `completionPercentage` and derived `status`
+   * are recalculated and persisted.
+   *
+   * @param localUserId - Internal user identifier.
+   * @param gameId - UUID of the game to sync.
+   * @returns Array of upserted trophy rows. An empty array is returned
+   *   when the PSN API reports an error or zero trophies.
+   * @throws {PsnGameNotFoundError} When the user does not own the given
+   *   game or the game has no PSN mapping.
+   *
+   * @example
+   * ```ts
+   * const trophies = await psnService.syncGameTrophies(
+   *   "user-uuid",
+   *   "game-uuid",
+   * );
+   * console.log(`Synced ${trophies.length} trophies`);
+   * ```
+   */
   async syncGameTrophies(localUserId: string, gameId: string) {
-    // Real ownership check. The original version here queried psnGames
-    // alone with no user scoping whatsoever — meaning any authenticated
-    // user could trigger a trophy sync for any PSN game in the shared
-    // catalog using their own credentials, regardless of whether they
-    // owned it. This is the most permissive instance of the bug across
-    // all three platforms — Steam/Xbox at least attempted (incorrectly)
-    // to scope by user; this didn't attempt it at all.
     const [row] = await this.db
       .select({
         npCommunicationId: psnGames.npCommunicationId,
@@ -413,9 +533,6 @@ export class PsnService {
       console.debug(
         `[PsnService] Game ${gameId} (${row.npCommunicationId}) has zero trophies — removing from library`,
       );
-      // Removes the game from the shared catalog for every owner, not
-      // just localUserId — same open question as Steam/Xbox: needs
-      // deleteGameAndRelations confirmed to also clean up userGames.
       await deleteGameAndRelations(this.db, gameId);
       return [];
     }
@@ -492,8 +609,6 @@ export class PsnService {
         (t) => t.trophyType === "platinum" && t.earned,
       );
 
-      // Read this user's own playtime/lastPlayedAt from userGames, not the
-      // shared games row.
       const [userGameRow] = await tx
         .select({
           playTime: userGames.playTime,
@@ -524,8 +639,37 @@ export class PsnService {
     });
   }
 
-  // ── READ — Trophies (with lazy sync) ───────────────────────────────────
-
+  /**
+   * Returns paginated, filterable, sortable trophies for a single game.
+   *
+   * If the user has no cached trophies for this game, a lazy sync is
+   * triggered via {@link PsnService.syncGameTrophies} before the query
+   * executes.
+   *
+   * @param userId - Internal user identifier.
+   * @param gameId - UUID of the game whose trophies to retrieve.
+   * @param options - Query controls.
+   * @param options.filter - `'all'` | `'unlocked'` | `'locked'`. Defaults
+   *   to `'all'`.
+   * @param options.sort - `'rarity'` | `'unlock-date'` | `'name'`. Defaults
+   *   to `'rarity'`.
+   * @param options.limit - Maximum rows returned. Defaults to `50`.
+   * @param options.offset - Row offset for pagination. Defaults to `0`.
+   * @returns An object containing the `data` array of {@link Achievement}
+   *   objects, the `total` count, and the `unlocked` count.
+   * @throws {PsnGameNotFoundError} When the user does not own the game and
+   *   the lazy-sync path fails.
+   *
+   * @example
+   * ```ts
+   * const { data, total, unlocked } = await psnService.getGameTrophies(
+   *   "user-uuid",
+   *   "game-uuid",
+   *   { filter: "unlocked", sort: "rarity", limit: 10 },
+   * );
+   * console.log(`${unlocked}/${total} unlocked`);
+   * ```
+   */
   async getGameTrophies(
     userId: string,
     gameId: string,
@@ -538,8 +682,6 @@ export class PsnService {
   ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
     const { filter = "all", sort = "rarity", limit = 50, offset = 0 } = options;
 
-    // Correlated subquery replaced with a direct join to psnGames, scoped
-    // by gameId — same fix applied to Steam and Xbox.
     const [existing] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(psnUserTrophies)
@@ -553,9 +695,6 @@ export class PsnService {
       );
 
     if (!existing || existing.count === 0) {
-      // If this user doesn't own gameId, this throws PsnGameNotFoundError
-      // and propagates out — trophies for an unowned game are never
-      // returned.
       await this.syncGameTrophies(userId, gameId);
     }
 
@@ -601,9 +740,6 @@ export class PsnService {
         .limit(limit)
         .offset(offset),
 
-      // Was missing the psnGames join — needed now that filterConditions
-      // references psnGames.gameId directly instead of a subquery. Same
-      // fix applied to Xbox's equivalent totals query.
       this.db
         .select({
           total: sql<number>`count(*)::int`,

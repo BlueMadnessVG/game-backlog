@@ -20,10 +20,19 @@ import type {
 import { deriveGameStatus } from "./steam.utils";
 import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 
-// Thrown when a (userId, gameId) pair doesn't resolve to a Steam game this
-// user owns — covers "not a Steam title", "user doesn't own it", and "no
-// linked Steam account" as one case, since all three mean the same thing
-// to a caller: there's nothing here for this user to sync or read.
+/**
+ * Custom error thrown when a Steam game cannot be found for a given user.
+ *
+ * Covers three indistinguishable cases from the caller's perspective: the
+ * title is not a Steam game, the user does not own it, or no Steam account
+ * is linked.
+ *
+ * @example
+ * ```ts
+ * throw new SteamGameNotFoundError("game-uuid", "user-uuid");
+ * // Error: No Steam game found for game game-uuid and user user-uuid — ...
+ * ```
+ */
 export class SteamGameNotFoundError extends Error {
   constructor(
     public readonly gameId: string,
@@ -52,14 +61,29 @@ type GameRow = {
   steamAppId: string;
 };
 
+/**
+ * Service layer for all Steam integrations.
+ *
+ * Handles Steam account linking, game library synchronisation, achievement
+ * fetching, and achievement-style read queries consumed by the frontend.
+ *
+ * @remarks
+ * All methods that touch the Steam API operate against a linked Steam
+ * account identified by `steamId`. The service never calls the Steam API
+ * without first resolving the user's `steamId` from the database.
+ *
+ * @example
+ * ```ts
+ * const steam = new SteamService(db, steamProvider);
+ * const games = await steam.getUserGames("user-uuid");
+ * ```
+ */
 export class SteamService {
   constructor(
     private readonly db: DbClient,
     private readonly provider: SteamProvider,
   ) {}
 
-  // Shared between getUserGames/getUserGame so the two can't drift on how
-  // a row gets mapped to the public Game shape.
   private mapRowToGame(row: GameRow): Game {
     return {
       id: row.id,
@@ -78,6 +102,20 @@ export class SteamService {
     };
   }
 
+  /**
+   * Returns every Steam game in the user's library, ordered by play time
+   * (highest first).
+   *
+   * @param userId - Internal user identifier whose library to fetch.
+   * @returns Array of {@link Game} objects. An empty array is returned when
+   *   the user has no Steam titles.
+   *
+   * @example
+   * ```ts
+   * const games = await steamService.getUserGames("abc-123");
+   * console.log(games.length); // 87
+   * ```
+   */
   async getUserGames(userId: string): Promise<Game[]> {
     const rows = await this.db
       .select({
@@ -91,8 +129,6 @@ export class SteamService {
         playTime: userGames.playTime,
         completionPercentage: userGames.completionPercentage,
         lastPlayedAt: userGames.lastPlayedAt,
-        // This user's own added-at, not "whenever anyone first synced this
-        // title" — see note below on why this moved off games.createdAt.
         addedAt: userGames.createdAt,
         updatedAt: userGames.updatedAt,
         steamAppId: steamGames.steamAppId,
@@ -106,6 +142,22 @@ export class SteamService {
     return rows.map((row) => this.mapRowToGame(row));
   }
 
+  /**
+   * Returns a single Steam game from the user's library, or `null` if it
+   * does not exist.
+   *
+   * @param userId - Internal user identifier.
+   * @param gameId - UUID of the game to retrieve.
+   * @returns The matching {@link Game}, or `null` when no row is found.
+   *
+   * @example
+   * ```ts
+   * const game = await steamService.getUserGame("abc-123", "game-uuid");
+   * if (game) {
+   *   console.log(game.title);
+   * }
+   * ```
+   */
   async getUserGame(userId: string, gameId: string): Promise<Game | null> {
     const [row] = await this.db
       .select({
@@ -134,6 +186,25 @@ export class SteamService {
     return this.mapRowToGame(row);
   }
 
+  /**
+   * Fetches the Steam player summary and upserts both the local user
+   * record and the linked Steam account inside a single transaction.
+   *
+   * @param localUserId - Internal user identifier to link the Steam account
+   *   to.
+   * @param steamId - The 64-bit Steam ID to look up.
+   * @returns The Steam profile data that was persisted.
+   * @throws {Error} If no Steam profile is found for the given `steamId`.
+   *
+   * @example
+   * ```ts
+   * const profile = await steamService.syncUserProfile(
+   *   "user-uuid",
+   *   "76561198012345678",
+   * );
+   * console.log(profile.displayName);
+   * ```
+   */
   async syncUserProfile(localUserId: string, steamId: string) {
     const steamData = await this.provider.getPlayerSummary(steamId);
 
@@ -163,14 +234,36 @@ export class SteamService {
     });
   }
 
+  /**
+   * Fetches the user's full owned-games list from Steam and upserts the
+   * shared game catalog, Steam app-ID mappings, and per-user ownership
+   * rows inside a single transaction.
+   *
+   * @remarks
+   * The shared `games` table is keyed on `(title, platform)`, so two
+   * different Steam app-ids sharing an exact title will shadow each other.
+   * Per-user state (play time, last played, status) is written exclusively
+   * to `userGames` to avoid cross-user overwrites.
+   *
+   * @param localUserId - Internal user identifier whose library to sync.
+   * @param steamId - The 64-bit Steam ID to fetch games for.
+   * @returns Array of upserted {@link userGames} rows. An empty array is
+   *   returned when the Steam API returns no games.
+   *
+   * @example
+   * ```ts
+   * const synced = await steamService.syncUserGames(
+   *   "abc-123",
+   *   "76561198012345678",
+   * );
+   * console.log(`Synced ${synced.length} games`);
+   * ```
+   */
   async syncUserGames(localUserId: string, steamId: string) {
     const steamGamesList = await this.provider.getOwnedGames(steamId);
     if (!steamGamesList.length) return [];
 
     return await this.db.transaction(async (tx) => {
-      // 1. Upsert the shared catalog — title/platform/artwork only. This
-      //    table has no per-user columns; every owner of this title on
-      //    this platform shares the one row.
       const catalogRows = await tx
         .insert(games)
         .values(
@@ -192,20 +285,10 @@ export class SteamService {
         })
         .returning();
 
-      // Maps each Steam title to its catalog row id. Known limitation: this
-      // can only disambiguate by title, so if this user owns two different
-      // Steam appIds that happen to share an exact title, the second will
-      // shadow the first here. Pre-existing consequence of keying the
-      // shared catalog on (title, platform) rather than an external id —
-      // flagging it rather than quietly leaving it; a real fix means
-      // resolving catalog rows via steamGames.steamAppId first and only
-      // falling back to title matching for genuinely new titles.
       const titleToGameId = new Map(
         catalogRows.map((row) => [row.title, row.id]),
       );
 
-      // 2. Map each catalog row to its Steam appId (idempotent — existing
-      //    mappings are left untouched).
       const steamMappingValues = steamGamesList
         .map((g) => {
           const gameId = titleToGameId.get(g.name);
@@ -221,11 +304,6 @@ export class SteamService {
           .onConflictDoNothing();
       }
 
-      // 3. Upsert this user's ownership + personal state. This is the part
-      //    that's genuinely per-user, which is exactly why it belongs on
-      //    userGames rather than on the shared games row — writing it to
-      //    games would mean the last user to sync overwrites every other
-      //    owner's playtime and status on the same row.
       const userGameValues = steamGamesList
         .map((g) => {
           const gameId = titleToGameId.get(g.name);
@@ -237,7 +315,7 @@ export class SteamService {
             lastPlayedAt: g.lastPlayedAt,
             status: deriveGameStatus({
               completionPercentage: 0,
-              hasAchievements: true, // corrected below after achievement sync
+              hasAchievements: true,
               playTimeMinutes: g.playtimeMinutes,
               lastPlayedAt: g.lastPlayedAt ?? null,
             }),
@@ -267,6 +345,26 @@ export class SteamService {
     });
   }
 
+  /**
+   * Syncs achievements for multiple games in batches, respecting Steam API
+   * rate limits.
+   *
+   * Each batch contains up to `5` games and is followed by a `200`
+   * millisecond pause. Individual failures are logged and skipped — the
+   * remaining games continue syncing.
+   *
+   * @param localUserId - Internal user identifier.
+   * @param gameIds - Array of game UUIDs to sync achievements for.
+   *
+   * @example
+   * ```ts
+   * await steamService.syncAllGameAchievements("user-uuid", [
+   *   "game-1",
+   *   "game-2",
+   *   "game-3",
+   * ]);
+   * ```
+   */
   async syncAllGameAchievements(localUserId: string, gameIds: string[]) {
     const BATCH_SIZE = 5;
     const DELAY_MS = 200;
@@ -291,13 +389,39 @@ export class SteamService {
     }
   }
 
+  /**
+   * Syncs the full achievement list for a single game, scoped to the
+   * requesting user's ownership.
+   *
+   * @remarks
+   * The query joins through `userGames` to verify ownership before calling
+   * the Steam API. If the user does not own the game, a
+   * {@link SteamGameNotFoundError} is thrown.
+   *
+   * When the Steam API reports zero achievement definitions for a game the
+   * game is removed from the shared catalog via
+   * {@link deleteGameAndRelations}.
+   *
+   * After syncing, the user's `completionPercentage` and derived `status`
+   * are recalculated and persisted.
+   *
+   * @param localUserId - Internal user identifier.
+   * @param gameId - UUID of the game to sync.
+   * @returns Array of upserted achievement rows. An empty array is returned
+   *   when the Steam API has no data or the game has no definitions.
+   * @throws {SteamGameNotFoundError} When the user does not own the given
+   *   game or the game has no Steam mapping.
+   *
+   * @example
+   * ```ts
+   * const achievements = await steamService.syncGameAchievements(
+   *   "user-uuid",
+   *   "game-uuid",
+   * );
+   * console.log(`Synced ${achievements.length} achievements`);
+   * ```
+   */
   async syncGameAchievements(localUserId: string, gameId: string) {
-    // This is the actual ownership check: it only resolves when there's a
-    // userGames row tying this exact user to this exact game, in addition
-    // to the Steam mapping and a linked account. The old version joined
-    // steamAccounts by userId alone with no tie back to the game, which
-    // meant it resolved for *any* authenticated user asking about *any*
-    // game in the shared catalog.
     const [row] = await this.db
       .select({
         steamAppId: steamGames.steamAppId,
@@ -324,12 +448,6 @@ export class SteamService {
       console.debug(
         `[SteamService] Game ${gameId} (appId ${row.steamAppId}) has no achievement definitions — removing from library`,
       );
-      // NOTE: this removes the game from the shared catalog for every
-      // owner, not just localUserId — pre-existing behavior, unchanged by
-      // this pass. Worth confirming deleteGameAndRelations either deletes
-      // the games row directly (letting the new userGames FK cascade
-      // clean up every owner's row automatically) or is updated to also
-      // clean up userGames explicitly — haven't seen that file yet.
       await deleteGameAndRelations(this.db, gameId);
       return [];
     }
@@ -405,9 +523,6 @@ export class SteamService {
       const completionPercentage =
         totalCount > 0 ? (achievedCount / totalCount) * 100 : 0;
 
-      // Read this user's current playtime/lastPlayedAt from userGames (not
-      // the shared games row) so deriveGameStatus has this user's own
-      // context, not whichever owner synced most recently.
       const [userGameRow] = await tx
         .select({
           playTime: userGames.playTime,
@@ -426,8 +541,6 @@ export class SteamService {
         lastPlayedAt: userGameRow?.lastPlayedAt ?? null,
       });
 
-      // Write to userGames, not games — this is this user's completion
-      // state, not the shared catalog row's.
       await tx
         .update(userGames)
         .set({ completionPercentage, status: refinedStatus })
@@ -439,6 +552,37 @@ export class SteamService {
     });
   }
 
+  /**
+   * Returns paginated, filterable, sortable achievements for a single game.
+   *
+   * If the user has no cached achievements for this game, a lazy sync is
+   * triggered via {@link SteamService.syncGameAchievements} before the
+   * query executes.
+   *
+   * @param userId - Internal user identifier.
+   * @param gameId - UUID of the game whose achievements to retrieve.
+   * @param options - Query controls.
+   * @param options.filter - `'all'` | `'unlocked'` | `'locked'`. Defaults
+   *   to `'all'`.
+   * @param options.sort - `'rarity'` | `'unlock-date'` | `'name'`. Defaults
+   *   to `'rarity'`.
+   * @param options.limit - Maximum rows returned. Defaults to `50`.
+   * @param options.offset - Row offset for pagination. Defaults to `0`.
+   * @returns An object containing the `data` array of {@link Achievement}
+   *   objects, the `total` count, and the `unlocked` count.
+   * @throws {SteamGameNotFoundError} When the user does not own the game
+   *   and the lazy-sync path fails.
+   *
+   * @example
+   * ```ts
+   * const { data, total, unlocked } = await steamService.getGameAchievements(
+   *   "user-uuid",
+   *   "game-uuid",
+   *   { filter: "unlocked", sort: "rarity", limit: 10 },
+   * );
+   * console.log(`${unlocked}/${total} unlocked`);
+   * ```
+   */
   async getGameAchievements(
     userId: string,
     gameId: string,
@@ -451,9 +595,6 @@ export class SteamService {
   ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
     const { filter = "all", sort = "rarity", limit = 50, offset = 0 } = options;
 
-    // Was a correlated subquery repeated three times below; replaced with
-    // a real join to steamGames (already how the `rows` query does it),
-    // scoped directly by gameId instead of resolving steamAppId per row.
     const [existing] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(userAchievements)
@@ -467,9 +608,6 @@ export class SteamService {
       );
 
     if (!existing || existing.count === 0) {
-      // If this user doesn't actually own gameId, this throws
-      // SteamGameNotFoundError and propagates straight out of this method —
-      // achievements for a game you don't own are never returned.
       await this.syncGameAchievements(userId, gameId);
     }
 

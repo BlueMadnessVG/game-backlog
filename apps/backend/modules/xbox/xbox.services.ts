@@ -23,6 +23,19 @@ import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
 
+/**
+ * Custom error thrown when an Xbox game cannot be found for a given user.
+ *
+ * Covers three indistinguishable cases from the caller's perspective: the
+ * title is not an Xbox game, the user does not own it, or no Xbox account
+ * is linked.
+ *
+ * @example
+ * ```ts
+ * throw new XboxGameNotFoundError("game-uuid", "user-uuid");
+ * // Error: No Xbox game found for game game-uuid and user user-uuid — ...
+ * ```
+ */
 export class XboxGameNotFoundError extends Error {
   constructor(
     public readonly gameId: string,
@@ -51,15 +64,28 @@ type GameRow = {
   titleId: string;
 };
 
+/**
+ * Service layer for all Xbox integrations.
+ *
+ * Handles Xbox account linking, game library synchronisation, achievement
+ * fetching, and achievement-style read queries consumed by the frontend.
+ *
+ * @remarks
+ * All methods that touch the Xbox API operate against a linked Xbox
+ * account identified by `xuid`. The service never calls the Xbox API
+ * without first resolving the user's `xuid` from the database.
+ *
+ * @example
+ * ```ts
+ * const xbox = new XboxService(db, xboxProvider);
+ * const games = await xbox.getUserGames("user-uuid");
+ * ```
+ */
 export class XboxService {
   constructor(
     private readonly db: DbClient,
     private readonly provider: XboxProvider,
   ) {}
-
-  // -------------------------------------------------------------------------
-  // READ
-  // -------------------------------------------------------------------------
 
   private mapRowToGame(row: GameRow): Game {
     return {
@@ -79,6 +105,20 @@ export class XboxService {
     };
   }
 
+  /**
+   * Returns every Xbox game in the user's library, ordered by play time
+   * (highest first).
+   *
+   * @param userId - Internal user identifier whose library to fetch.
+   * @returns Array of {@link Game} objects. An empty array is returned when
+   *   the user has no Xbox titles.
+   *
+   * @example
+   * ```ts
+   * const games = await xboxService.getUserGames("abc-123");
+   * console.log(games.length); // 34
+   * ```
+   */
   async getUserGames(userId: string): Promise<Game[]> {
     const rows = await this.db
       .select({
@@ -105,6 +145,22 @@ export class XboxService {
     return rows.map((row) => this.mapRowToGame(row));
   }
 
+  /**
+   * Returns a single Xbox game from the user's library, or `null` if it
+   * does not exist.
+   *
+   * @param userId - Internal user identifier.
+   * @param gameId - UUID of the game to retrieve.
+   * @returns The matching {@link Game}, or `null` when no row is found.
+   *
+   * @example
+   * ```ts
+   * const game = await xboxService.getUserGame("abc-123", "game-uuid");
+   * if (game) {
+   *   console.log(game.title);
+   * }
+   * ```
+   */
   async getUserGame(userId: string, gameId: string): Promise<Game | null> {
     const [row] = await this.db
       .select({
@@ -133,10 +189,25 @@ export class XboxService {
     return this.mapRowToGame(row);
   }
 
-  // -------------------------------------------------------------------------
-  // SYNC — Profile
-  // -------------------------------------------------------------------------
-
+  /**
+   * Fetches the Xbox player profile and upserts both the local user record
+   * and the linked Xbox account inside a single transaction.
+   *
+   * @param localUserId - Internal user identifier to link the Xbox account
+   *   to.
+   * @param xuid - The Xbox User ID (XUID) to look up.
+   * @returns The Xbox profile data that was persisted.
+   * @throws {Error} If no Xbox profile is found for the given `xuid`.
+   *
+   * @example
+   * ```ts
+   * const profile = await xboxService.syncUserProfile(
+   *   "user-uuid",
+   *   "2535428556301458",
+   * );
+   * console.log(profile.gamertag);
+   * ```
+   */
   async syncUserProfile(localUserId: string, xuid: string) {
     const xboxData = await this.provider.getPlayerProfile(xuid);
 
@@ -167,10 +238,37 @@ export class XboxService {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // SYNC — Games
-  // -------------------------------------------------------------------------
-
+  /**
+   * Fetches the user's full owned-games list from Xbox, deduplicates by
+   * display name (keeping the most recently played variant when multiple
+   * title-IDs share a name), and upserts the shared game catalog, Xbox
+   * title-ID mappings, and per-user ownership rows inside a single
+   * transaction.
+   *
+   * @remarks
+   * Xbox can return multiple title-IDs for the same display name (e.g.
+   * Xbox One and Series X|S variants). This method collapses them by
+   * keeping whichever was played more recently.
+   *
+   * The shared `games` table is keyed on `(title, platform)`, so two
+   * genuinely different games sharing an exact title will shadow each
+   * other. Per-user state (play time, last played, completion, status) is
+   * written exclusively to `userGames`.
+   *
+   * @param localUserId - Internal user identifier whose library to sync.
+   * @param xuid - The Xbox User ID to fetch games for.
+   * @returns Array of upserted {@link userGames} rows. An empty array is
+   *   returned when the Xbox API returns no titles.
+   *
+   * @example
+   * ```ts
+   * const synced = await xboxService.syncUserGames(
+   *   "abc-123",
+   *   "2535428556301458",
+   * );
+   * console.log(`Synced ${synced.length} games`);
+   * ```
+   */
   async syncUserGames(localUserId: string, xuid: string) {
     const titleList = await this.provider.getOwnedGames(xuid);
     if (!titleList.length) return [];
@@ -183,12 +281,6 @@ export class XboxService {
       playtimeMinutes: playtimeMap.get(t.titleId) ?? 0,
     }));
 
-    // Xbox can return multiple titleIds sharing the same display name
-    // (e.g. an Xbox One and a Series X|S version of the same game) — this
-    // collapses those to one, keeping whichever was played more recently.
-    // Same underlying title-collision caveat as Steam still applies below
-    // for two genuinely different games that happen to share an exact
-    // title string; this dedup step only handles Xbox's specific case.
     const deduplicatedTitles = Array.from(
       titlesWithPlaytime
         .reduce((map, title) => {
@@ -208,7 +300,6 @@ export class XboxService {
     );
 
     return await this.db.transaction(async (tx) => {
-      // 1. Upsert the shared catalog — title/platform/cover art only.
       const catalogRows = await tx
         .insert(games)
         .values(
@@ -245,7 +336,6 @@ export class XboxService {
           .onConflictDoNothing();
       }
 
-      // 3. Upsert this user's ownership + personal state.
       const userGameValues = deduplicatedTitles
         .map((g) => {
           const gameId = titleToGameId.get(g.name);
@@ -289,10 +379,26 @@ export class XboxService {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // SYNC — Achievements (batched, fire-and-forget safe)
-  // -------------------------------------------------------------------------
-
+  /**
+   * Syncs achievements for multiple games in batches, respecting Xbox API
+   * rate limits.
+   *
+   * Each batch contains up to {@link BATCH_SIZE} games and is followed by a
+   * {@link DELAY_MS} millisecond pause before the next batch. Individual
+   * failures are logged and skipped — the remaining games continue syncing.
+   *
+   * @param localUserId - Internal user identifier.
+   * @param gameIds - Array of game UUIDs to sync achievements for.
+   *
+   * @example
+   * ```ts
+   * await xboxService.syncAllGameAchievements("user-uuid", [
+   *   "game-1",
+   *   "game-2",
+   *   "game-3",
+   * ]);
+   * ```
+   */
   async syncAllGameAchievements(localUserId: string, gameIds: string[]) {
     for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
       const batch = gameIds.slice(i, i + BATCH_SIZE);
@@ -314,11 +420,38 @@ export class XboxService {
     }
   }
 
+  /**
+   * Syncs the full achievement list for a single game, scoped to the
+   * requesting user's ownership.
+   *
+   * @remarks
+   * The query joins through `userGames` to verify ownership before calling
+   * the Xbox API. If the user does not own the game, a
+   * {@link XboxGameNotFoundError} is thrown.
+   *
+   * When the Xbox API reports zero achievements for a game the game is
+   * removed from the shared catalog via {@link deleteGameAndRelations}.
+   *
+   * After syncing, the user's `completionPercentage` and derived `status`
+   * are recalculated and persisted.
+   *
+   * @param localUserId - Internal user identifier.
+   * @param gameId - UUID of the game to sync.
+   * @returns Array of upserted achievement rows. An empty array is returned
+   *   when the Xbox API reports an error or zero achievements.
+   * @throws {XboxGameNotFoundError} When the user does not own the given
+   *   game or the game has no Xbox mapping.
+   *
+   * @example
+   * ```ts
+   * const achievements = await xboxService.syncGameAchievements(
+   *   "user-uuid",
+   *   "game-uuid",
+   * );
+   * console.log(`Synced ${achievements.length} achievements`);
+   * ```
+   */
   async syncGameAchievements(localUserId: string, gameId: string) {
-    // Real ownership check: only resolves when a userGames row ties this
-    // exact user to this exact game. The old version joined xboxAccounts
-    // by userId alone with no tie back to the game, so it resolved for
-    // any authenticated user asking about any game in the shared catalog.
     const [row] = await this.db
       .select({
         titleId: xboxGames.titleId,
@@ -349,10 +482,6 @@ export class XboxService {
       console.debug(
         `[XboxService] Game ${gameId} (title ${row.titleId}) has zero achievements — removing from library`,
       );
-      // Removes the game from the shared catalog for every owner, not just
-      // localUserId — pre-existing behavior, unchanged by this pass. Same
-      // open question as Steam: needs deleteGameAndRelations confirmed to
-      // also clean up userGames (or rely on the new FK cascade).
       await deleteGameAndRelations(this.db, gameId);
       return [];
     }
@@ -428,8 +557,6 @@ export class XboxService {
       const completionPercentage =
         totalCount > 0 ? (achievedCount / totalCount) * 100 : 0;
 
-      // Read this user's own playtime/lastPlayedAt from userGames, not the
-      // shared games row.
       const [userGameRow] = await tx
         .select({
           playTime: userGames.playTime,
@@ -459,10 +586,37 @@ export class XboxService {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // READ — Achievements (with lazy sync on first access)
-  // -------------------------------------------------------------------------
-
+  /**
+   * Returns paginated, filterable, sortable achievements for a single game.
+   *
+   * If the user has no cached achievements for this game, a lazy sync is
+   * triggered via {@link XboxService.syncGameAchievements} before the
+   * query executes.
+   *
+   * @param userId - Internal user identifier.
+   * @param gameId - UUID of the game whose achievements to retrieve.
+   * @param options - Query controls.
+   * @param options.filter - `'all'` | `'unlocked'` | `'locked'`. Defaults
+   *   to `'all'`.
+   * @param options.sort - `'rarity'` | `'unlock-date'` | `'name'`. Defaults
+   *   to `'rarity'`.
+   * @param options.limit - Maximum rows returned. Defaults to `50`.
+   * @param options.offset - Row offset for pagination. Defaults to `0`.
+   * @returns An object containing the `data` array of {@link Achievement}
+   *   objects, the `total` count, and the `unlocked` count.
+   * @throws {XboxGameNotFoundError} When the user does not own the game
+   *   and the lazy-sync path fails.
+   *
+   * @example
+   * ```ts
+   * const { data, total, unlocked } = await xboxService.getGameAchievements(
+   *   "user-uuid",
+   *   "game-uuid",
+   *   { filter: "unlocked", sort: "rarity", limit: 10 },
+   * );
+   * console.log(`${unlocked}/${total} unlocked`);
+   * ```
+   */
   async getGameAchievements(
     userId: string,
     gameId: string,
@@ -475,8 +629,6 @@ export class XboxService {
   ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
     const { filter = "all", sort = "rarity", limit = 50, offset = 0 } = options;
 
-    // Correlated subquery replaced with a direct join to xboxGames,
-    // scoped by gameId — same fix as Steam's equivalent method.
     const [existing] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(xboxUserAchievements)
@@ -493,9 +645,6 @@ export class XboxService {
       );
 
     if (!existing || existing.count === 0) {
-      // If this user doesn't own gameId, this throws XboxGameNotFoundError
-      // and propagates out — achievements for an unowned game are never
-      // returned.
       await this.syncGameAchievements(userId, gameId);
     }
 
@@ -545,11 +694,6 @@ export class XboxService {
         .limit(limit)
         .offset(offset),
 
-      // Was missing the xboxGames join entirely — filterConditions
-      // referencing xboxGames.gameId would have silently thrown or
-      // resolved against the wrong table without it, since the old
-      // per-query subquery didn't need a join but this shared
-      // filterConditions object now does.
       this.db
         .select({
           total: sql<number>`count(*)::int`,
