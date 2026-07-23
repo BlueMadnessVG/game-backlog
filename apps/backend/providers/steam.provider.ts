@@ -13,19 +13,54 @@ import {
   ProviderUnavailableError,
 } from "../lib/provider-error.utils";
 
+/**
+ * Low-level wrapper around the Steam Web API, handling authentication,
+ * player lookups, game-library fetches, achievement retrieval, and schema
+ * resolution.
+ *
+ * @remarks
+ * All authenticated endpoints are accessed via {@link SteamProvider.buildUrl}
+ * which injects the API key automatically. Unauthenticated endpoints
+ * (e.g. global achievement percentages) construct their own URLs.
+ *
+ * @example
+ * ```ts
+ * const steam = new SteamProvider("steam-api-key");
+ * const player = await steam.getPlayerSummary("76561198012345678");
+ * ```
+ */
 export class SteamProvider {
   private readonly apiKey: string;
   private readonly baseUrl = "https://api.steampowered.com";
 
+  /**
+   * Creates a new Steam provider.
+   *
+   * @param apiKey - Steam Web API key.
+   * @throws {Error} When `apiKey` is falsy.
+   *
+   * @example
+   * ```ts
+   * const steam = new SteamProvider(process.env.STEAM_API_KEY!);
+   * ```
+   */
   constructor(apiKey: string) {
     if (!apiKey) throw new Error("STEAM_API_KEY is missing");
     this.apiKey = apiKey;
   }
 
-  // ── Shared request helpers ─────────────────────────────────────────────
-
-  // Every authenticated Steam endpoint needs the same `key` param —
-  // centralizing it here means a new method can't forget to add it.
+  /**
+   * Builds a fully-qualified URL for an authenticated Steam API endpoint.
+   *
+   * @remarks
+   * The API key is injected as the `key` query parameter automatically.
+   * All authenticated methods should use this helper rather than
+   * constructing URLs manually.
+   *
+   * @param path - API path (e.g. `/ISteamUser/GetPlayerSummaries/v0002/`).
+   * @param params - Additional query parameters.
+   * @returns A `URL` instance ready for fetching.
+   */
   private buildUrl(path: string, params: Record<string, string>): URL {
     const url = new URL(`${this.baseUrl}${path}`);
     url.searchParams.set("key", this.apiKey);
@@ -35,11 +70,27 @@ export class SteamProvider {
     return url;
   }
 
-  // Centralizes status handling so every method fails the same way for the
-  // same conditions, instead of each one hand-rolling its own checks.
-  // `toleratedStatuses` lets a caller mark specific codes as "expected,
-  // return null" rather than a real failure — e.g. Steam's 400/500 for
-  // private profiles or games with no stats page.
+  /**
+   * Fetches JSON from a URL with standardised error handling.
+   *
+   * @remarks
+   * Status codes are classified as follows:
+   * - `401` / `403` → {@link ProviderAuthError}
+   * - `429` → {@link ProviderRateLimitError}
+   * - Codes in `toleratedStatuses` → returns `null` (expected, non-fatal)
+   * - Other non-2xx → {@link ProviderUnavailableError}
+   *
+   * @param url - The URL to fetch.
+   * @param options - Optional configuration.
+   * @param options.toleratedStatuses - HTTP status codes that should be
+   *   treated as "no data" rather than failures (e.g. Steam returns `400`
+   *   for games with no stats page).
+   * @returns Parsed JSON response, or `null` when a tolerated status is
+   *   encountered.
+   * @throws {ProviderAuthError} On 401/403 responses.
+   * @throws {ProviderRateLimitError} On 429 responses.
+   * @throws {ProviderUnavailableError} On other non-2xx responses.
+   */
   private async fetchJson(
     url: URL,
     options: { toleratedStatuses?: number[] } = {},
@@ -65,9 +116,19 @@ export class SteamProvider {
     return response.json();
   }
 
-  // For endpoints where a failure shouldn't be fatal to the caller (global
-  // achievement percentages are a nice-to-have, not required data) — logs
-  // and returns null instead of throwing, no matter what went wrong.
+  /**
+   * A non-throwing variant of {@link SteamProvider.fetchJson} for
+   * endpoints where failure is non-fatal.
+   *
+   * @remarks
+   * Any error (network, auth, schema) is logged and `null` is returned.
+   * Use this for nice-to-have data (e.g. global achievement percentages)
+   * rather than required data.
+   *
+   * @param url - The URL to fetch.
+   * @param context - Descriptive label included in the warning message.
+   * @returns Parsed JSON response, or `null` when any error occurs.
+   */
   private async safeFetchJson(url: URL, context: string): Promise<unknown> {
     try {
       return await this.fetchJson(url);
@@ -80,8 +141,24 @@ export class SteamProvider {
     }
   }
 
-  // ── Public API ────────────────────────────────────────────────────────
-
+  /**
+   * Fetches a Steam player's public profile summary.
+   *
+   * @param steamId - The 64-bit Steam ID to look up.
+   * @returns Profile data, or `null` when no player is found.
+   * @throws {ProviderAuthError} On 401/403 responses.
+   * @throws {ProviderRateLimitError} On 429 responses.
+   * @throws {ProviderUnavailableError} When the response does not match
+   *   the expected schema.
+   *
+   * @example
+   * ```ts
+   * const player = await steam.getPlayerSummary("76561198012345678");
+   * if (player) {
+   *   console.log(player.displayName);
+   * }
+   * ```
+   */
   async getPlayerSummary(steamId: string) {
     const url = this.buildUrl("/ISteamUser/GetPlayerSummaries/v0002/", {
       steamids: steamId,
@@ -112,6 +189,29 @@ export class SteamProvider {
     };
   }
 
+  /**
+   * Fetches a player's full owned-games library.
+   *
+   * @remarks
+   * Games are filtered to only those with `has_community_visible_stats`,
+   * which is Steam's signal for "this game has a stats/achievements
+   * page." This is a cheap first-pass filter — the definitive check
+   * still happens per-game via {@link SteamProvider.getGameSchema}.
+   *
+   * @param steamId - The 64-bit Steam ID to fetch games for.
+   * @returns Array of owned game objects with URLs constructed for icon,
+   *   cover, and play-time metadata.
+   * @throws {ProviderAuthError} On 401/403 responses.
+   * @throws {ProviderRateLimitError} On 429 responses.
+   * @throws {ProviderUnavailableError} When the response does not match
+   *   the expected schema.
+   *
+   * @example
+   * ```ts
+   * const games = await steam.getOwnedGames("76561198012345678");
+   * console.log(`${games.length} games with visible stats`);
+   * ```
+   */
   async getOwnedGames(steamId: string) {
     const url = this.buildUrl("/IPlayerService/GetOwnedGames/v0001/", {
       steamid: steamId,
@@ -136,12 +236,6 @@ export class SteamProvider {
 
     const games = result.output.response.games ?? [];
 
-    // has_community_visible_stats is Steam's own signal for "this game has
-    // a stats/achievements page." It's not 100% authoritative — some games
-    // omit it even with real achievements — so this is a cheap first-pass
-    // filter, not the final word. The definitive check still has to happen
-    // per-game via getGameSchema(), since that's the only place Steam
-    // actually enumerates achievement definitions.
     const withStats = games.filter((g) => g.has_community_visible_stats);
 
     console.debug(
@@ -162,6 +256,19 @@ export class SteamProvider {
     }));
   }
 
+  /**
+   * Fetches a map of recently-played games and their last-played timestamps.
+   *
+   * @param steamId - The 64-bit Steam ID to fetch recent activity for.
+   * @returns A `Map` from app ID (as string) to last-played `Date`. An
+   *   empty map is returned when the API fails or returns no data.
+   *
+   * @example
+   * ```ts
+   * const recent = await steam.getRecentlyPlayedGames("76561198012345678");
+   * recent.forEach((date, appId) => console.log(`${appId}: ${date}`));
+   * ```
+   */
   async getRecentlyPlayedGames(steamId: string): Promise<Map<string, Date>> {
     const url = this.buildUrl("/IPlayerService/GetRecentlyPlayedGames/v0001/", {
       steamid: steamId,
@@ -189,6 +296,34 @@ export class SteamProvider {
     );
   }
 
+  /**
+   * Fetches a player's achievement progress for a single game.
+   *
+   * @remarks
+   * Steam returns `400` for games with no stats/achievements schema, and
+   * `500` for private profiles or profiles that have never launched the
+   * game. Both are treated as tolerated (non-fatal) statuses.
+   *
+   * @param steamId - The 64-bit Steam ID of the player.
+   * @param appId - The Steam application ID to fetch achievements for.
+   * @returns Array of achievement objects, or `null` when the game has no
+   *   stats page or the profile is private.
+   * @throws {ProviderAuthError} On 401/403 responses.
+   * @throws {ProviderRateLimitError} On 429 responses.
+   * @throws {ProviderUnavailableError} On other non-2xx responses that are
+   *   not tolerated.
+   *
+   * @example
+   * ```ts
+   * const achievements = await steam.getPlayerAchievements(
+   *   "76561198012345678",
+   *   "730",
+   * );
+   * if (achievements) {
+   *   console.log(`${achievements.length} achievements`);
+   * }
+   * ```
+   */
   async getPlayerAchievements(steamId: string, appId: string) {
     const url = this.buildUrl("/ISteamUserStats/GetPlayerAchievements/v0001/", {
       steamid: steamId,
@@ -196,9 +331,6 @@ export class SteamProvider {
       l: "english",
     });
 
-    // Steam returns 400 for games with no stats/achievements schema, and
-    // 500 for private profiles or profiles that have never launched the
-    // game. Both are routine "nothing to report" cases, not failures.
     const rawData = await this.fetchJson(url, {
       toleratedStatuses: [400, 500],
     });
@@ -225,6 +357,34 @@ export class SteamProvider {
     }));
   }
 
+  /**
+   * Fetches achievement definitions and global unlock percentages for a
+   * single game, merged into a single map.
+   *
+   * @remarks
+   * Two endpoints are called in parallel:
+   * - **Schema** (`/GetSchemaForGame/v2/`) — authenticated, returns
+   *   achievement names, icons, and hidden flags.
+   * - **Global percentages** (`/GetGlobalAchievementPercentagesForApp/v2/`)
+   *   — unauthenticated, returns per-achievement unlock rates.
+   *
+   * Both use {@link SteamProvider.safeFetchJson} so a failure in either
+   * is non-fatal; the missing data is simply omitted from the result.
+   *
+   * @param appId - The Steam application ID to resolve.
+   * @returns A `Map` from API name to an object containing `displayName`,
+   *   `description`, `hidden`, `iconUrl`, `iconGrayUrl`, and
+   *   `globalPercentage`. An empty map is returned when no definitions are
+   *   found.
+   *
+   * @example
+   * ```ts
+   * const schema = await steam.getGameSchema("730");
+   * schema.forEach((meta, apiName) => {
+   *   console.log(`${apiName}: ${meta.displayName} (${meta.globalPercentage}%)`);
+   * });
+   * ```
+   */
   async getGameSchema(appId: string) {
     const [schemaData, globalData] = await Promise.all([
       this.safeFetchJson(
@@ -234,8 +394,6 @@ export class SteamProvider {
         }),
         "getGameSchema:schema",
       ),
-      // No `key` param — this endpoint is unauthenticated, so it bypasses
-      // buildUrl rather than forcing an unused param onto it.
       this.safeFetchJson(
         new URL(
           `${this.baseUrl}/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/?gameid=${appId}`,

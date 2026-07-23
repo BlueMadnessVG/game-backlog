@@ -24,19 +24,47 @@ type GameTrophiesResult =
   | { status: "empty" }
   | { status: "error" };
 
+/**
+ * Low-level wrapper around the `psn-api` SDK, handling authentication,
+ * profile lookups, game-library fetches, and trophy retrieval.
+ *
+ * @remarks
+ * Error handling is best-effort: the `psn-api` SDK does not document a
+ * stable error shape, so {@link PsnProvider.classifyError} inspects
+ * numeric status codes and message patterns before falling back to
+ * {@link ProviderUnavailableError}.
+ *
+ * All methods that accept an `accessToken` expect a valid, non-expired
+ * PSN access token. Token management is handled by the caller
+ * ({@link PsnService}).
+ *
+ * @example
+ * ```ts
+ * const psn = new PsnProvider();
+ * const tokens = await psn.exchangeNpsso("npsso-value");
+ * const profile = await psn.getProfile(tokens.accessToken, "MyPsnId");
+ * ```
+ */
 export class PsnProvider {
-  // ── Shared helpers ────────────────────────────────────────────────────
-
   private buildAuth(accessToken: string) {
     return { accessToken };
   }
 
-  // psn-api doesn't document a stable error shape, so this classification
-  // is best-effort: it looks for common signals (a numeric status/
-  // statusCode property, or a rate-limit-flavored message) and falls back
-  // to a generic unavailable error otherwise. Treat this as a starting
-  // point — worth tightening once we've seen what psn-api actually throws
-  // in production rather than what its types suggest it might.
+  /**
+   * Classifies an unknown error into a typed provider error.
+   *
+   * @remarks
+   * The `psn-api` SDK does not document a stable error shape. This method
+   * looks for common signals (numeric `status`/`statusCode` property, or a
+   * rate-limit-flavoured message) and falls back to
+   * {@link ProviderUnavailableError}.
+   *
+   * @param error - The caught value to classify.
+   * @param fallbackMessage - Message used when the error cannot be
+   *   specifically classified.
+   * @returns A {@link ProviderAuthError}, {@link ProviderRateLimitError},
+   *   or {@link ProviderUnavailableError}.
+   */
   private static classifyError(error: unknown, fallbackMessage: string): Error {
     const cause = error instanceof Error ? error : undefined;
     const status =
@@ -61,8 +89,15 @@ export class PsnProvider {
     });
   }
 
-  // Guards against an unparseable date string becoming an Invalid Date that
-  // only fails much later, wherever something calls .toISOString() on it.
+  /**
+   * Safely parses a date string, returning `null` and logging a warning
+   * when the value cannot be parsed.
+   *
+   * @param value - Raw date string from the PSN API.
+   * @param context - Descriptive label included in the warning message.
+   * @returns A `Date` instance, or `null` when the input is missing or
+   *   unparseable.
+   */
   private parseDateSafe(
     value: string | null | undefined,
     context: string,
@@ -78,8 +113,16 @@ export class PsnProvider {
     return parsed;
   }
 
-  // PSN's trophyEarnedRate arrives as a string (e.g. "45.3"). Guards
-  // against a malformed value silently becoming NaN and flowing into the DB.
+  /**
+   * Safely parses a trophy-earned-rate value (which arrives as a string
+   * from the PSN API) into a number.
+   *
+   * @param rawRate - Raw value from the PSN API (typically a string like
+   *   `"45.3"`).
+   * @param context - Descriptive label included in the warning message.
+   * @returns A parsed number, or `null` when the input is missing or
+   *   unparseable.
+   */
   private parseTrophyEarnedRate(
     rawRate: unknown,
     context: string,
@@ -95,6 +138,9 @@ export class PsnProvider {
     return parsed;
   }
 
+  /**
+   * Valid PSN trophy type values.
+   */
   private static readonly TROPHY_TYPES = new Set([
     "bronze",
     "silver",
@@ -102,11 +148,18 @@ export class PsnProvider {
     "platinum",
   ]);
 
-  // Was previously a blind `as` cast on an unvalidated string from psn-api.
-  // Validates against the known set instead — an unexpected value gets
-  // logged loudly and defaulted rather than silently mistyped. Defaulting
-  // to "bronze" (rather than dropping the trophy) is a deliberate choice:
-  // showing a real trophy with a possibly-wrong tier beats hiding it.
+  /**
+   * Validates and narraws a raw trophy-type string to the known set.
+   *
+   * @remarks
+   * Unexpected values are logged and default to `"bronze"` rather than
+   * being silently mistyped or dropped — showing a real trophy with a
+   * possibly-wrong tier is preferred over hiding it.
+   *
+   * @param raw - Raw `trophyType` string from the PSN API.
+   * @param context - Descriptive label included in the error log.
+   * @returns One of `"bronze"`, `"silver"`, `"gold"`, or `"platinum"`.
+   */
   private parseTrophyType(
     raw: string,
     context: string,
@@ -120,8 +173,20 @@ export class PsnProvider {
     return "bronze";
   }
 
-  // ── Auth ──────────────────────────────────────────────────────────────
-
+  /**
+   * Exchanges a raw NPSSO cookie value for a full set of PSN auth tokens.
+   *
+   * @param npsso - The NPSSO cookie obtained from the PSN sign-in flow.
+   * @returns A {@link PsnAuthTokens} object containing the access token,
+   *   refresh token, and expiry timestamp.
+   * @throws {ProviderAuthError} When the NPSSO is invalid or expired.
+   *
+   * @example
+   * ```ts
+   * const tokens = await psn.exchangeNpsso("npsso-value");
+   * console.log(tokens.accessToken);
+   * ```
+   */
   async exchangeNpsso(npsso: string): Promise<PsnAuthTokens> {
     try {
       const accessCode = await exchangeNpssoForAccessCode(npsso);
@@ -134,9 +199,6 @@ export class PsnProvider {
       };
     } catch (error) {
       console.error("[PsnProvider][exchangeNpsso] Failed:", error);
-      // Always an auth failure by construction (this call only ever fails
-      // because the NPSSO is bad/expired), so no need to classify — but
-      // the original error is preserved as `cause` for debugging.
       throw new ProviderAuthError(
         "PsnProvider",
         "Failed to exchange NPSSO for PSN tokens — is the NPSSO valid?",
@@ -145,6 +207,22 @@ export class PsnProvider {
     }
   }
 
+  /**
+   * Refreshes an expired PSN access token using a previously issued
+   * refresh token.
+   *
+   * @param refreshToken - The refresh token from a prior
+   *   {@link PsnProvider.exchangeNpsso} or
+   *   {@link PsnProvider.refreshTokens} call.
+   * @returns A fresh {@link PsnAuthTokens} object.
+   * @throws {ProviderAuthError} When the refresh token is expired or
+   *   invalid, requiring the user to re-authenticate via NPSSO.
+   *
+   * @example
+   * ```ts
+   * const fresh = await psn.refreshTokens(oldRefreshToken);
+   * ```
+   */
   async refreshTokens(refreshToken: string): Promise<PsnAuthTokens> {
     try {
       const auth = await exchangeRefreshTokenForAuthTokens(refreshToken);
@@ -164,15 +242,31 @@ export class PsnProvider {
     }
   }
 
-  // ── Profile ───────────────────────────────────────────────────────────
-
-  // Return type deliberately excludes `tokens` — this call has no real
-  // refresh token to hand back, and the previous version filled it with
-  // placeholder values ("", 0) that were indistinguishable from real data
-  // to anyone reading PsnProfile. Callers that need the full profile+tokens
-  // shape (see PsnService.syncUserProfile) already merge in the real tokens
-  // from exchangeNpsso separately — this just makes that contract explicit
-  // in the type instead of implicit in call-site ordering.
+  /**
+   * Fetches a PSN profile by online ID.
+   *
+   * @remarks
+   * The return type deliberately excludes `tokens` — this call has no
+   * refresh token to hand back. Callers that need the full profile+tokens
+   * shape (e.g. {@link PsnService.syncUserProfile}) merge the real tokens
+   * from {@link PsnProvider.exchangeNpsso} separately.
+   *
+   * @param accessToken - A valid PSN access token.
+   * @param onlineId - The PSN online ID (gamertag) to look up.
+   * @returns The profile data without tokens, or `null` when no profile is
+   *   found.
+   * @throws {ProviderAuthError} On 401/403 responses.
+   * @throws {ProviderRateLimitError} On 429 responses.
+   * @throws {ProviderUnavailableError} On other API failures.
+   *
+   * @example
+   * ```ts
+   * const profile = await psn.getProfile(accessToken, "MyPsnId");
+   * if (profile) {
+   *   console.log(profile.accountId);
+   * }
+   * ```
+   */
   async getProfile(
     accessToken: string,
     onlineId: string,
@@ -196,8 +290,27 @@ export class PsnProvider {
     }
   }
 
-  // ── Games (Trophy Titles) ─────────────────────────────────────────────
-
+  /**
+   * Fetches the authenticated user's full list of owned trophy titles.
+   *
+   * @remarks
+   * Titles with zero defined trophies are filtered out. The method
+   * requests up to 800 titles in a single call, which is sufficient for
+   * the vast majority of PSN accounts.
+   *
+   * @param accessToken - A valid PSN access token.
+   * @returns Array of {@link PsnTitle} objects for all owned titles that
+   *   have at least one defined trophy.
+   * @throws {ProviderAuthError} On 401/403 responses.
+   * @throws {ProviderRateLimitError} On 429 responses.
+   * @throws {ProviderUnavailableError} On other API failures.
+   *
+   * @example
+   * ```ts
+   * const titles = await psn.getOwnedGames(accessToken);
+   * console.log(`Found ${titles.length} titles with trophies`);
+   * ```
+   */
   async getOwnedGames(accessToken: string): Promise<PsnTitle[]> {
     const auth = this.buildAuth(accessToken);
 
@@ -258,8 +371,40 @@ export class PsnProvider {
     }
   }
 
-  // ── Trophies ──────────────────────────────────────────────────────────
-
+  /**
+   * Fetches the full trophy list for a single game, merged with the
+   * authenticated user's earned status.
+   *
+   * @remarks
+   * Trophy metadata and user-earned data are fetched in parallel via
+   * {@link getTitleTrophies} and {@link getUserTrophiesEarnedForTitle}.
+   * Raw values are validated through {@link PsnProvider.parseTrophyType},
+   * {@link PsnProvider.parseTrophyEarnedRate}, and
+   * {@link PsnProvider.parseDateSafe} to prevent malformed API data from
+   * reaching the database.
+   *
+   * @param accessToken - A valid PSN access token.
+   * @param npCommunicationId - The PSN communication ID identifying the
+   *   game's trophy set.
+   * @param npServiceName - `"trophy"` for PS3/Vita titles or `"trophy2"`
+   *   for PS4/PS5 titles.
+   * @returns A {@link GameTrophiesResult} discriminated union:
+   *   - `{ status: "ok", trophies }` — trophies found and returned.
+   *   - `{ status: "empty" }` — game has zero defined trophies.
+   *   - `{ status: "error" }` — API call failed (error already logged).
+   *
+   * @example
+   * ```ts
+   * const result = await psn.getGameTrophies(
+   *   accessToken,
+   *   "NPWR24757_00",
+   *   "trophy2",
+   * );
+   * if (result.status === "ok") {
+   *   console.log(`${result.trophies.length} trophies`);
+   * }
+   * ```
+   */
   async getGameTrophies(
     accessToken: string,
     npCommunicationId: string,

@@ -9,6 +9,27 @@ const MIN_MATCH_SCORE = 0.5;
 const TIE_EPSILON = 0.05;
 const PARENT_LINK_PENALTY = 0.15;
 
+/**
+ * Provider for IGDB cover-art lookups, authenticated via the Twitch OAuth2
+ * client-credentials flow.
+ *
+ * @remarks
+ * Each instance caches the Twitch access token in memory and refreshes it
+ * automatically when within five minutes of expiry. No persistent storage
+ * is used — constructing a new instance resets the cache.
+ *
+ * The search algorithm scores candidates by word-level overlap, penalises
+ * DLC / expansions via {@link IgdbProvider.EXCLUDED_CATEGORIES}, applies a
+ * small penalty for games with `parent_game` or `version_parent` links,
+ * and breaks ties by popularity then release date.
+ *
+ * @example
+ * ```ts
+ * const igdb = new IgdbProvider("client-id", "client-secret");
+ * const coverUrl = await igdb.searchGameCover("Elden Ring");
+ * // → "https://images.igdb.com/igdb/image/upload/t_cover_big/…"
+ * ```
+ */
 export class IgdbProvider {
   private readonly clientId: string;
   private readonly clientSecret: string;
@@ -17,6 +38,21 @@ export class IgdbProvider {
 
   private cachedToken: { accessToken: string; expiresAt: number } | null = null;
 
+  /**
+   * Creates a new IGDB provider.
+   *
+   * @param clientId - Twitch application client ID.
+   * @param clientSecret - Twitch application client secret.
+   * @throws {Error} When either `clientId` or `clientSecret` is falsy.
+   *
+   * @example
+   * ```ts
+   * const igdb = new IgdbProvider(
+   *   process.env.IGDB_CLIENT_ID!,
+   *   process.env.IGDB_CLIENT_SECRET!,
+   * );
+   * ```
+   */
   constructor(clientId: string, clientSecret: string) {
     if (!clientId || !clientSecret) {
       throw new Error("IGDB_CLIENT_ID / IGDB_CLIENT_SECRET is missing");
@@ -70,6 +106,19 @@ export class IgdbProvider {
     };
   }
 
+  /**
+   * Strips trademark symbols, smart quotes, platform suffixes, and common
+   * edition labels from a raw game title to improve search accuracy.
+   *
+   * @param title - The raw game title to clean.
+   * @returns The normalised title string.
+   *
+   * @example
+   * ```ts
+   * cleanTitle("The Witcher 3: Wild Hunt – Game of the Year Edition")
+   * // → "The Witcher 3: Wild Hunt"
+   * ```
+   */
   private cleanTitle(title: string): string {
     return title
       .replace(/[™®©]/g, "")
@@ -90,6 +139,11 @@ export class IgdbProvider {
     return str.toLowerCase().trim().replace(/\s+/g, " ");
   }
 
+  /**
+   * Computes a word-overlap similarity score between two title strings.
+   *
+   * @returns A value between `0` (no shared words) and `1` (exact match).
+   */
   private nameSimilarity(searchTitle: string, returnedName: string): number {
     const a = this.normalize(searchTitle);
     const b = this.normalize(returnedName);
@@ -108,6 +162,11 @@ export class IgdbProvider {
     return common / smaller;
   }
 
+  /**
+   * IGDB category IDs that represent non-base-game entries (DLC, expansions,
+   * bundles, mods, etc.). Candidates whose `category` is in this set are
+   * excluded from cover-art ranking.
+   */
   private static readonly EXCLUDED_CATEGORIES = new Set<number>([
     1, 2, 3, 5, 6, 7, 13,
   ]);
@@ -122,6 +181,34 @@ export class IgdbProvider {
       : 0;
   }
 
+  /**
+   * Searches IGDB for the best cover-art match of the given game title.
+   *
+   * @remarks
+   * The search pipeline:
+   * 1. Cleans the title (strips editions, trademarks, platform suffixes).
+   * 2. Queries the IGDB `/games` search endpoint (up to 10 candidates).
+   * 3. Filters out DLC / expansion / bundle categories.
+   * 4. Scores remaining candidates by word-overlap similarity minus a
+   *    small penalty for `parent_game` / `version_parent` links.
+   * 5. Requires a minimum score of {@link MIN_MATCH_SCORE}.
+   * 6. Breaks ties by total rating count, then earliest release date.
+   * 7. Warns when the top two candidates are ambiguous.
+   *
+   * @param title - The game title to search for.
+   * @returns The full IGDB cover-art URL, or `null` when no suitable match
+   *   is found, the API returns an error, or the best candidate has no
+   *   cover image.
+   *
+   * @example
+   * ```ts
+   * const igdb = new IgdbProvider("id", "secret");
+   * const url = await igdb.searchGameCover("Hollow Knight");
+   * if (url) {
+   *   console.log(url); // https://images.igdb.com/igdb/image/upload/t_cover_big/…
+   * }
+   * ```
+   */
   async searchGameCover(title: string): Promise<string | null> {
     const cleanedTitle = this.cleanTitle(title);
 
