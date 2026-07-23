@@ -6,6 +6,7 @@ import {
   psnTrophies,
   psnUserTrophies,
   games,
+  userGames,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { PsnProvider } from "../../providers/psn.provider";
@@ -22,13 +23,43 @@ import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
 
+export class PsnGameNotFoundError extends Error {
+  constructor(
+    public readonly gameId: string,
+    public readonly userId: string,
+  ) {
+    super(
+      `No PSN game found for game ${gameId} and user ${userId} — the game may not be a PSN title, the user may not own it, or their PSN account isn't linked`,
+    );
+    this.name = "PsnGameNotFoundError";
+  }
+}
+
+type GameRow = {
+  id: string;
+  title: string;
+  platform: string | null;
+  iconUrl: string | null;
+  coverUrl: string | null;
+  bannerUrl: string | null;
+  status: "backlog" | "in-progress" | "completed" | "retired";
+  playTime: number;
+  completionPercentage: number;
+  lastPlayedAt: Date | null;
+  addedAt: Date;
+  updatedAt: Date;
+  npCommunicationId: string;
+};
+
 export class PsnService {
   constructor(
     private readonly db: DbClient,
     private readonly provider: PsnProvider,
   ) {}
 
-  // ── Token management ──────────────────────────────────────────────────────
+  // ── Token management ────────────────────────────────────────────────────
+  // Unaffected by the ownership fix — this is already correctly scoped by
+  // localUserId alone, with no game involved.
 
   private async getValidAccessToken(localUserId: string): Promise<string> {
     const [account] = await this.db
@@ -71,7 +102,25 @@ export class PsnService {
     return newTokens.accessToken;
   }
 
-  // ── READ ──────────────────────────────────────────────────────────────────
+  // ── READ ────────────────────────────────────────────────────────────────
+
+  private mapRowToGame(row: GameRow): Game {
+    return {
+      id: row.id,
+      externalId: row.npCommunicationId,
+      title: row.title,
+      platform: (row.platform ?? "playstation") as Game["platform"],
+      status: row.status,
+      iconUrl: row.iconUrl ?? null,
+      coverUrl: row.coverUrl ?? null,
+      bannerUrl: row.bannerUrl ?? null,
+      playTime: row.playTime,
+      completionPercentage: row.completionPercentage,
+      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
+      addedAt: row.addedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
 
   async getUserGames(localUserId: string): Promise<Game[]> {
     const rows = await this.db
@@ -79,38 +128,24 @@ export class PsnService {
         id: games.id,
         title: games.title,
         platform: games.platform,
-        status: games.status,
         iconUrl: games.iconUrl,
         coverUrl: games.coverUrl,
         bannerUrl: games.bannerUrl,
-        playTime: games.playTime,
-        completionPercentage: games.completionPercentage,
-        lastPlayedAt: games.lastPlayedAt,
-        addedAt: games.createdAt,
-        updatedAt: games.updatedAt,
+        status: userGames.status,
+        playTime: userGames.playTime,
+        completionPercentage: userGames.completionPercentage,
+        lastPlayedAt: userGames.lastPlayedAt,
+        addedAt: userGames.createdAt,
+        updatedAt: userGames.updatedAt,
         npCommunicationId: psnGames.npCommunicationId,
       })
-      .from(games)
-      .innerJoin(psnGames, eq(games.id, psnGames.gameId))
-      .innerJoin(psnAccounts, eq(psnAccounts.userId, localUserId))
-      .where(eq(psnAccounts.userId, localUserId))
-      .orderBy(desc(games.completionPercentage));
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .innerJoin(psnGames, eq(psnGames.gameId, games.id))
+      .where(eq(userGames.userId, localUserId))
+      .orderBy(desc(userGames.completionPercentage));
 
-    return rows.map((row) => ({
-      id: row.id,
-      externalId: row.npCommunicationId,
-      title: row.title,
-      platform: row.platform ?? "playstation",
-      status: row.status ?? "backlog",
-      iconUrl: row.iconUrl ?? null,
-      coverUrl: row.coverUrl ?? null,
-      bannerUrl: row.bannerUrl ?? null,
-      playTime: row.playTime ?? 0,
-      completionPercentage: row.completionPercentage ?? 0,
-      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
-      addedAt: row.addedAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    }));
+    return rows.map((row) => this.mapRowToGame(row));
   }
 
   async getUserGame(localUserId: string, gameId: string): Promise<Game | null> {
@@ -119,43 +154,32 @@ export class PsnService {
         id: games.id,
         title: games.title,
         platform: games.platform,
-        status: games.status,
         iconUrl: games.iconUrl,
         coverUrl: games.coverUrl,
         bannerUrl: games.bannerUrl,
-        playTime: games.playTime,
-        completionPercentage: games.completionPercentage,
-        lastPlayedAt: games.lastPlayedAt,
-        addedAt: games.createdAt,
-        updatedAt: games.updatedAt,
+        status: userGames.status,
+        playTime: userGames.playTime,
+        completionPercentage: userGames.completionPercentage,
+        lastPlayedAt: userGames.lastPlayedAt,
+        addedAt: userGames.createdAt,
+        updatedAt: userGames.updatedAt,
         npCommunicationId: psnGames.npCommunicationId,
       })
-      .from(games)
-      .innerJoin(psnGames, eq(games.id, psnGames.gameId))
-      .innerJoin(psnAccounts, eq(psnAccounts.userId, localUserId))
-      .where(and(eq(psnAccounts.userId, localUserId), eq(games.id, gameId)))
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .innerJoin(psnGames, eq(psnGames.gameId, games.id))
+      .where(
+        and(eq(userGames.userId, localUserId), eq(userGames.gameId, gameId)),
+      )
       .limit(1);
 
     if (!row) return null;
 
-    return {
-      id: row.id,
-      externalId: row.npCommunicationId,
-      title: row.title,
-      platform: row.platform ?? "playstation",
-      status: row.status ?? "backlog",
-      iconUrl: row.iconUrl ?? null,
-      coverUrl: row.coverUrl ?? null,
-      bannerUrl: row.bannerUrl ?? null,
-      playTime: row.playTime ?? 0,
-      completionPercentage: row.completionPercentage ?? 0,
-      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
-      addedAt: row.addedAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
+    return this.mapRowToGame(row);
   }
 
-  // ── SYNC — Profile ────────────────────────────────────────────────────────
+  // ── SYNC — Profile ──────────────────────────────────────────────────────
+  // Unaffected — account-only, no game involved.
 
   async syncUserProfile(localUserId: string, npsso: string, onlineId: string) {
     const tokens = await this.provider.exchangeNpsso(npsso);
@@ -204,23 +228,26 @@ export class PsnService {
     });
   }
 
-  // ── SYNC — Games ──────────────────────────────────────────────────────────
+  // ── SYNC — Games ────────────────────────────────────────────────────────
 
   async syncUserGames(localUserId: string) {
     const accessToken = await this.getValidAccessToken(localUserId);
     const titleList = await this.provider.getOwnedGames(accessToken);
     if (!titleList.length) return [];
 
+    // Deduped by npCommunicationId (PSN's real external id) rather than
+    // title — better than Steam/Xbox's title-based dedup, since this can't
+    // collapse two genuinely different games that happen to share a name.
     const deduplicated = Array.from(
       titleList
         .reduce((map, title) => {
           const existing = map.get(title.npCommunicationId);
           if (!existing) {
             map.set(title.npCommunicationId, title);
-          } else {
-            if (title.completionPercentage > existing.completionPercentage) {
-              map.set(title.npCommunicationId, title);
-            }
+          } else if (
+            title.completionPercentage > existing.completionPercentage
+          ) {
+            map.set(title.npCommunicationId, title);
           }
           return map;
         }, new Map<string, (typeof titleList)[number]>())
@@ -228,35 +255,85 @@ export class PsnService {
     );
 
     return await this.db.transaction(async (tx) => {
-      const inserted = await tx
+      // 1. Upsert the shared catalog — title/platform/icon only.
+      const catalogRows = await tx
         .insert(games)
         .values(
-          deduplicated.map((g) => {
-            const lastPlayedAt = g.lastUpdatedDateTime
-              ? new Date(g.lastUpdatedDateTime)
-              : null;
-
-            return {
-              title: g.name,
-              platform: "playstation" as const,
-              iconUrl: g.iconUrl,
-              playTime: 0,
-              lastPlayedAt,
-              completionPercentage: g.completionPercentage,
-              status: deriveGameStatus({
-                completionPercentage: g.completionPercentage,
-                hasAchievements: true,
-                playTimeMinutes: 0,
-                lastPlayedAt,
-                platinumEarned: g.platinumEarned,
-              }),
-            };
-          }),
+          deduplicated.map((g) => ({
+            title: g.name,
+            platform: "playstation" as const,
+            iconUrl: g.iconUrl,
+          })),
         )
         .onConflictDoUpdate({
           target: [games.title, games.platform],
+          set: { iconUrl: sql`excluded.icon_url` },
+        })
+        .returning();
+
+      // Resolution back to a catalog row is still by title, even though
+      // the input list itself was deduped by npCommunicationId — this is
+      // the same limitation as Steam/Xbox: two different PSN games with an
+      // identical title would still shadow each other at this step.
+      const titleToGameId = new Map(
+        catalogRows.map((row) => [row.title, row.id]),
+      );
+
+      // 2. Map each catalog row to its PSN identifiers.
+      const psnMappingValues = deduplicated
+        .map((g) => {
+          const gameId = titleToGameId.get(g.name);
+          if (!gameId) return null;
+          return {
+            gameId,
+            npCommunicationId: g.npCommunicationId,
+            trophyTitlePlatform: g.trophyTitlePlatform,
+            npServiceName: g.npServiceName,
+          };
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null);
+
+      if (psnMappingValues.length > 0) {
+        await tx
+          .insert(psnGames)
+          .values(psnMappingValues)
+          .onConflictDoNothing();
+      }
+
+      // 3. Upsert this user's ownership + personal state. playTime is
+      //    always 0 here — PSN's API doesn't expose raw playtime, only
+      //    trophy sync recency (lastUpdatedDateTime), so there's nothing
+      //    per-user to report beyond what's already captured below.
+      const userGameValues = deduplicated
+        .map((g) => {
+          const gameId = titleToGameId.get(g.name);
+          if (!gameId) return null;
+          const lastPlayedAt = g.lastUpdatedDateTime
+            ? new Date(g.lastUpdatedDateTime)
+            : null;
+          return {
+            userId: localUserId,
+            gameId,
+            playTime: 0,
+            lastPlayedAt,
+            completionPercentage: g.completionPercentage,
+            status: deriveGameStatus({
+              completionPercentage: g.completionPercentage,
+              hasAchievements: true,
+              playTimeMinutes: 0,
+              lastPlayedAt,
+              platinumEarned: g.platinumEarned,
+            }),
+          };
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null);
+
+      const upsertedUserGames = await tx
+        .insert(userGames)
+        .values(userGameValues)
+        .onConflictDoUpdate({
+          target: [userGames.userId, userGames.gameId],
           set: {
-            iconUrl: sql`excluded.icon_url`,
             lastPlayedAt: sql`excluded.last_played_at`,
             completionPercentage: sql`excluded.completion_percentage`,
             status: sql`excluded.status`,
@@ -264,28 +341,16 @@ export class PsnService {
         })
         .returning();
 
-      const psnToInternalMap = inserted.map((gameRecord) => {
-        const psnGame = deduplicated.find((t) => t.name === gameRecord.title);
-        return {
-          gameId: gameRecord.id,
-          npCommunicationId: psnGame!.npCommunicationId,
-          trophyTitlePlatform: psnGame!.trophyTitlePlatform,
-          npServiceName: psnGame!.npServiceName,
-        };
-      });
-
-      await tx.insert(psnGames).values(psnToInternalMap).onConflictDoNothing();
-
       await tx
         .update(psnAccounts)
         .set({ lastSync: new Date() })
         .where(eq(psnAccounts.userId, localUserId));
 
-      return inserted;
+      return upsertedUserGames;
     });
   }
 
-  // ── SYNC — Trophies ───────────────────────────────────────────────────────
+  // ── SYNC — Trophies ─────────────────────────────────────────────────────
 
   async syncAllGameTrophies(localUserId: string, gameIds: string[]) {
     for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
@@ -309,19 +374,27 @@ export class PsnService {
   }
 
   async syncGameTrophies(localUserId: string, gameId: string) {
+    // Real ownership check. The original version here queried psnGames
+    // alone with no user scoping whatsoever — meaning any authenticated
+    // user could trigger a trophy sync for any PSN game in the shared
+    // catalog using their own credentials, regardless of whether they
+    // owned it. This is the most permissive instance of the bug across
+    // all three platforms — Steam/Xbox at least attempted (incorrectly)
+    // to scope by user; this didn't attempt it at all.
     const [row] = await this.db
       .select({
         npCommunicationId: psnGames.npCommunicationId,
         npServiceName: psnGames.npServiceName,
       })
-      .from(psnGames)
-      .where(eq(psnGames.gameId, gameId))
+      .from(userGames)
+      .innerJoin(psnGames, eq(psnGames.gameId, userGames.gameId))
+      .where(
+        and(eq(userGames.userId, localUserId), eq(userGames.gameId, gameId)),
+      )
       .limit(1);
 
     if (!row) {
-      throw new Error(
-        `No PSN mapping found for game ${gameId} / user ${localUserId}`,
-      );
+      throw new PsnGameNotFoundError(gameId, localUserId);
     }
 
     const accessToken = await this.getValidAccessToken(localUserId);
@@ -333,7 +406,6 @@ export class PsnService {
     );
 
     if (result.status === "error") {
-      // Transient fetch/auth failure — leave the game as-is.
       return [];
     }
 
@@ -341,6 +413,9 @@ export class PsnService {
       console.debug(
         `[PsnService] Game ${gameId} (${row.npCommunicationId}) has zero trophies — removing from library`,
       );
+      // Removes the game from the shared catalog for every owner, not
+      // just localUserId — same open question as Steam/Xbox: needs
+      // deleteGameAndRelations confirmed to also clean up userGames.
       await deleteGameAndRelations(this.db, gameId);
       return [];
     }
@@ -417,33 +492,39 @@ export class PsnService {
         (t) => t.trophyType === "platinum" && t.earned,
       );
 
-      const [gameRow] = await tx
+      // Read this user's own playtime/lastPlayedAt from userGames, not the
+      // shared games row.
+      const [userGameRow] = await tx
         .select({
-          playTime: games.playTime,
-          lastPlayedAt: games.lastPlayedAt,
+          playTime: userGames.playTime,
+          lastPlayedAt: userGames.lastPlayedAt,
         })
-        .from(games)
-        .where(eq(games.id, gameId))
+        .from(userGames)
+        .where(
+          and(eq(userGames.userId, localUserId), eq(userGames.gameId, gameId)),
+        )
         .limit(1);
 
       const refinedStatus = deriveGameStatus({
         completionPercentage,
         hasAchievements: totalCount > 0,
-        playTimeMinutes: gameRow?.playTime ?? 0,
-        lastPlayedAt: gameRow?.lastPlayedAt ?? null,
+        playTimeMinutes: userGameRow?.playTime ?? 0,
+        lastPlayedAt: userGameRow?.lastPlayedAt ?? null,
         platinumEarned,
       });
 
       await tx
-        .update(games)
+        .update(userGames)
         .set({ completionPercentage, status: refinedStatus })
-        .where(eq(games.id, gameId));
+        .where(
+          and(eq(userGames.userId, localUserId), eq(userGames.gameId, gameId)),
+        );
 
       return upsertedTrophies;
     });
   }
 
-  // ── READ — Trophies (with lazy sync) ─────────────────────────────────────
+  // ── READ — Trophies (with lazy sync) ───────────────────────────────────
 
   async getGameTrophies(
     userId: string,
@@ -457,30 +538,30 @@ export class PsnService {
   ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
     const { filter = "all", sort = "rarity", limit = 50, offset = 0 } = options;
 
+    // Correlated subquery replaced with a direct join to psnGames, scoped
+    // by gameId — same fix applied to Steam and Xbox.
     const [existing] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(psnUserTrophies)
       .innerJoin(psnTrophies, eq(psnTrophies.id, psnUserTrophies.trophyId))
+      .innerJoin(
+        psnGames,
+        eq(psnGames.npCommunicationId, psnTrophies.npCommunicationId),
+      )
       .where(
-        and(
-          eq(psnUserTrophies.userId, userId),
-          eq(
-            psnTrophies.npCommunicationId,
-            sql`(select np_communication_id from psn_games where game_id = ${gameId})`,
-          ),
-        ),
+        and(eq(psnUserTrophies.userId, userId), eq(psnGames.gameId, gameId)),
       );
 
     if (!existing || existing.count === 0) {
+      // If this user doesn't own gameId, this throws PsnGameNotFoundError
+      // and propagates out — trophies for an unowned game are never
+      // returned.
       await this.syncGameTrophies(userId, gameId);
     }
 
     const filterConditions = and(
       eq(psnUserTrophies.userId, userId),
-      eq(
-        psnTrophies.npCommunicationId,
-        sql`(select np_communication_id from psn_games where game_id = ${gameId})`,
-      ),
+      eq(psnGames.gameId, gameId),
       filter === "unlocked" ? eq(psnUserTrophies.earned, true) : undefined,
       filter === "locked" ? eq(psnUserTrophies.earned, false) : undefined,
     );
@@ -520,6 +601,9 @@ export class PsnService {
         .limit(limit)
         .offset(offset),
 
+      // Was missing the psnGames join — needed now that filterConditions
+      // references psnGames.gameId directly instead of a subquery. Same
+      // fix applied to Xbox's equivalent totals query.
       this.db
         .select({
           total: sql<number>`count(*)::int`,
@@ -527,6 +611,10 @@ export class PsnService {
         })
         .from(psnUserTrophies)
         .innerJoin(psnTrophies, eq(psnTrophies.id, psnUserTrophies.trophyId))
+        .innerJoin(
+          psnGames,
+          eq(psnGames.npCommunicationId, psnTrophies.npCommunicationId),
+        )
         .where(filterConditions),
     ]);
 

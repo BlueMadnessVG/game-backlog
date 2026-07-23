@@ -6,6 +6,7 @@ import {
   xboxAchievements,
   xboxUserAchievements,
   games,
+  userGames,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { XboxProvider } from "../../providers/xbox.provider";
@@ -22,6 +23,34 @@ import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
 
+export class XboxGameNotFoundError extends Error {
+  constructor(
+    public readonly gameId: string,
+    public readonly userId: string,
+  ) {
+    super(
+      `No Xbox game found for game ${gameId} and user ${userId} — the game may not be an Xbox title, the user may not own it, or their Xbox account isn't linked`,
+    );
+    this.name = "XboxGameNotFoundError";
+  }
+}
+
+type GameRow = {
+  id: string;
+  title: string;
+  platform: string | null;
+  iconUrl: string | null;
+  coverUrl: string | null;
+  bannerUrl: string | null;
+  status: "backlog" | "in-progress" | "completed" | "retired";
+  playTime: number;
+  completionPercentage: number;
+  lastPlayedAt: Date | null;
+  addedAt: Date;
+  updatedAt: Date;
+  titleId: string;
+};
+
 export class XboxService {
   constructor(
     private readonly db: DbClient,
@@ -32,44 +61,48 @@ export class XboxService {
   // READ
   // -------------------------------------------------------------------------
 
+  private mapRowToGame(row: GameRow): Game {
+    return {
+      id: row.id,
+      externalId: row.titleId,
+      title: row.title,
+      platform: (row.platform ?? "xbox") as Game["platform"],
+      status: row.status,
+      iconUrl: row.iconUrl ?? null,
+      coverUrl: row.coverUrl ?? null,
+      bannerUrl: row.bannerUrl ?? null,
+      playTime: row.playTime,
+      completionPercentage: row.completionPercentage,
+      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
+      addedAt: row.addedAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
   async getUserGames(userId: string): Promise<Game[]> {
     const rows = await this.db
       .select({
         id: games.id,
         title: games.title,
         platform: games.platform,
-        status: games.status,
         iconUrl: games.iconUrl,
         coverUrl: games.coverUrl,
         bannerUrl: games.bannerUrl,
-        playTime: games.playTime,
-        completionPercentage: games.completionPercentage,
-        lastPlayedAt: games.lastPlayedAt,
-        addedAt: games.createdAt,
-        updatedAt: games.updatedAt,
+        status: userGames.status,
+        playTime: userGames.playTime,
+        completionPercentage: userGames.completionPercentage,
+        lastPlayedAt: userGames.lastPlayedAt,
+        addedAt: userGames.createdAt,
+        updatedAt: userGames.updatedAt,
         titleId: xboxGames.titleId,
       })
-      .from(games)
-      .innerJoin(xboxGames, eq(games.id, xboxGames.gameId))
-      .innerJoin(xboxAccounts, eq(xboxAccounts.userId, userId))
-      .where(eq(xboxAccounts.userId, userId))
-      .orderBy(desc(games.playTime));
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .innerJoin(xboxGames, eq(xboxGames.gameId, games.id))
+      .where(eq(userGames.userId, userId))
+      .orderBy(desc(userGames.playTime));
 
-    return rows.map((row) => ({
-      id: row.id,
-      externalId: row.titleId,
-      title: row.title,
-      platform: row.platform ?? "xbox",
-      status: row.status ?? "backlog",
-      iconUrl: row.iconUrl ?? null,
-      coverUrl: row.coverUrl ?? null,
-      bannerUrl: row.bannerUrl ?? null,
-      playTime: row.playTime ?? 0,
-      completionPercentage: row.completionPercentage ?? 0,
-      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
-      addedAt: row.addedAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    }));
+    return rows.map((row) => this.mapRowToGame(row));
   }
 
   async getUserGame(userId: string, gameId: string): Promise<Game | null> {
@@ -78,40 +111,26 @@ export class XboxService {
         id: games.id,
         title: games.title,
         platform: games.platform,
-        status: games.status,
         iconUrl: games.iconUrl,
         coverUrl: games.coverUrl,
         bannerUrl: games.bannerUrl,
-        playTime: games.playTime,
-        completionPercentage: games.completionPercentage,
-        lastPlayedAt: games.lastPlayedAt,
-        addedAt: games.createdAt,
-        updatedAt: games.updatedAt,
+        status: userGames.status,
+        playTime: userGames.playTime,
+        completionPercentage: userGames.completionPercentage,
+        lastPlayedAt: userGames.lastPlayedAt,
+        addedAt: userGames.createdAt,
+        updatedAt: userGames.updatedAt,
         titleId: xboxGames.titleId,
       })
-      .from(games)
-      .innerJoin(xboxGames, eq(games.id, xboxGames.gameId))
-      .innerJoin(xboxAccounts, eq(xboxAccounts.userId, userId))
-      .where(and(eq(xboxAccounts.userId, userId), eq(games.id, gameId)))
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .innerJoin(xboxGames, eq(xboxGames.gameId, games.id))
+      .where(and(eq(userGames.userId, userId), eq(userGames.gameId, gameId)))
       .limit(1);
 
     if (!row) return null;
 
-    return {
-      id: row.id,
-      externalId: row.titleId,
-      title: row.title,
-      platform: row.platform ?? "xbox",
-      status: row.status ?? "backlog",
-      iconUrl: row.iconUrl ?? null,
-      coverUrl: row.coverUrl ?? null,
-      bannerUrl: row.bannerUrl ?? null,
-      playTime: row.playTime ?? 0,
-      completionPercentage: row.completionPercentage ?? 0,
-      lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
-      addedAt: row.addedAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
+    return this.mapRowToGame(row);
   }
 
   // -------------------------------------------------------------------------
@@ -141,10 +160,7 @@ export class XboxService {
         })
         .onConflictDoUpdate({
           target: xboxAccounts.userId,
-          set: {
-            gamertag: xboxData.gamertag,
-            lastSync: new Date(),
-          },
+          set: { gamertag: xboxData.gamertag, lastSync: new Date() },
         });
 
       return xboxData;
@@ -167,6 +183,12 @@ export class XboxService {
       playtimeMinutes: playtimeMap.get(t.titleId) ?? 0,
     }));
 
+    // Xbox can return multiple titleIds sharing the same display name
+    // (e.g. an Xbox One and a Series X|S version of the same game) — this
+    // collapses those to one, keeping whichever was played more recently.
+    // Same underlying title-collision caveat as Steam still applies below
+    // for two genuinely different games that happen to share an exact
+    // title string; this dedup step only handles Xbox's specific case.
     const deduplicatedTitles = Array.from(
       titlesWithPlaytime
         .reduce((map, title) => {
@@ -185,13 +207,52 @@ export class XboxService {
         .values(),
     );
 
-    const insertedGames = await this.db.transaction(async (tx) => {
-      const inserted = await tx
+    return await this.db.transaction(async (tx) => {
+      // 1. Upsert the shared catalog — title/platform/cover art only.
+      const catalogRows = await tx
         .insert(games)
         .values(
           deduplicatedTitles.map((g) => ({
             title: g.name,
             platform: "xbox" as const,
+            coverUrl: g.coverUrl,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [games.title, games.platform],
+          set: {
+            coverUrl: sql`coalesce(${games.coverUrl}, excluded.cover_url)`,
+          },
+        })
+        .returning();
+
+      const titleToGameId = new Map(
+        catalogRows.map((row) => [row.title, row.id]),
+      );
+
+      const xboxMappingValues = deduplicatedTitles
+        .map((g) => {
+          const gameId = titleToGameId.get(g.name);
+          if (!gameId) return null;
+          return { gameId, titleId: g.titleId };
+        })
+        .filter((v): v is { gameId: string; titleId: string } => v !== null);
+
+      if (xboxMappingValues.length > 0) {
+        await tx
+          .insert(xboxGames)
+          .values(xboxMappingValues)
+          .onConflictDoNothing();
+      }
+
+      // 3. Upsert this user's ownership + personal state.
+      const userGameValues = deduplicatedTitles
+        .map((g) => {
+          const gameId = titleToGameId.get(g.name);
+          if (!gameId) return null;
+          return {
+            userId: localUserId,
+            gameId,
             playTime: g.playtimeMinutes,
             lastPlayedAt: g.lastPlayedAt,
             completionPercentage: g.completionPercentage,
@@ -201,13 +262,16 @@ export class XboxService {
               playTimeMinutes: g.playtimeMinutes,
               lastPlayedAt: g.lastPlayedAt ?? null,
             }),
-          })),
-        )
+          };
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null);
+
+      const upsertedUserGames = await tx
+        .insert(userGames)
+        .values(userGameValues)
         .onConflictDoUpdate({
-          target: [games.title, games.platform],
+          target: [userGames.userId, userGames.gameId],
           set: {
-            coverUrl: sql`excluded.cover_url`,
-            bannerUrl: sql`excluded.banner_url`,
             playTime: sql`excluded.play_time`,
             lastPlayedAt: sql`excluded.last_played_at`,
             completionPercentage: sql`excluded.completion_percentage`,
@@ -216,30 +280,13 @@ export class XboxService {
         })
         .returning();
 
-      const xboxToInternalMap = inserted.map((gameRecord) => {
-        const xboxGame = deduplicatedTitles.find(
-          (t) => t.name === gameRecord.title,
-        );
-        return {
-          gameId: gameRecord.id,
-          titleId: xboxGame!.titleId,
-        };
-      });
-
-      await tx
-        .insert(xboxGames)
-        .values(xboxToInternalMap)
-        .onConflictDoNothing();
-
       await tx
         .update(xboxAccounts)
         .set({ lastSync: new Date() })
         .where(eq(xboxAccounts.xuid, xuid));
 
-      return inserted;
+      return upsertedUserGames;
     });
-
-    return insertedGames;
   }
 
   // -------------------------------------------------------------------------
@@ -268,20 +315,26 @@ export class XboxService {
   }
 
   async syncGameAchievements(localUserId: string, gameId: string) {
+    // Real ownership check: only resolves when a userGames row ties this
+    // exact user to this exact game. The old version joined xboxAccounts
+    // by userId alone with no tie back to the game, so it resolved for
+    // any authenticated user asking about any game in the shared catalog.
     const [row] = await this.db
       .select({
         titleId: xboxGames.titleId,
         xuid: xboxAccounts.xuid,
       })
-      .from(xboxGames)
-      .innerJoin(xboxAccounts, eq(xboxAccounts.userId, localUserId))
-      .where(eq(xboxGames.gameId, gameId))
+      .from(userGames)
+      .innerJoin(xboxGames, eq(xboxGames.gameId, userGames.gameId))
+      .innerJoin(xboxAccounts, eq(xboxAccounts.userId, userGames.userId))
+      .where(
+        and(eq(userGames.userId, localUserId), eq(userGames.gameId, gameId)),
+      )
       .limit(1);
 
-    if (!row)
-      throw new Error(
-        `No Xbox mapping found for game ${gameId} / user ${localUserId}`,
-      );
+    if (!row) {
+      throw new XboxGameNotFoundError(gameId, localUserId);
+    }
 
     const result = await this.provider.getPlayerAchievements(
       row.xuid,
@@ -289,9 +342,6 @@ export class XboxService {
     );
 
     if (result.status === "error") {
-      // Transient fetch/schema failure — leave the game as-is. Deleting
-      // here would remove legitimate games on a rate-limit hit or a
-      // one-off API error, which is worse than the original bug.
       return [];
     }
 
@@ -299,6 +349,10 @@ export class XboxService {
       console.debug(
         `[XboxService] Game ${gameId} (title ${row.titleId}) has zero achievements — removing from library`,
       );
+      // Removes the game from the shared catalog for every owner, not just
+      // localUserId — pre-existing behavior, unchanged by this pass. Same
+      // open question as Steam: needs deleteGameAndRelations confirmed to
+      // also clean up userGames (or rely on the new FK cascade).
       await deleteGameAndRelations(this.db, gameId);
       return [];
     }
@@ -374,26 +428,32 @@ export class XboxService {
       const completionPercentage =
         totalCount > 0 ? (achievedCount / totalCount) * 100 : 0;
 
-      const [gameRow] = await tx
+      // Read this user's own playtime/lastPlayedAt from userGames, not the
+      // shared games row.
+      const [userGameRow] = await tx
         .select({
-          playTime: games.playTime,
-          lastPlayedAt: games.lastPlayedAt,
+          playTime: userGames.playTime,
+          lastPlayedAt: userGames.lastPlayedAt,
         })
-        .from(games)
-        .where(eq(games.id, gameId))
+        .from(userGames)
+        .where(
+          and(eq(userGames.userId, localUserId), eq(userGames.gameId, gameId)),
+        )
         .limit(1);
 
       const refinedStatus = deriveGameStatus({
         completionPercentage,
         hasAchievements: totalCount > 0,
-        playTimeMinutes: gameRow?.playTime ?? 0,
-        lastPlayedAt: gameRow?.lastPlayedAt ?? null,
+        playTimeMinutes: userGameRow?.playTime ?? 0,
+        lastPlayedAt: userGameRow?.lastPlayedAt ?? null,
       });
 
       await tx
-        .update(games)
+        .update(userGames)
         .set({ completionPercentage, status: refinedStatus })
-        .where(eq(games.id, gameId));
+        .where(
+          and(eq(userGames.userId, localUserId), eq(userGames.gameId, gameId)),
+        );
 
       return upsertedAchievements;
     });
@@ -415,6 +475,8 @@ export class XboxService {
   ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
     const { filter = "all", sort = "rarity", limit = 50, offset = 0 } = options;
 
+    // Correlated subquery replaced with a direct join to xboxGames,
+    // scoped by gameId — same fix as Steam's equivalent method.
     const [existing] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(xboxUserAchievements)
@@ -422,26 +484,24 @@ export class XboxService {
         xboxAchievements,
         eq(xboxAchievements.id, xboxUserAchievements.achievementId),
       )
+      .innerJoin(xboxGames, eq(xboxGames.titleId, xboxAchievements.titleId))
       .where(
         and(
           eq(xboxUserAchievements.userId, userId),
-          eq(
-            xboxAchievements.titleId,
-            sql`(select title_id from xbox_games where game_id = ${gameId})`,
-          ),
+          eq(xboxGames.gameId, gameId),
         ),
       );
 
     if (!existing || existing.count === 0) {
+      // If this user doesn't own gameId, this throws XboxGameNotFoundError
+      // and propagates out — achievements for an unowned game are never
+      // returned.
       await this.syncGameAchievements(userId, gameId);
     }
 
     const filterConditions = and(
       eq(xboxUserAchievements.userId, userId),
-      eq(
-        xboxAchievements.titleId,
-        sql`(select title_id from xbox_games where game_id = ${gameId})`,
-      ),
+      eq(xboxGames.gameId, gameId),
       filter === "unlocked"
         ? eq(xboxUserAchievements.achieved, true)
         : undefined,
@@ -485,6 +545,11 @@ export class XboxService {
         .limit(limit)
         .offset(offset),
 
+      // Was missing the xboxGames join entirely — filterConditions
+      // referencing xboxGames.gameId would have silently thrown or
+      // resolved against the wrong table without it, since the old
+      // per-query subquery didn't need a join but this shared
+      // filterConditions object now does.
       this.db
         .select({
           total: sql<number>`count(*)::int`,
@@ -495,6 +560,7 @@ export class XboxService {
           xboxAchievements,
           eq(xboxAchievements.id, xboxUserAchievements.achievementId),
         )
+        .innerJoin(xboxGames, eq(xboxGames.titleId, xboxAchievements.titleId))
         .where(filterConditions),
     ]);
 
