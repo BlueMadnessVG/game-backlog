@@ -161,7 +161,7 @@ export const createPsnController = (
         .enrichGameCovers(userId)
         .then((result) => {
           console.log(
-            `[PsnController] Cover enrichment: ${result.enriched} enriched, ${result.skipped} skipped`,
+            `[PsnController] Cover enrichment: ${result.enriched} enriched`,
           );
         })
         .catch((err) => {

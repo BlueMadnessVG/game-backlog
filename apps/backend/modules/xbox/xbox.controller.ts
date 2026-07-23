@@ -151,7 +151,7 @@ export const createXboxController = (
         .enrichGameCovers(userId)
         .then((result) => {
           console.log(
-            `[XboxController] Cover enrichment: ${result.enriched} enriched, ${result.skipped} skipped`,
+            `[XboxController] Cover enrichment: ${result.enriched} enriched`,
           );
         })
         .catch((err) => {

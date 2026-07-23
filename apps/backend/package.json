@@ -10,7 +10,8 @@
     "test:coverage": "vitest run --coverage",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:reset": "bun run scripts/db-reset.ts && bun run db:push"
   },
   "devDependencies": {
     "@types/bun": "^1.3.12",
