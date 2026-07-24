@@ -1,0 +1,235 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap');
+
+/* ─── Base ─── */
+.heroPage {
+  position: relative;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── 3D Scene Container ─── */
+.sceneContainer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-color: #050505;
+}
+
+/* ─── Content Overlay ─── */
+.contentOverlay {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Sections ─── */
+.section {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  padding: 0 2rem;
+  box-sizing: border-box;
+}
+
+.sectionCentered {
+  justify-content: center;
+  text-align: center;
+}
+
+.sectionLeft {
+  justify-content: flex-start;
+}
+
+.sectionRight {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+/* ─── Containers ─── */
+.container {
+  max-width: 64rem;
+  width: 100%;
+}
+
+.containerNarrow {
+  max-width: 42rem;
+}
+
+/* ─── Typography ─── */
+.label {
+  font-size: 0.75rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #666;
+  margin-bottom: 1.5rem;
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+}
+
+.headline {
+  font-family: 'Playfair Display', serif;
+  font-size: 3rem;
+  font-weight: 400;
+  line-height: 1.05;
+  margin-bottom: 1.5rem;
+  color: #e8e6e3;
+  letter-spacing: -0.02em;
+}
+
+.headlineLarge {
+  font-size: 3.5rem;
+}
+
+.headlineAccent {
+  color: #ff6600;
+}
+
+.headlineMuted {
+  color: #555;
+}
+
+.headlineItalic {
+  font-style: italic;
+  color: #777;
+}
+
+.body {
+  font-size: 1.125rem;
+  color: #888;
+  line-height: 1.7;
+  max-width: 32rem;
+  margin: 0;
+}
+
+.bodyCentered {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ─── Platform Grid ─── */
+.platformGrid {
+  display: flex;
+  gap: 2.5rem;
+  margin-top: 2.5rem;
+  flex-wrap: wrap;
+}
+
+.platformItem {
+  font-size: 0.875rem;
+  color: #555;
+  line-height: 1.5;
+}
+
+.platformName {
+  display: block;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.5rem;
+  color: #e8e6e3;
+  margin-bottom: 0.25rem;
+}
+
+/* ─── Buttons ─── */
+.ctaButtons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2.5rem;
+  flex-wrap: wrap;
+}
+
+.btnPrimary {
+  padding: 0.875rem 2.25rem;
+  background-color: #e8e6e3;
+  color: #050505;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.btnPrimary:hover {
+  background-color: #ff6600;
+  color: #ffffff;
+}
+
+.btnSecondary {
+  padding: 0.875rem 2.25rem;
+  background-color: transparent;
+  color: #666;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  border: 1px solid #2a2a2a;
+  cursor: pointer;
+  transition:
+    border-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.btnSecondary:hover {
+  border-color: #555;
+  color: #e8e6e3;
+}
+
+/* ─── Footer ─── */
+.footerNote {
+  margin-top: 2rem;
+  font-size: 0.7rem;
+  color: #3a3a3a;
+  letter-spacing: 0.08em;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ─── Responsive ─── */
+@media (min-width: 768px) {
+  .section {
+    padding: 0 4rem;
+  }
+
+  .headline {
+    font-size: 4rem;
+  }
+
+  .headlineLarge {
+    font-size: 5rem;
+  }
+
+  .platformGrid {
+    gap: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .section {
+    padding: 0 6rem;
+  }
+
+  .headline {
+    font-size: 5rem;
+  }
+
+  .headlineLarge {
+    font-size: 6.5rem;
+  }
+
+  .body {
+    font-size: 1.25rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .section {
+    padding: 0 8rem;
+  }
+
+  .headlineLarge {
+    font-size: 7.5rem;
+  }
+}

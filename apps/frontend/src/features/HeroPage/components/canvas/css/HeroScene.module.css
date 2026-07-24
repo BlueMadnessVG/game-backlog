@@ -1,0 +1,6 @@
+.sceneContainer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-color: #050505;
+}

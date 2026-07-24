@@ -1,340 +1,342 @@
 import { useRef, useMemo } from 'react';
 
-import { useGLTF, useScroll } from '@react-three/drei';
+import { useGLTF, useAnimations, useScroll } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-interface ControllerGLTFResult {
-  nodes: Record<string, THREE.Mesh>;
-}
+import { EdgesMesh } from './EdgesMesh';
 
-type DeconstructedControllerProps = Record<string, unknown>;
+import type { Mesh } from 'three';
 
-// ─── Emissive Materials (module-level: mutated imperatively in useFrame) ───
-const psBlue = new THREE.MeshStandardMaterial({
-  color: '#0a0a0a',
-  emissive: '#003791',
-  emissiveIntensity: 0,
-  metalness: 0.8,
-  roughness: 0.3,
-});
-
-const xboxGreen = new THREE.MeshStandardMaterial({
-  color: '#0a0a0a',
-  emissive: '#107C10',
-  emissiveIntensity: 0,
-  metalness: 0.8,
-  roughness: 0.3,
-});
-
-const steamGrey = new THREE.MeshStandardMaterial({
-  color: '#0a0a0a',
-  emissive: '#2a475e',
-  emissiveIntensity: 0,
-  metalness: 0.8,
-  roughness: 0.3,
-});
-
-export function DeconstructedController(props: DeconstructedControllerProps) {
+export function DeconstructedController() {
   const group = useRef<THREE.Group>(null);
-  const { nodes } = useGLTF('/models/controller/scene.gltf') as unknown as ControllerGLTFResult;
+  const { nodes: rawNodes, animations } = useGLTF('/models/controller/scene.gltf');
+  useAnimations(animations, group);
+  const nodes = rawNodes as Record<string, Mesh>;
   const scroll = useScroll();
 
-  // ─── Materials ───
-  const darkChrome = useMemo(
-    () =>
-      new THREE.MeshPhysicalMaterial({
-        color: '#0f0f0f',
-        metalness: 1.0,
-        roughness: 0.15,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.1,
-        reflectivity: 1.0,
-      }),
-    [],
-  );
+  // ─── Entry animation state ───
+  const entryProgress = useRef(0);
+  const hasEntered = useRef(false);
 
-  const gunmetal = useMemo(
-    () =>
-      new THREE.MeshPhysicalMaterial({
-        color: '#1a1a1a',
-        metalness: 0.9,
-        roughness: 0.25,
-        clearcoat: 0.5,
-      }),
-    [],
-  );
+  // ─── Shell refs ───
+  const rightShellRef = useRef<THREE.Group>(null);
+  const leftShellRef = useRef<THREE.Group>(null);
+  const centerShellRef = useRef<THREE.Group>(null);
 
-  const coreMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#ff4400',
-        emissive: '#ff2200',
-        emissiveIntensity: 4,
-        toneMapped: false,
-        transparent: true,
-        opacity: 0.9,
-      }),
-    [],
-  );
-
-  const ringBlueMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#003791',
-        emissive: '#003791',
-        emissiveIntensity: 2,
-        transparent: true,
-        opacity: 0.6,
-      }),
-    [],
-  );
-
-  const ringGreenMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#107C10',
-        emissive: '#107C10',
-        emissiveIntensity: 2,
-        transparent: true,
-        opacity: 0.6,
-      }),
-    [],
-  );
-
-  const ringSteamMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#2a475e',
-        emissive: '#2a475e',
-        emissiveIntensity: 2,
-        transparent: true,
-        opacity: 0.6,
-      }),
-    [],
-  );
-
-  // ─── Animation Refs ───
-  const shellRightRef = useRef<THREE.Group>(null);
-  const shellLeftRef = useRef<THREE.Group>(null);
-  const shellCenterRef = useRef<THREE.Group>(null);
-  const buttonsRef = useRef<THREE.Group>(null);
-  const dpadRef = useRef<THREE.Group>(null);
-  const sticksRef = useRef<THREE.Group>(null);
-  const triggersRef = useRef<THREE.Group>(null);
+  // ─── Mechanism refs ───
+  const rightButtonsRef = useRef<THREE.Group>(null);
+  const rightStickRef = useRef<THREE.Group>(null);
+  const rightTriggerRef = useRef<THREE.Group>(null);
+  const leftDPadRef = useRef<THREE.Group>(null);
+  const leftStickRef = useRef<THREE.Group>(null);
+  const leftTriggerRef = useRef<THREE.Group>(null);
   const centerButtonsRef = useRef<THREE.Group>(null);
+
+  // ─── Core & rings ───
   const coreRef = useRef<THREE.Group>(null);
   const ringsRef = useRef<THREE.Group>(null);
 
-  useFrame((state) => {
+  const ringBlueMat = useMemo(
+    () =>
+      new THREE.LineBasicMaterial({
+        color: '#003791',
+        toneMapped: false,
+        transparent: true,
+        opacity: 0.8,
+      }),
+    [],
+  );
+  const ringGreenMat = useMemo(
+    () =>
+      new THREE.LineBasicMaterial({
+        color: '#107C10',
+        toneMapped: false,
+        transparent: true,
+        opacity: 0.8,
+      }),
+    [],
+  );
+  const ringSteamMat = useMemo(
+    () =>
+      new THREE.LineBasicMaterial({
+        color: '#2a475e',
+        toneMapped: false,
+        transparent: true,
+        opacity: 0.8,
+      }),
+    [],
+  );
+
+  // eslint-disable-next-line complexity
+  useFrame((state, delta) => {
     const r = scroll.offset;
-    const time = state.clock.elapsedTime;
+    const t = state.clock.elapsedTime;
+    const lerp = THREE.MathUtils.lerp;
 
-    const lerp = (a: number, b: number, t: number) => THREE.MathUtils.lerp(a, b, t);
+    // ═══════════════════════════════════════
+    // ENTRY ANIMATION — rise from below
+    // ═══════════════════════════════════════
+    if (!hasEntered.current) {
+      entryProgress.current = Math.min(entryProgress.current + delta * 0.7, 1);
+      const ease = 1 - Math.pow(1 - entryProgress.current, 3);
 
-    // ── Phase 1: Idle float (0.0 - 0.15) ──
-    const idleFloat = Math.sin(time * 0.5) * 2;
-    if (group.current && r < 0.15) {
-      group.current.position.y = lerp(0, idleFloat, 1 - r / 0.15);
-    }
+      if (group.current) {
+        // Rise from below the viewport into center
+        group.current.position.y = lerp(-4.5, 0, ease);
+        // Slight tilt that straightens as it arrives
+        group.current.rotation.x = lerp(0.35, 0, ease);
+      }
 
-    // ── Phase 2: Shell Separation (0.15 - 0.35) ──
-    const shellProgress = Math.max(0, Math.min((r - 0.15) * 5, 1));
-    if (shellRightRef.current) {
-      shellRightRef.current.position.x = lerp(-87.5, -140, shellProgress);
-      shellRightRef.current.position.y = lerp(0, 20, shellProgress);
-      shellRightRef.current.rotation.z = lerp(0, -0.1, shellProgress);
-    }
-    if (shellLeftRef.current) {
-      shellLeftRef.current.position.x = lerp(0, 60, shellProgress);
-      shellLeftRef.current.position.y = lerp(0, 20, shellProgress);
-      shellLeftRef.current.rotation.z = lerp(0, 0.1, shellProgress);
-    }
-    if (shellCenterRef.current) {
-      shellCenterRef.current.position.y = lerp(0, -10, shellProgress);
+      if (entryProgress.current >= 1) {
+        hasEntered.current = true;
+      }
     }
 
-    // ── Phase 3: Mechanisms Float Up (0.30 - 0.55) ──
-    const mechProgress = Math.max(0, Math.min((r - 0.3) * 4, 1));
-    if (buttonsRef.current) {
-      buttonsRef.current.position.y = lerp(0, 80, mechProgress);
-      buttonsRef.current.position.z = lerp(31.25, 60, mechProgress);
+    // ═══════════════════════════════════════
+    // SCROLL-DRIVEN DECONSTRUCTION
+    // ═══════════════════════════════════════
+
+    // ── Phase 1: Shell separation (0.12 – 0.38) ──
+    const shellP = Math.max(0, Math.min((r - 0.12) / 0.26, 1));
+    const shellE = 1 - Math.pow(1 - shellP, 3);
+
+    if (rightShellRef.current) {
+      rightShellRef.current.position.x = lerp(0, -55, shellE);
+      rightShellRef.current.position.y = lerp(0, 18, shellE);
+      rightShellRef.current.rotation.z = lerp(0, -0.06, shellE);
     }
-    if (dpadRef.current) {
-      dpadRef.current.position.y = lerp(9.375, 70, mechProgress);
-      dpadRef.current.position.z = lerp(-25, 10, mechProgress);
+    if (leftShellRef.current) {
+      leftShellRef.current.position.x = lerp(87.5, 142.5, shellE);
+      leftShellRef.current.position.y = lerp(0, 18, shellE);
+      leftShellRef.current.rotation.z = lerp(0, 0.06, shellE);
     }
-    if (sticksRef.current) {
-      sticksRef.current.position.y = lerp(0, 50, mechProgress);
+    if (centerShellRef.current) {
+      centerShellRef.current.position.y = lerp(0, -18, shellE);
     }
-    if (triggersRef.current) {
-      triggersRef.current.position.y = lerp(0, 65, mechProgress);
-      triggersRef.current.rotation.x = lerp(0.175, 0.5, mechProgress);
+
+    // ── Phase 2: Mechanisms float (0.28 – 0.58) ──
+    const mechP = Math.max(0, Math.min((r - 0.28) / 0.3, 1));
+    const mechE = 1 - Math.pow(1 - mechP, 3);
+
+    if (rightButtonsRef.current) {
+      rightButtonsRef.current.position.y = lerp(0, 65, mechE);
+      rightButtonsRef.current.position.z = lerp(0, 30, mechE);
     }
+    if (rightStickRef.current) {
+      rightStickRef.current.position.y = lerp(0, 55, mechE);
+      rightStickRef.current.position.x = lerp(0, 12, mechE);
+    }
+    if (rightTriggerRef.current) {
+      rightTriggerRef.current.position.y = lerp(0, 50, mechE);
+      rightTriggerRef.current.position.z = lerp(0, -18, mechE);
+      rightTriggerRef.current.rotation.x = lerp(0, 0.3, mechE);
+    }
+
+    if (leftDPadRef.current) {
+      leftDPadRef.current.position.y = lerp(9.375, 60, mechE);
+      leftDPadRef.current.position.z = lerp(-25, 12, mechE);
+    }
+    if (leftStickRef.current) {
+      leftStickRef.current.position.y = lerp(0, 55, mechE);
+      leftStickRef.current.position.x = lerp(87.5, 75.5, mechE);
+    }
+    if (leftTriggerRef.current) {
+      leftTriggerRef.current.position.y = lerp(0, 50, mechE);
+      leftTriggerRef.current.position.z = lerp(0, -18, mechE);
+      leftTriggerRef.current.rotation.x = lerp(0, 0.3, mechE);
+    }
+
     if (centerButtonsRef.current) {
-      centerButtonsRef.current.position.y = lerp(0, 55, mechProgress);
+      centerButtonsRef.current.position.y = lerp(0, 42, mechE);
     }
 
-    // ── Phase 4: Core Reveal (0.50 - 0.75) ──
-    const coreProgress = Math.max(0, Math.min((r - 0.5) * 4, 1));
+    // ── Phase 3: Core reveal (0.52 – 0.78) ──
+    const coreP = Math.max(0, Math.min((r - 0.52) / 0.26, 1));
+    const coreE = 1 - Math.pow(1 - coreP, 3);
+
     if (coreRef.current) {
-      coreRef.current.scale.setScalar(lerp(0, 1, coreProgress));
-      coreRef.current.rotation.y = time * 0.3;
-      coreRef.current.rotation.x = time * 0.1;
+      coreRef.current.scale.setScalar(lerp(0, 1, coreE));
+      coreRef.current.rotation.y = t * 0.5;
+      coreRef.current.rotation.x = t * 0.2;
     }
 
-    // ── Phase 5: Platform Rings Orbit (0.65 - 1.0) ──
-    const ringProgress = Math.max(0, Math.min((r - 0.65) * 2.86, 1));
+    // ── Phase 4: Platform rings (0.68 – 1.0) ──
+    const ringP = Math.max(0, Math.min((r - 0.68) / 0.32, 1));
+    const ringE = 1 - Math.pow(1 - ringP, 3);
+
     if (ringsRef.current) {
-      ringsRef.current.scale.setScalar(lerp(0.5, 1, ringProgress));
-      ringsRef.current.rotation.x = lerp(0, Math.PI / 2, ringProgress);
-      ringsRef.current.rotation.y = time * 0.2;
+      ringsRef.current.scale.setScalar(lerp(0.3, 1, ringE));
+      ringsRef.current.rotation.x = lerp(0, Math.PI / 2, ringE);
+      ringsRef.current.rotation.y = t * 0.3 * ringE;
     }
-
-    // ── Emissive Intensity Ramp (0.60 - 1.0) ──
-    const glowProgress = Math.max(0, Math.min((r - 0.6) * 2.5, 1));
-    psBlue.emissiveIntensity = lerp(0, 1.5, glowProgress);
-    xboxGreen.emissiveIntensity = lerp(0, 1.5, glowProgress);
-    steamGrey.emissiveIntensity = lerp(0, 1.5, glowProgress);
   });
 
   return (
-    <group
-      ref={group}
-      {...props}
-      dispose={null}
-      rotation={[-Math.PI / 2, 0, Math.PI]}
-      scale={0.907}
-    >
-      <group rotation={[Math.PI / 2, 0, 0]} scale={0.01}>
-        {/* ═══════════════════════════════════════
-            SHELL — Dark Chrome Exterior
-            These pieces drift apart to reveal inside
-           ═══════════════════════════════════════ */}
-        <group ref={shellRightRef} position={[-87.5, 0, 31.25]}>
-          <mesh
-            geometry={nodes.RightSideBase_Dualshock_Blue_0.geometry}
-            material={darkChrome}
-            castShadow
-          />
-        </group>
+    <group ref={group} dispose={null}>
+      <group name="Sketchfab_Scene">
+        <group name="Sketchfab_model" rotation={[-0.4, 0, Math.PI]} scale={0.907}>
+          <group
+            name="02b8b04a84f444f58559ae046d9e9522fbx"
+            rotation={[Math.PI / 2, 0, 0]}
+            scale={0.01}
+          >
+            <group name="Object_2">
+              <group name="RootNode">
+                <group name="Dualshock" position={[0, 0, 6.25]}>
+                  {/* ═══════════════════════════════════════
+                      RIGHT SIDE — shell & mechanisms as siblings
+                     ═══════════════════════════════════════ */}
+                  <group name="RightSide" position={[-87.5, 0, 31.25]}>
+                    <group ref={rightShellRef} name="RightSideBase">
+                      <EdgesMesh geometry={nodes.RightSideBase_Dualshock_Blue_0.geometry} />
+                    </group>
 
-        <group ref={shellLeftRef} position={[0, 0, 31.25]}>
-          <mesh
-            geometry={nodes.LeftSideBase_Dualshock_Blue_0.geometry}
-            material={darkChrome}
-            castShadow
-          />
-        </group>
+                    <group ref={rightButtonsRef} name="Buttons">
+                      <group name="Square">
+                        <EdgesMesh geometry={nodes.Square_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="Triangle">
+                        <EdgesMesh geometry={nodes.Triangle_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="Cross">
+                        <EdgesMesh geometry={nodes.Cross_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="Circle">
+                        <EdgesMesh geometry={nodes.Circle_Dualshock_Blue_0.geometry} />
+                      </group>
+                    </group>
 
-        <group ref={shellCenterRef} position={[0, 0, 6.25]}>
-          <mesh
-            geometry={nodes.CenterBase_Dualshock_Blue_0.geometry}
-            material={darkChrome}
-            castShadow
-          />
-        </group>
+                    <group ref={rightStickRef} name="RightStick">
+                      <group name="R3">
+                        <EdgesMesh geometry={nodes.R3_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="RightStickBase">
+                        <EdgesMesh geometry={nodes.RightStickBase_Dualshock_Blue_0.geometry} />
+                      </group>
+                    </group>
 
-        {/* ═══════════════════════════════════════
-            MECHANICAL PARTS — Gunmetal
-            Buttons, sticks, triggers float upward
-           ═══════════════════════════════════════ */}
+                    <group ref={rightTriggerRef} name="RightTrigger">
+                      <group name="RightTriggerBase">
+                        <EdgesMesh geometry={nodes.RightTriggerBase_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="R1" position={[87.5, 0, -25]}>
+                        <EdgesMesh geometry={nodes.R1_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="R2" position={[0, -31.25, 43.75]} rotation={[0.175, 0, 0]}>
+                        <EdgesMesh geometry={nodes.R2_Dualshock_Blue_0.geometry} />
+                      </group>
+                    </group>
+                  </group>
 
-        {/* Action Buttons — PlayStation Blue Glow */}
-        <group ref={buttonsRef} position={[-87.5, 0, 31.25]}>
-          <mesh geometry={nodes.Square_Dualshock_Blue_0.geometry} material={psBlue} />
-          <mesh geometry={nodes.Triangle_Dualshock_Blue_0.geometry} material={psBlue} />
-          <mesh geometry={nodes.Cross_Dualshock_Blue_0.geometry} material={psBlue} />
-          <mesh geometry={nodes.Circle_Dualshock_Blue_0.geometry} material={psBlue} />
-        </group>
+                  {/* ═══════════════════════════════════════
+                      LEFT SIDE — shell & mechanisms as siblings
+                     ═══════════════════════════════════════ */}
+                  <group name="LeftSide" position={[0, 0, 31.25]}>
+                    <group ref={leftShellRef} name="LeftSideBase" position={[87.5, 0, 0]}>
+                      <EdgesMesh geometry={nodes.LeftSideBase_Dualshock_Blue_0.geometry} />
+                    </group>
 
-        {/* D-Pad — Xbox Green Glow */}
-        <group ref={dpadRef} position={[87.5, 9.375, -25]}>
-          <mesh geometry={nodes.Up_Dualshock_Blue_0.geometry} material={xboxGreen} />
-          <mesh geometry={nodes.Down_Dualshock_Blue_0.geometry} material={xboxGreen} />
-          <mesh geometry={nodes.Right_Dualshock_Blue_0.geometry} material={xboxGreen} />
-          <mesh geometry={nodes.Left_Dualshock_Blue_0.geometry} material={xboxGreen} />
-        </group>
+                    <group ref={leftDPadRef} name="DPad" position={[87.5, 9.375, -25]}>
+                      <group name="Up">
+                        <EdgesMesh geometry={nodes.Up_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="Down" rotation={[-Math.PI, 0, -Math.PI]}>
+                        <EdgesMesh geometry={nodes.Down_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="Right" rotation={[0, -Math.PI / 2, 0]}>
+                        <EdgesMesh geometry={nodes.Right_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="Left" rotation={[0, Math.PI / 2, 0]}>
+                        <EdgesMesh geometry={nodes.Left_Dualshock_Blue_0.geometry} />
+                      </group>
+                    </group>
 
-        {/* Analog Sticks — Neutral Gunmetal */}
-        <group ref={sticksRef}>
-          <group position={[-87.5, 0, 31.25]}>
-            <mesh geometry={nodes.R3_Dualshock_Blue_0.geometry} material={gunmetal} />
-            <mesh geometry={nodes.RightStickBase_Dualshock_Blue_0.geometry} material={gunmetal} />
-          </group>
-          <group position={[87.5, 0, 0]}>
-            <mesh geometry={nodes.L3_Dualshock_Blue_0.geometry} material={gunmetal} />
-            <mesh geometry={nodes.LeftStickBase_Dualshock_Blue_0.geometry} material={gunmetal} />
-          </group>
-        </group>
+                    <group ref={leftStickRef} name="LeftStick" position={[87.5, 0, 0]}>
+                      <group name="L3">
+                        <EdgesMesh geometry={nodes.L3_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="LeftStickBase">
+                        <EdgesMesh geometry={nodes.LeftStickBase_Dualshock_Blue_0.geometry} />
+                      </group>
+                    </group>
 
-        {/* Triggers — Mixed Platform Glow */}
-        <group ref={triggersRef}>
-          <group position={[-87.5, 0, 31.25]}>
-            <group position={[87.5, 0, -25]}>
-              <mesh geometry={nodes.R1_Dualshock_Blue_0.geometry} material={psBlue} />
+                    <group ref={leftTriggerRef} name="LeftTrigger" position={[87.5, 0, 0]}>
+                      <group name="LeftTriggerBase">
+                        <EdgesMesh geometry={nodes.LeftTriggerBase_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="L1" position={[-87.5, 0, -25]}>
+                        <EdgesMesh geometry={nodes.L1_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="L2" position={[0, -31.25, 43.75]} rotation={[0.175, 0, 0]}>
+                        <EdgesMesh geometry={nodes.L2_Dualshock_Blue_0.geometry} />
+                      </group>
+                    </group>
+                  </group>
+
+                  {/* ═══════════════════════════════════════
+                      CENTER — shell & buttons as siblings
+                     ═══════════════════════════════════════ */}
+                  <group name="Center" position={[0, 0, 6.25]}>
+                    <group ref={centerShellRef} name="CenterBase">
+                      <EdgesMesh geometry={nodes.CenterBase_Dualshock_Blue_0.geometry} />
+                    </group>
+
+                    <group ref={centerButtonsRef} name="CenterButtons">
+                      <group name="Analog">
+                        <EdgesMesh geometry={nodes.Analog_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="Select">
+                        <EdgesMesh geometry={nodes.Select_Dualshock_Blue_0.geometry} />
+                      </group>
+                      <group name="Start">
+                        <EdgesMesh geometry={nodes.Start_Dualshock_Blue_0.geometry} />
+                      </group>
+                    </group>
+                  </group>
+
+                  {/* ═══════════════════════════════════════
+                      CORE — warm amber heart
+                     ═══════════════════════════════════════ */}
+                  <group ref={coreRef} position={[0, 0, 20]} scale={0}>
+                    <pointLight color="#ff6600" intensity={30} distance={80} />
+                    <mesh>
+                      <icosahedronGeometry args={[20, 2]} />
+                      <meshBasicMaterial color="#ff6600" wireframe toneMapped={false} />
+                    </mesh>
+                    <mesh>
+                      <icosahedronGeometry args={[12, 1]} />
+                      <meshBasicMaterial
+                        color="#ff4400"
+                        transparent
+                        opacity={0.12}
+                        toneMapped={false}
+                      />
+                    </mesh>
+                  </group>
+
+                  {/* ═══════════════════════════════════════
+                      PLATFORM RINGS — orbit the core
+                     ═══════════════════════════════════════ */}
+                  <group ref={ringsRef} position={[0, 0, 20]} scale={0}>
+                    <group rotation={[Math.PI / 2, 0, 0]}>
+                      <lineSegments rotation={[0, 0, 0]}>
+                        <torusGeometry args={[50, 1.2, 8, 64]} />
+                        <primitive object={ringBlueMat} attach="material" />
+                      </lineSegments>
+                      <lineSegments rotation={[Math.PI / 3, 0, 0]}>
+                        <torusGeometry args={[58, 1.2, 8, 64]} />
+                        <primitive object={ringGreenMat} attach="material" />
+                      </lineSegments>
+                      <lineSegments rotation={[Math.PI / 6, 0, 0]}>
+                        <torusGeometry args={[66, 1.2, 8, 64]} />
+                        <primitive object={ringSteamMat} attach="material" />
+                      </lineSegments>
+                    </group>
+                  </group>
+                </group>
+              </group>
             </group>
-            <group position={[0, -31.25, 43.75]} rotation={[0.175, 0, 0]}>
-              <mesh geometry={nodes.R2_Dualshock_Blue_0.geometry} material={psBlue} />
-            </group>
-          </group>
-          <group position={[87.5, 0, 0]}>
-            <group position={[-87.5, 0, -25]}>
-              <mesh geometry={nodes.L1_Dualshock_Blue_0.geometry} material={xboxGreen} />
-            </group>
-            <group position={[0, -31.25, 43.75]} rotation={[0.175, 0, 0]}>
-              <mesh geometry={nodes.L2_Dualshock_Blue_0.geometry} material={xboxGreen} />
-            </group>
-          </group>
-        </group>
-
-        {/* Center Buttons — Steam Grey Glow */}
-        <group ref={centerButtonsRef} position={[0, 0, 6.25]}>
-          <mesh geometry={nodes.Select_Dualshock_Blue_0.geometry} material={steamGrey} />
-          <mesh geometry={nodes.Start_Dualshock_Blue_0.geometry} material={steamGrey} />
-          <mesh geometry={nodes.Analog_Dualshock_Blue_0.geometry} material={steamGrey} />
-        </group>
-
-        {/* ═══════════════════════════════════════
-            THE CORE — Warm Amber Heart
-            Appears when shell opens
-           ═══════════════════════════════════════ */}
-        <group ref={coreRef} position={[0, 0, 20]} scale={0}>
-          {/* Main glowing body */}
-          <mesh>
-            <icosahedronGeometry args={[25, 2]} />
-            <meshStandardMaterial {...coreMaterial} wireframe />
-          </mesh>
-          <mesh>
-            <icosahedronGeometry args={[15, 1]} />
-            <meshStandardMaterial {...coreMaterial} />
-          </mesh>
-
-          {/* Inner light */}
-          <pointLight color="#ff4400" intensity={50} distance={100} />
-        </group>
-
-        {/* ═══════════════════════════════════════
-            PLATFORM RINGS — Orbit the core
-            Represent unified platforms
-           ═══════════════════════════════════════ */}
-        <group ref={ringsRef} position={[0, 0, 20]} scale={0}>
-          <group rotation={[Math.PI / 2, 0, 0]}>
-            {/* PlayStation Ring */}
-            <mesh rotation={[0, 0, 0]}>
-              <torusGeometry args={[55, 1.5, 16, 100]} />
-              <meshStandardMaterial {...ringBlueMat} />
-            </mesh>
-            {/* Xbox Ring */}
-            <mesh rotation={[Math.PI / 3, 0, 0]}>
-              <torusGeometry args={[62, 1.5, 16, 100]} />
-              <meshStandardMaterial {...ringGreenMat} />
-            </mesh>
-            {/* Steam Ring */}
-            <mesh rotation={[Math.PI / 6, 0, 0]}>
-              <torusGeometry args={[69, 1.5, 16, 100]} />
-              <meshStandardMaterial {...ringSteamMat} />
-            </mesh>
           </group>
         </group>
       </group>
@@ -342,4 +344,4 @@ export function DeconstructedController(props: DeconstructedControllerProps) {
   );
 }
 
-useGLTF.preload('/scene.gltf');
+useGLTF.preload('/models/controller/scene.gltf');
