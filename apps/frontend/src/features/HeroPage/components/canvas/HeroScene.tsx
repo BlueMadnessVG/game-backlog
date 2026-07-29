@@ -9,7 +9,7 @@ export function HeroScene() {
     <div className={styles.sceneContainer}>
       <Canvas
         shadows
-        camera={{ position: [0, 0, 4], fov: 35, near: 0.1, far: 100 }}
+        camera={{ position: [0, 0, 5], fov: 35, near: 0.1, far: 100 }}
         gl={{ antialias: true, toneMapping: 3, toneMappingExposure: 1.2 }}
       >
         {/* Dramatic studio lighting — key + fill + rim */}

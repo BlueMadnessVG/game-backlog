@@ -1,80 +1,54 @@
-import { useEffect, useMemo } from 'react';
-
-import { useThree } from '@react-three/fiber';
+import { Outlines } from '@react-three/drei';
 import * as THREE from 'three';
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
-import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 
 interface EdgesMeshProps {
   /** Optional Object3D name, mirrors the source mesh name for easier debugging in devtools */
   name?: string;
   /** Geometry to outline — pass nodes.X.geometry straight from a gltfjsx export */
   geometry: THREE.BufferGeometry;
-  /** Minimum angle (degrees) between adjacent faces before an edge counts as a "crease".
-   *  Lower = more lines (good for low-poly/faceted models), higher = fewer lines
-   *  (suppresses noise on smooth, high-poly curved surfaces). Tune per-model by eye. */
-  threshold?: number;
-  /** Line color */
+  /** Outline color */
   color?: string;
-  /** Line thickness in CSS pixels (screen-space, independent of camera distance) */
-  lineWidth?: number;
+  /** Shell inflation amount. Not a literal pixel value like before — tune by eye.
+   *  drei's own default is 0.05; start there and adjust. */
+  thickness?: number;
+  /** Radians, not degrees. Normals on either side of an angle sharper than this get
+   *  "creased" before the shell is extruded, which keeps the outline from pinching or
+   *  tearing at hard corners. Math.PI (default) leaves the model's baked-in normals
+   *  alone. If outlines look distorted at sharp edges (button rims, D-pad corners),
+   *  try lowering it — e.g. Math.PI / 4. */
+  angle?: number;
   /** Whether the (invisible) solid mesh still casts a shadow onto the ground */
   castShadow?: boolean;
 }
 
 /**
- * Renders a mesh as line-art only: the solid geometry is drawn fully invisible
- * (colorWrite disabled) so it still writes to the depth buffer, then the edges
- * are drawn on top as white lines. The invisible pass is what makes far-side
- * edges correctly hide behind the near surface instead of showing through it —
- * without it you'd get an x-ray/wireframe look instead of clean hidden-line art.
+ * Renders a mesh as a pure camera-facing silhouette — no interior creases at all.
+ * The real geometry draws fully invisible (colorWrite disabled) so it still occupies
+ * the depth buffer, and drei's <Outlines> draws a slightly inflated, backface-only
+ * shell around it. That shell only shows where it pokes out past the true silhouette
+ * edge; the invisible pass is what keeps it from filling in as a solid shape instead
+ * of a thin rim. Because this is computed from the current view, it updates as the
+ * camera orbits, unlike a fixed set of edge lines.
  */
 export function EdgesMesh({
   name,
   geometry,
-  threshold = 1,
-  color = '#ffffff',
-  lineWidth = 5,
+  color = '#aaaaaa',
+  thickness = 3,
+  angle = Math.PI,
   castShadow = true,
 }: EdgesMeshProps) {
-  const size = useThree((s) => s.size);
-
-  const edgesGeometry = useMemo(() => {
-    const edges = new THREE.EdgesGeometry(geometry, threshold);
-    const lineGeometry = new LineSegmentsGeometry().fromEdgesGeometry(edges);
-    edges.dispose();
-    return lineGeometry;
-  }, [geometry, threshold]);
-
-  const material = useMemo(
-    () =>
-      new LineMaterial({
-        color,
-        linewidth: lineWidth,
-        worldUnits: false,
-        resolution: new THREE.Vector2(size.width, size.height),
-        toneMapped: false,
-      }),
-    [color, lineWidth, size],
-  );
-
-  const line = useMemo(() => new LineSegments2(edgesGeometry, material), [edgesGeometry, material]);
-
-  useEffect(
-    () => () => {
-      edgesGeometry.dispose();
-      material.dispose();
-    },
-    [edgesGeometry, material],
-  );
-
   return (
-    <>
-      <mesh name={name} geometry={geometry} castShadow={castShadow} renderOrder={0}>
-        <meshBasicMaterial colorWrite={false} />
-      </mesh>
-      <primitive object={line} name={name ? `${name}_edges` : undefined} renderOrder={1} />
-    </>
+    <mesh name={name} geometry={geometry} castShadow={castShadow} renderOrder={0}>
+      <meshBasicMaterial colorWrite={false} />
+      <Outlines
+        name={name ? `${name}_outline` : undefined}
+        color={color}
+        thickness={thickness}
+        angle={angle}
+        toneMapped={false}
+        renderOrder={1}
+      />
+    </mesh>
   );
 }
