@@ -13,6 +13,22 @@ const XBOX_GREEN = '#107C10';
 const STEAM_GREY = '#2a475e';
 const UNIFIED_AMBER = '#ff6600';
 
+const shellMaterial = () =>
+  new THREE.MeshPhysicalMaterial({
+    color: '#0a0a0a',
+    metalness: 0.9,
+    roughness: 0.18,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.1,
+    transparent: true,
+    opacity: 1,
+    side: THREE.DoubleSide,
+  });
+
+const rightShellMat = shellMaterial();
+const leftShellMat = shellMaterial();
+const centerShellMat = shellMaterial();
+
 export function DeconstructedController() {
   const group = useRef<THREE.Group>(null);
   const { nodes: rawNodes, animations } = useGLTF('/models/controller/scene.gltf');
@@ -38,96 +54,108 @@ export function DeconstructedController() {
   const leftTriggerRef = useRef<THREE.Group>(null);
   const centerButtonsRef = useRef<THREE.Group>(null);
 
-  useFrame((_state, delta) => {
-    const r = scroll.offset;
+  const updateEntry = (delta: number) => {
+    if (hasEntered.current) return;
+    entryProgress.current = Math.min(entryProgress.current + delta * 0.6, 1);
+    const ease = 1 - Math.pow(1 - entryProgress.current, 3);
     const lerp = THREE.MathUtils.lerp;
 
-    // ═══════════════════════════════════════
-    // ENTRY ANIMATION — rise with flip & spin
-    // ═══════════════════════════════════════
-    if (!hasEntered.current) {
-      entryProgress.current = Math.min(entryProgress.current + delta * 0.6, 1);
-      const ease = 1 - Math.pow(1 - entryProgress.current, 3);
+    if (group.current) {
+      group.current.position.y = lerp(-6, 0, ease);
+      group.current.rotation.x = lerp(-Math.PI * 1.3, 0, ease);
+      group.current.rotation.y = lerp(Math.PI, 0, ease);
+      group.current.rotation.z = lerp(Math.PI * 0.3, 0, ease);
+    }
 
+    if (entryProgress.current >= 1) {
+      hasEntered.current = true;
       if (group.current) {
-        // Rise from deep below
-        group.current.position.y = lerp(-6, 0, ease);
-
-        // Backflip: starts upside-down/tipped back, settles flat
-        group.current.rotation.x = lerp(-Math.PI * 1.3, 0, ease);
-
-        // Horizontal spin: 180° twist as it rises
-        group.current.rotation.y = lerp(Math.PI, 0, ease);
-
-        // Slight roll that straightens out
-        group.current.rotation.z = lerp(Math.PI * 0.3, 0, ease);
-      }
-
-      if (entryProgress.current >= 1) {
-        hasEntered.current = true;
-        // Snap to exact zero to avoid micro-jitter
-        if (group.current) {
-          group.current.position.y = 0;
-          group.current.rotation.set(0, 0, 0);
-        }
+        group.current.position.y = 0;
+        group.current.rotation.set(0, 0, 0);
       }
     }
+  };
 
-    // ═══════════════════════════════════════
-    // SCROLL-DRIVEN DECONSTRUCTION
-    // ═══════════════════════════════════════
+  const updateTransparency = (r: number) => {
+    const lerp = THREE.MathUtils.lerp;
 
-    const shellP = Math.max(0, Math.min((r - 0.12) / 0.26, 1));
-    const shellE = 1 - Math.pow(1 - shellP, 3);
+    const glassP = Math.max(0, Math.min((r - 0.1) / 0.22, 1));
+    const glassE = 1 - Math.pow(1 - glassP, 3);
 
-    if (rightShellRef.current) {
-      rightShellRef.current.position.x = lerp(0, -55, shellE);
-      rightShellRef.current.position.y = lerp(0, 18, shellE);
-      rightShellRef.current.rotation.z = lerp(0, -0.06, shellE);
-    }
-    if (leftShellRef.current) {
-      leftShellRef.current.position.x = lerp(87.5, 142.5, shellE);
-      leftShellRef.current.position.y = lerp(0, 18, shellE);
-      leftShellRef.current.rotation.z = lerp(0, 0.06, shellE);
-    }
-    if (centerShellRef.current) {
-      centerShellRef.current.position.y = lerp(0, -18, shellE);
-    }
+    const bodyOpacity =
+      glassP < 0.55 ? lerp(1, 0.15, glassP / 0.55) : lerp(0.15, 0, (glassP - 0.55) / 0.45);
 
-    const mechP = Math.max(0, Math.min((r - 0.28) / 0.3, 1));
-    const mechE = 1 - Math.pow(1 - mechP, 3);
+    rightShellMat.opacity = bodyOpacity;
+    leftShellMat.opacity = bodyOpacity;
+    centerShellMat.opacity = bodyOpacity;
+
+    if (rightShellRef.current) rightShellRef.current.position.z = lerp(0, -18, glassE);
+    if (leftShellRef.current) leftShellRef.current.position.z = lerp(0, -18, glassE);
+    if (centerShellRef.current) centerShellRef.current.position.z = lerp(0, -14, glassE);
+  };
+
+  const updateMechanisms = (r: number) => {
+    const lerp = THREE.MathUtils.lerp;
+    const pushP = Math.max(0, Math.min((r - 0.22) / 0.33, 1));
+    const pushE = 1 - Math.pow(1 - pushP, 3);
 
     if (rightButtonsRef.current) {
-      rightButtonsRef.current.position.y = lerp(0, 65, mechE);
-      rightButtonsRef.current.position.z = lerp(0, 30, mechE);
+      rightButtonsRef.current.position.z = lerp(0, 48, pushE);
+      rightButtonsRef.current.position.y = lerp(0, 10, pushE);
     }
     if (rightStickRef.current) {
-      rightStickRef.current.position.y = lerp(0, 55, mechE);
-      rightStickRef.current.position.x = lerp(0, 12, mechE);
+      rightStickRef.current.position.z = lerp(0, 38, pushE);
+      rightStickRef.current.position.y = lerp(0, 6, pushE);
+      rightStickRef.current.position.x = lerp(0, 6, pushE);
     }
     if (rightTriggerRef.current) {
-      rightTriggerRef.current.position.y = lerp(0, 50, mechE);
-      rightTriggerRef.current.position.z = lerp(0, -18, mechE);
-      rightTriggerRef.current.rotation.x = lerp(0, 0.3, mechE);
+      rightTriggerRef.current.position.z = lerp(0, 42, pushE);
+      rightTriggerRef.current.position.y = lerp(0, 14, pushE);
+      rightTriggerRef.current.rotation.x = lerp(0, 0.35, pushE);
     }
-
     if (leftDPadRef.current) {
-      leftDPadRef.current.position.y = lerp(9.375, 60, mechE);
-      leftDPadRef.current.position.z = lerp(-25, 12, mechE);
+      leftDPadRef.current.position.z = lerp(-25, 22, pushE);
+      leftDPadRef.current.position.y = lerp(9.375, 20, pushE);
     }
     if (leftStickRef.current) {
-      leftStickRef.current.position.y = lerp(0, 55, mechE);
-      leftStickRef.current.position.x = lerp(87.5, 75.5, mechE);
+      leftStickRef.current.position.z = lerp(0, 38, pushE);
+      leftStickRef.current.position.y = lerp(0, 6, pushE);
+      leftStickRef.current.position.x = lerp(87.5, 82, pushE);
     }
     if (leftTriggerRef.current) {
-      leftTriggerRef.current.position.y = lerp(0, 50, mechE);
-      leftTriggerRef.current.position.z = lerp(0, -18, mechE);
-      leftTriggerRef.current.rotation.x = lerp(0, 0.3, mechE);
+      leftTriggerRef.current.position.z = lerp(0, 42, pushE);
+      leftTriggerRef.current.position.y = lerp(0, 14, pushE);
+      leftTriggerRef.current.rotation.x = lerp(0, 0.35, pushE);
     }
-
     if (centerButtonsRef.current) {
-      centerButtonsRef.current.position.y = lerp(0, 42, mechE);
+      centerButtonsRef.current.position.z = lerp(0, 40, pushE);
+      centerButtonsRef.current.position.y = lerp(0, 8, pushE);
     }
+  };
+
+  const updateHoverFloat = (r: number, elapsed: number) => {
+    if (r <= 0.48) return;
+    const hoverAmp = Math.min((r - 0.48) / 0.2, 1) * 0.4;
+
+    if (rightButtonsRef.current)
+      rightButtonsRef.current.position.y += Math.sin(elapsed * 0.7) * 0.02 * hoverAmp;
+    if (leftDPadRef.current)
+      leftDPadRef.current.position.y += Math.sin(elapsed * 0.8 + 1.2) * 0.02 * hoverAmp;
+    if (rightStickRef.current)
+      rightStickRef.current.position.y += Math.sin(elapsed * 0.65 + 2.1) * 0.015 * hoverAmp;
+    if (leftStickRef.current)
+      leftStickRef.current.position.y += Math.sin(elapsed * 0.7 + 3.0) * 0.015 * hoverAmp;
+    if (centerButtonsRef.current)
+      centerButtonsRef.current.position.y += Math.sin(elapsed * 0.75 + 1.8) * 0.012 * hoverAmp;
+  };
+
+  useFrame((state, delta) => {
+    const r = scroll.offset;
+
+    updateEntry(delta);
+    updateTransparency(r);
+    updateMechanisms(r);
+    updateHoverFloat(r, state.clock.elapsedTime);
   });
 
   return (
@@ -146,55 +174,76 @@ export function DeconstructedController() {
                       RIGHT SIDE — shell & mechanisms as siblings
                      ═══════════════════════════════════════ */}
                   <group name="RightSide" position={[-87.5, 0, 31.25]}>
+                    {/* Shell: fading dark-chrome body + edge lines */}
                     <group ref={rightShellRef} name="RightSideBase">
-                      <EdgesMesh geometry={nodes.RightSideBase_Dualshock_Blue_0.geometry} />
+                      <mesh
+                        geometry={nodes.RightSideBase_Dualshock_Blue_0.geometry}
+                        material={rightShellMat}
+                        renderOrder={0}
+                      />
+                      <EdgesMesh
+                        geometry={nodes.RightSideBase_Dualshock_Blue_0.geometry}
+                        color="#ffffff"
+                        threshold={15}
+                      />
                     </group>
 
+                    {/* Mechanisms: push through the fading shell */}
                     <group ref={rightButtonsRef} name="Buttons">
                       <group name="Square">
                         <EdgesMesh
                           geometry={nodes.Square_Dualshock_Blue_0.geometry}
                           color={PS_BLUE}
+                          threshold={15}
                         />
                       </group>
                       <group name="Triangle">
                         <EdgesMesh
                           geometry={nodes.Triangle_Dualshock_Blue_0.geometry}
                           color={XBOX_GREEN}
+                          threshold={15}
                         />
                       </group>
                       <group name="Cross">
                         <EdgesMesh
                           geometry={nodes.Cross_Dualshock_Blue_0.geometry}
                           color={STEAM_GREY}
+                          threshold={15}
                         />
                       </group>
                       <group name="Circle">
                         <EdgesMesh
                           geometry={nodes.Circle_Dualshock_Blue_0.geometry}
                           color={UNIFIED_AMBER}
+                          threshold={15}
                         />
                       </group>
                     </group>
 
                     <group ref={rightStickRef} name="RightStick">
                       <group name="R3">
-                        <EdgesMesh geometry={nodes.R3_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.R3_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                       <group name="RightStickBase">
-                        <EdgesMesh geometry={nodes.RightStickBase_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh
+                          geometry={nodes.RightStickBase_Dualshock_Blue_0.geometry}
+                          threshold={15}
+                        />
                       </group>
                     </group>
 
                     <group ref={rightTriggerRef} name="RightTrigger">
                       <group name="RightTriggerBase">
-                        <EdgesMesh geometry={nodes.RightTriggerBase_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh
+                          geometry={nodes.RightTriggerBase_Dualshock_Blue_0.geometry}
+                          threshold={15}
+                        />
                       </group>
                       <group name="R1" position={[87.5, 0, -25]}>
-                        <EdgesMesh geometry={nodes.R1_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.R1_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                       <group name="R2" position={[0, -31.25, 43.75]} rotation={[0.175, 0, 0]}>
-                        <EdgesMesh geometry={nodes.R2_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.R2_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                     </group>
                   </group>
@@ -204,42 +253,60 @@ export function DeconstructedController() {
                      ═══════════════════════════════════════ */}
                   <group name="LeftSide" position={[0, 0, 31.25]}>
                     <group ref={leftShellRef} name="LeftSideBase" position={[87.5, 0, 0]}>
-                      <EdgesMesh geometry={nodes.LeftSideBase_Dualshock_Blue_0.geometry} />
+                      <mesh
+                        geometry={nodes.LeftSideBase_Dualshock_Blue_0.geometry}
+                        material={leftShellMat}
+                        renderOrder={0}
+                      />
+                      <EdgesMesh
+                        geometry={nodes.LeftSideBase_Dualshock_Blue_0.geometry}
+                        color="#ffffff"
+                        threshold={15}
+                      />
                     </group>
 
                     <group ref={leftDPadRef} name="DPad" position={[87.5, 9.375, -25]}>
                       <group name="Up">
-                        <EdgesMesh geometry={nodes.Up_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.Up_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                       <group name="Down" rotation={[-Math.PI, 0, -Math.PI]}>
-                        <EdgesMesh geometry={nodes.Down_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.Down_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                       <group name="Right" rotation={[0, -Math.PI / 2, 0]}>
-                        <EdgesMesh geometry={nodes.Right_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh
+                          geometry={nodes.Right_Dualshock_Blue_0.geometry}
+                          threshold={15}
+                        />
                       </group>
                       <group name="Left" rotation={[0, Math.PI / 2, 0]}>
-                        <EdgesMesh geometry={nodes.Left_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.Left_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                     </group>
 
                     <group ref={leftStickRef} name="LeftStick" position={[87.5, 0, 0]}>
                       <group name="L3">
-                        <EdgesMesh geometry={nodes.L3_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.L3_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                       <group name="LeftStickBase">
-                        <EdgesMesh geometry={nodes.LeftStickBase_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh
+                          geometry={nodes.LeftStickBase_Dualshock_Blue_0.geometry}
+                          threshold={15}
+                        />
                       </group>
                     </group>
 
                     <group ref={leftTriggerRef} name="LeftTrigger" position={[87.5, 0, 0]}>
                       <group name="LeftTriggerBase">
-                        <EdgesMesh geometry={nodes.LeftTriggerBase_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh
+                          geometry={nodes.LeftTriggerBase_Dualshock_Blue_0.geometry}
+                          threshold={15}
+                        />
                       </group>
                       <group name="L1" position={[-87.5, 0, -25]}>
-                        <EdgesMesh geometry={nodes.L1_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.L1_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                       <group name="L2" position={[0, -31.25, 43.75]} rotation={[0.175, 0, 0]}>
-                        <EdgesMesh geometry={nodes.L2_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh geometry={nodes.L2_Dualshock_Blue_0.geometry} threshold={15} />
                       </group>
                     </group>
                   </group>
@@ -249,18 +316,36 @@ export function DeconstructedController() {
                      ═══════════════════════════════════════ */}
                   <group name="Center" position={[0, 0, 6.25]}>
                     <group ref={centerShellRef} name="CenterBase">
-                      <EdgesMesh geometry={nodes.CenterBase_Dualshock_Blue_0.geometry} />
+                      <mesh
+                        geometry={nodes.CenterBase_Dualshock_Blue_0.geometry}
+                        material={centerShellMat}
+                        renderOrder={0}
+                      />
+                      <EdgesMesh
+                        geometry={nodes.CenterBase_Dualshock_Blue_0.geometry}
+                        color="#ffffff"
+                        threshold={15}
+                      />
                     </group>
 
                     <group ref={centerButtonsRef} name="CenterButtons">
                       <group name="Analog">
-                        <EdgesMesh geometry={nodes.Analog_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh
+                          geometry={nodes.Analog_Dualshock_Blue_0.geometry}
+                          threshold={15}
+                        />
                       </group>
                       <group name="Select">
-                        <EdgesMesh geometry={nodes.Select_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh
+                          geometry={nodes.Select_Dualshock_Blue_0.geometry}
+                          threshold={15}
+                        />
                       </group>
                       <group name="Start">
-                        <EdgesMesh geometry={nodes.Start_Dualshock_Blue_0.geometry} />
+                        <EdgesMesh
+                          geometry={nodes.Start_Dualshock_Blue_0.geometry}
+                          threshold={15}
+                        />
                       </group>
                     </group>
                   </group>
