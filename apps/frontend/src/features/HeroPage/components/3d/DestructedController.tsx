@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef } from 'react';
 
-import { useGLTF, useAnimations, useCursor } from '@react-three/drei';
+import { useGLTF, useAnimations, useScroll } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -21,7 +21,7 @@ function PlatformHologram({
 }: {
   position: [number, number, number];
   color: string;
-  activeRef: React.MutableRefObject<boolean>;
+  activeRef: React.MutableRefObject<number>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const scanRef = useRef<THREE.Mesh>(null);
@@ -31,12 +31,12 @@ function PlatformHologram({
     if (!groupRef.current) return;
     const t = state.clock.elapsedTime;
 
-    const target = activeRef.current ? 1 : 0;
+    const target = activeRef.current;
     const current = groupRef.current.scale.x;
     const s = lerp(current, target, 0.12);
     groupRef.current.scale.setScalar(Math.max(0, s));
 
-    if (activeRef.current && s > 0.01) {
+    if (target > 0.01 && s > 0.01) {
       groupRef.current.position.y = position[1] + Math.sin(t * 3) * 1.5;
       groupRef.current.rotation.y = t * 1.5;
 
@@ -79,34 +79,15 @@ export function DeconstructedController() {
   const { nodes: rawNodes, animations } = useGLTF('/models/controller/scene.gltf');
   useAnimations(animations, group);
   const nodes = rawNodes as Record<string, Mesh>;
+  const scroll = useScroll();
 
   const entryProgress = useRef(0);
   const hasEntered = useRef(false);
 
-  const squareActive = useRef(false);
-  const triangleActive = useRef(false);
-  const crossActive = useRef(false);
-  const circleActive = useRef(false);
-
-  const [hovered, setHovered] = useState(false);
-  useCursor(hovered);
-
-  const squareHover = useMemo(() => ({
-    onPointerOver: (e: { stopPropagation: () => void }) => { e.stopPropagation(); squareActive.current = true; setHovered(true); },
-    onPointerOut: (e: { stopPropagation: () => void }) => { e.stopPropagation(); squareActive.current = false; setHovered(false); },
-  }), []);
-  const triangleHover = useMemo(() => ({
-    onPointerOver: (e: { stopPropagation: () => void }) => { e.stopPropagation(); triangleActive.current = true; setHovered(true); },
-    onPointerOut: (e: { stopPropagation: () => void }) => { e.stopPropagation(); triangleActive.current = false; setHovered(false); },
-  }), []);
-  const crossHover = useMemo(() => ({
-    onPointerOver: (e: { stopPropagation: () => void }) => { e.stopPropagation(); crossActive.current = true; setHovered(true); },
-    onPointerOut: (e: { stopPropagation: () => void }) => { e.stopPropagation(); crossActive.current = false; setHovered(false); },
-  }), []);
-  const circleHover = useMemo(() => ({
-    onPointerOver: (e: { stopPropagation: () => void }) => { e.stopPropagation(); circleActive.current = true; setHovered(true); },
-    onPointerOut: (e: { stopPropagation: () => void }) => { e.stopPropagation(); circleActive.current = false; setHovered(false); },
-  }), []);
+  const squareActive = useRef(0);
+  const triangleActive = useRef(0);
+  const crossActive = useRef(0);
+  const circleActive = useRef(0);
 
   useFrame((_state, delta) => {
     const lerp = THREE.MathUtils.lerp;
@@ -133,14 +114,38 @@ export function DeconstructedController() {
         }
       }
     }
-    // ── No idle animation after entry ──
+
+    // ═══════════════════════════════════════
+    // SCROLL PHASES: Rotate + Zoom, THEN Glow
+    // ═══════════════════════════════════════
+    if (group.current && hasEntered.current) {
+      const r = scroll.offset;
+      const rotProgress = Math.min(r / 0.35, 1);
+
+      group.current.rotation.x = lerp(0, -0.55, rotProgress);
+      group.current.position.z = lerp(0, 2.59, rotProgress);
+      group.current.position.y = lerp(0, -0.55, rotProgress);
+
+      if (r > 0.45) {
+        const glowR = (r - 0.45) / 0.65;
+
+        crossActive.current = glowR > 0.15 ? 1 : 0; // Steam
+        triangleActive.current = glowR > 0.38 ? 1 : 0; // Xbox
+        squareActive.current = glowR > 0.62 ? 1 : 0; // PSN
+        circleActive.current = glowR > 0.85 ? 1 : 0; // Unified
+      } else {
+        crossActive.current = 0;
+        triangleActive.current = 0;
+        squareActive.current = 0;
+        circleActive.current = 0;
+      }
+    }
   });
 
   return (
     <group ref={group} dispose={null}>
       <group name="Sketchfab_Scene">
-        {/* Flat orientation: -Math.PI / 2 on X lays the controller horizontal */}
-        <group name="Sketchfab_model" rotation={[-Math.PI / 2, 0, Math.PI]} scale={0.907}>
+        <group name="Sketchfab_model" rotation={[12, 0, Math.PI]} scale={0.907}>
           <group
             name="02b8b04a84f444f58559ae046d9e9522fbx"
             rotation={[Math.PI / 2, 0, 0]}
@@ -150,7 +155,7 @@ export function DeconstructedController() {
               <group name="RootNode">
                 <group name="Dualshock" position={[0, 0, 6.25]}>
                   {/* ═══════════════════════════════════════
-                      RIGHT SIDE — interactive platform buttons
+                      RIGHT SIDE — platform buttons with scroll holograms
                      ═══════════════════════════════════════ */}
                   <group name="RightSide" position={[-87.5, 0, 31.25]}>
                     <group name="RightSideBase">
@@ -162,7 +167,7 @@ export function DeconstructedController() {
                     </group>
 
                     <group name="Buttons">
-                      <group name="Square" {...squareHover}>
+                      <group name="Square">
                         <EdgesMesh
                           geometry={nodes.Square_Dualshock_Blue_0.geometry}
                           color={PS_BLUE}
@@ -175,7 +180,7 @@ export function DeconstructedController() {
                         />
                       </group>
 
-                      <group name="Triangle" {...triangleHover}>
+                      <group name="Triangle">
                         <EdgesMesh
                           geometry={nodes.Triangle_Dualshock_Blue_0.geometry}
                           color={XBOX_GREEN}
@@ -188,7 +193,7 @@ export function DeconstructedController() {
                         />
                       </group>
 
-                      <group name="Cross" {...crossHover}>
+                      <group name="Cross">
                         <EdgesMesh
                           geometry={nodes.Cross_Dualshock_Blue_0.geometry}
                           color={STEAM_GREY}
@@ -201,7 +206,7 @@ export function DeconstructedController() {
                         />
                       </group>
 
-                      <group name="Circle" {...circleHover}>
+                      <group name="Circle">
                         <EdgesMesh
                           geometry={nodes.Circle_Dualshock_Blue_0.geometry}
                           color={UNIFIED_AMBER}
