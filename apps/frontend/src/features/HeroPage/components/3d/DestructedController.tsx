@@ -1,3 +1,4 @@
+// cspell:words GLTF gltf drei Valorant lerp Sketchfab Dualshock
 import { useRef } from 'react';
 
 import { useGLTF, useAnimations, useScroll } from '@react-three/drei';
@@ -5,74 +6,18 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { EdgesMesh } from './EdgesMesh';
+import GlowGroup from './GlowGroup';
+import PlatformHologram from './PlatformHologram';
+import updateButton from './utils/DestructuredController.utils';
 
 import type { Mesh } from 'three';
+
+const lerp = THREE.MathUtils.lerp;
 
 const PS_BLUE = '#003791';
 const XBOX_GREEN = '#107C10';
 const STEAM_GREY = '#2a475e';
 const UNIFIED_AMBER = '#ff6600';
-
-// ─── Valorant-style holographic badge ───
-function PlatformHologram({
-  position,
-  color,
-  activeRef,
-}: {
-  position: [number, number, number];
-  color: string;
-  activeRef: React.MutableRefObject<number>;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const scanRef = useRef<THREE.Mesh>(null);
-  const lerp = THREE.MathUtils.lerp;
-
-  useFrame((state) => {
-    if (!groupRef.current) return;
-    const t = state.clock.elapsedTime;
-
-    const target = activeRef.current;
-    const current = groupRef.current.scale.x;
-    const s = lerp(current, target, 0.12);
-    groupRef.current.scale.setScalar(Math.max(0, s));
-
-    if (target > 0.01 && s > 0.01) {
-      groupRef.current.position.y = position[1] + Math.sin(t * 3) * 1.5;
-      groupRef.current.rotation.y = t * 1.5;
-
-      if (Math.random() > 0.94) {
-        groupRef.current.position.x = position[0] + (Math.random() - 0.5) * 0.8;
-      } else {
-        groupRef.current.position.x = position[0];
-      }
-
-      if (scanRef.current) {
-        scanRef.current.position.y = ((t * 10) % 14) - 7;
-      }
-    } else {
-      groupRef.current.position.x = position[0];
-      groupRef.current.position.y = position[1];
-    }
-  });
-
-  return (
-    <group ref={groupRef} position={position} scale={0}>
-      <mesh raycast={() => null}>
-        <octahedronGeometry args={[6, 0]} />
-        <meshBasicMaterial color={color} wireframe toneMapped={false} />
-      </mesh>
-      <mesh raycast={() => null}>
-        <octahedronGeometry args={[3, 0]} />
-        <meshBasicMaterial color={color} transparent opacity={0.12} toneMapped={false} />
-      </mesh>
-      <mesh ref={scanRef} rotation={[0, 0, Math.PI / 4]} raycast={() => null}>
-        <planeGeometry args={[14, 0.25]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.5} toneMapped={false} />
-      </mesh>
-      <pointLight color={color} intensity={20} distance={30} />
-    </group>
-  );
-}
 
 export function DeconstructedController() {
   const group = useRef<THREE.Group>(null);
@@ -89,12 +34,27 @@ export function DeconstructedController() {
   const crossActive = useRef(0);
   const circleActive = useRef(0);
 
-  useFrame((_state, delta) => {
-    const lerp = THREE.MathUtils.lerp;
+  const squareGlow = useRef(false);
+  const triangleGlow = useRef(false);
+  const crossGlow = useRef(false);
+  const circleGlow = useRef(false);
 
-    // ═══════════════════════════════════════
-    // ENTRY ANIMATION — rise from below, settle flat
-    // ═══════════════════════════════════════
+  const squareDepressRef = useRef<THREE.Group>(null);
+  const triangleDepressRef = useRef<THREE.Group>(null);
+  const crossDepressRef = useRef<THREE.Group>(null);
+  const circleDepressRef = useRef<THREE.Group>(null);
+
+  const squareBeamRef = useRef<THREE.Mesh>(null);
+  const triangleBeamRef = useRef<THREE.Mesh>(null);
+  const crossBeamRef = useRef<THREE.Mesh>(null);
+  const circleBeamRef = useRef<THREE.Mesh>(null);
+
+  const squareBleedRef = useRef<THREE.Mesh>(null);
+  const triangleBleedRef = useRef<THREE.Mesh>(null);
+  const crossBleedRef = useRef<THREE.Mesh>(null);
+  const circleBleedRef = useRef<THREE.Mesh>(null);
+
+  useFrame((_state, delta) => {
     if (!hasEntered.current) {
       entryProgress.current = Math.min(entryProgress.current + delta * 0.6, 1);
       const ease = 1 - Math.pow(1 - entryProgress.current, 3);
@@ -115,9 +75,6 @@ export function DeconstructedController() {
       }
     }
 
-    // ═══════════════════════════════════════
-    // SCROLL PHASES: Rotate + Zoom, THEN Glow
-    // ═══════════════════════════════════════
     if (group.current && hasEntered.current) {
       const r = scroll.offset;
       const rotProgress = Math.min(r / 0.35, 1);
@@ -129,10 +86,10 @@ export function DeconstructedController() {
       if (r > 0.45) {
         const glowR = (r - 0.45) / 0.65;
 
-        crossActive.current = glowR > 0.15 ? 1 : 0; // Steam
-        triangleActive.current = glowR > 0.38 ? 1 : 0; // Xbox
-        squareActive.current = glowR > 0.62 ? 1 : 0; // PSN
-        circleActive.current = glowR > 0.85 ? 1 : 0; // Unified
+        crossActive.current = glowR > 0.15 ? 1 : 0;
+        triangleActive.current = glowR > 0.38 ? 1 : 0;
+        squareActive.current = glowR > 0.62 ? 1 : 0;
+        circleActive.current = glowR > 0.85 ? 1 : 0;
       } else {
         crossActive.current = 0;
         triangleActive.current = 0;
@@ -140,6 +97,11 @@ export function DeconstructedController() {
         circleActive.current = 0;
       }
     }
+
+    updateButton(squareDepressRef, squareBeamRef, squareBleedRef, squareGlow);
+    updateButton(triangleDepressRef, triangleBeamRef, triangleBleedRef, triangleGlow);
+    updateButton(crossDepressRef, crossBeamRef, crossBleedRef, crossGlow);
+    updateButton(circleDepressRef, circleBeamRef, circleBleedRef, circleGlow);
   });
 
   return (
@@ -154,9 +116,6 @@ export function DeconstructedController() {
             <group name="Object_2">
               <group name="RootNode">
                 <group name="Dualshock" position={[0, 0, 6.25]}>
-                  {/* ═══════════════════════════════════════
-                      RIGHT SIDE — platform buttons with scroll holograms
-                     ═══════════════════════════════════════ */}
                   <group name="RightSide" position={[-87.5, 0, 31.25]}>
                     <group name="RightSideBase">
                       <EdgesMesh
@@ -167,57 +126,157 @@ export function DeconstructedController() {
                     </group>
 
                     <group name="Buttons">
-                      <group name="Square">
-                        <EdgesMesh
-                          geometry={nodes.Square_Dualshock_Blue_0.geometry}
-                          color={PS_BLUE}
-                          threshold={15}
-                        />
+                      <GlowGroup name="Square" activeRef={squareGlow}>
+                        <mesh ref={squareBleedRef} position={[0, -2, 0]} scale={0}>
+                          <cylinderGeometry args={[4, 6, 1, 6]} />
+                          <meshBasicMaterial
+                            color={PS_BLUE}
+                            transparent
+                            opacity={0.4}
+                            toneMapped={false}
+                          />
+                        </mesh>
+
+                        <group ref={squareDepressRef}>
+                          <EdgesMesh
+                            geometry={nodes.Square_Dualshock_Blue_0.geometry}
+                            color={PS_BLUE}
+                            threshold={15}
+                            activeRef={squareGlow}
+                            glowIntensity={4}
+                          />
+                        </group>
+
+                        <mesh ref={squareBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
+                          <boxGeometry args={[0.3, 30, 0.3]} />
+                          <meshBasicMaterial
+                            color={PS_BLUE}
+                            transparent
+                            opacity={0.6}
+                            toneMapped={false}
+                          />
+                        </mesh>
+
                         <PlatformHologram
                           position={[0, 28, 0]}
                           color={PS_BLUE}
                           activeRef={squareActive}
                         />
-                      </group>
+                      </GlowGroup>
 
-                      <group name="Triangle">
-                        <EdgesMesh
-                          geometry={nodes.Triangle_Dualshock_Blue_0.geometry}
-                          color={XBOX_GREEN}
-                          threshold={15}
-                        />
+                      <GlowGroup name="Triangle" activeRef={triangleGlow}>
+                        <mesh ref={triangleBleedRef} position={[0, -2, 0]} scale={0}>
+                          <cylinderGeometry args={[4, 6, 1, 6]} />
+                          <meshBasicMaterial
+                            color={XBOX_GREEN}
+                            transparent
+                            opacity={0.4}
+                            toneMapped={false}
+                          />
+                        </mesh>
+
+                        <group ref={triangleDepressRef}>
+                          <EdgesMesh
+                            geometry={nodes.Triangle_Dualshock_Blue_0.geometry}
+                            color={XBOX_GREEN}
+                            threshold={15}
+                            activeRef={triangleGlow}
+                            glowIntensity={4}
+                          />
+                        </group>
+
+                        <mesh ref={triangleBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
+                          <boxGeometry args={[0.3, 30, 0.3]} />
+                          <meshBasicMaterial
+                            color={XBOX_GREEN}
+                            transparent
+                            opacity={0.6}
+                            toneMapped={false}
+                          />
+                        </mesh>
+
                         <PlatformHologram
                           position={[0, 28, 0]}
                           color={XBOX_GREEN}
                           activeRef={triangleActive}
                         />
-                      </group>
+                      </GlowGroup>
 
-                      <group name="Cross">
-                        <EdgesMesh
-                          geometry={nodes.Cross_Dualshock_Blue_0.geometry}
-                          color={STEAM_GREY}
-                          threshold={15}
-                        />
+                      <GlowGroup name="Cross" activeRef={crossGlow}>
+                        <mesh ref={crossBleedRef} position={[0, -2, 0]} scale={0}>
+                          <cylinderGeometry args={[4, 6, 1, 6]} />
+                          <meshBasicMaterial
+                            color={STEAM_GREY}
+                            transparent
+                            opacity={0.4}
+                            toneMapped={false}
+                          />
+                        </mesh>
+
+                        <group ref={crossDepressRef}>
+                          <EdgesMesh
+                            geometry={nodes.Cross_Dualshock_Blue_0.geometry}
+                            color={STEAM_GREY}
+                            threshold={15}
+                            activeRef={crossGlow}
+                            glowIntensity={4}
+                          />
+                        </group>
+
+                        <mesh ref={crossBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
+                          <boxGeometry args={[0.3, 30, 0.3]} />
+                          <meshBasicMaterial
+                            color={STEAM_GREY}
+                            transparent
+                            opacity={0.6}
+                            toneMapped={false}
+                          />
+                        </mesh>
+
                         <PlatformHologram
                           position={[0, 28, 0]}
                           color={STEAM_GREY}
                           activeRef={crossActive}
                         />
-                      </group>
+                      </GlowGroup>
 
-                      <group name="Circle">
-                        <EdgesMesh
-                          geometry={nodes.Circle_Dualshock_Blue_0.geometry}
-                          color={UNIFIED_AMBER}
-                          threshold={15}
-                        />
+                      <GlowGroup name="Circle" activeRef={circleGlow}>
+                        <mesh ref={circleBleedRef} position={[0, -2, 0]} scale={0}>
+                          <cylinderGeometry args={[4, 6, 1, 6]} />
+                          <meshBasicMaterial
+                            color={UNIFIED_AMBER}
+                            transparent
+                            opacity={0.4}
+                            toneMapped={false}
+                          />
+                        </mesh>
+
+                        <group ref={circleDepressRef}>
+                          <EdgesMesh
+                            geometry={nodes.Circle_Dualshock_Blue_0.geometry}
+                            color={UNIFIED_AMBER}
+                            threshold={15}
+                            activeRef={circleGlow}
+                            glowIntensity={4}
+                          />
+                        </group>
+
+                        <mesh ref={circleBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
+                          <boxGeometry args={[0.3, 30, 0.3]} />
+                          <meshBasicMaterial
+                            color={UNIFIED_AMBER}
+                            transparent
+                            opacity={0.6}
+                            toneMapped={false}
+                          />
+                        </mesh>
+
                         <PlatformHologram
                           position={[0, 28, 0]}
                           color={UNIFIED_AMBER}
                           activeRef={circleActive}
                         />
-                      </group>
+                      </GlowGroup>
                     </group>
 
                     <group name="RightStick">
@@ -248,9 +307,6 @@ export function DeconstructedController() {
                     </group>
                   </group>
 
-                  {/* ═══════════════════════════════════════
-                      LEFT SIDE — static
-                     ═══════════════════════════════════════ */}
                   <group name="LeftSide" position={[0, 0, 31.25]}>
                     <group name="LeftSideBase" position={[87.5, 0, 0]}>
                       <EdgesMesh
@@ -306,9 +362,6 @@ export function DeconstructedController() {
                     </group>
                   </group>
 
-                  {/* ═══════════════════════════════════════
-                      CENTER — static
-                     ═══════════════════════════════════════ */}
                   <group name="Center" position={[0, 0, 6.25]}>
                     <group name="CenterBase">
                       <EdgesMesh

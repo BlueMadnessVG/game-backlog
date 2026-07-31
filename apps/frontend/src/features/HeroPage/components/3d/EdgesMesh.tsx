@@ -22,7 +22,7 @@ export function EdgesMesh({
   geometry,
   color = '#aaaaaa',
   threshold = 15,
-  lineWidth = 2,
+  lineWidth = 4,
   castShadow = true,
   activeRef,
   glowColor,
