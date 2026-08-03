@@ -83,8 +83,8 @@ export function DeconstructedController() {
       group.current.position.z = lerp(0, 2.59, rotProgress);
       group.current.position.y = lerp(0, -0.55, rotProgress);
 
-      if (r > 0.45) {
-        const glowR = (r - 0.45) / 0.65;
+      if (r > 0.35) {
+        const glowR = (r - 0.35) / 0.65;
 
         crossActive.current = glowR > 0.15 ? 1 : 0;
         triangleActive.current = glowR > 0.38 ? 1 : 0;
