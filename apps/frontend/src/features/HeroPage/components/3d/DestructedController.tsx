@@ -158,7 +158,7 @@ export function DeconstructedController() {
                         </mesh>
 
                         <PlatformHologram
-                          position={[0, 28, 0]}
+                          position={[0, 80, 0]}
                           color={PS_BLUE}
                           activeRef={squareActive}
                         />
@@ -196,7 +196,7 @@ export function DeconstructedController() {
                         </mesh>
 
                         <PlatformHologram
-                          position={[0, 28, 0]}
+                          position={[0, 80, 0]}
                           color={XBOX_GREEN}
                           activeRef={triangleActive}
                         />
@@ -234,7 +234,7 @@ export function DeconstructedController() {
                         </mesh>
 
                         <PlatformHologram
-                          position={[0, 28, 0]}
+                          position={[0, 80, 0]}
                           color={STEAM_GREY}
                           activeRef={crossActive}
                         />
