@@ -54,49 +54,56 @@ export function DeconstructedController() {
   const crossBleedRef = useRef<THREE.Mesh>(null);
   const circleBleedRef = useRef<THREE.Mesh>(null);
 
-  useFrame((_state, delta) => {
-    if (!hasEntered.current) {
-      entryProgress.current = Math.min(entryProgress.current + delta * 0.6, 1);
-      const ease = 1 - Math.pow(1 - entryProgress.current, 3);
+  const updateEntry = (delta: number) => {
+    if (hasEntered.current) return;
 
+    entryProgress.current = Math.min(entryProgress.current + delta * 0.6, 1);
+    const ease = 1 - Math.pow(1 - entryProgress.current, 3);
+
+    if (group.current) {
+      group.current.position.y = lerp(-6, 0, ease);
+      group.current.rotation.x = lerp(-Math.PI * 1.3, 0, ease);
+      group.current.rotation.y = lerp(Math.PI, 0, ease);
+      group.current.rotation.z = lerp(Math.PI * 0.3, 0, ease);
+    }
+
+    if (entryProgress.current >= 1) {
+      hasEntered.current = true;
       if (group.current) {
-        group.current.position.y = lerp(-6, 0, ease);
-        group.current.rotation.x = lerp(-Math.PI * 1.3, 0, ease);
-        group.current.rotation.y = lerp(Math.PI, 0, ease);
-        group.current.rotation.z = lerp(Math.PI * 0.3, 0, ease);
-      }
-
-      if (entryProgress.current >= 1) {
-        hasEntered.current = true;
-        if (group.current) {
-          group.current.position.y = 0;
-          group.current.rotation.set(0, 0, 0);
-        }
+        group.current.position.y = 0;
+        group.current.rotation.set(0, 0, 0);
       }
     }
+  };
 
-    if (group.current && hasEntered.current) {
-      const r = useScrollStore.getState().progress;
-      const rotProgress = Math.min(r / 0.35, 1);
+  const updateScrollRotation = () => {
+    if (!group.current || !hasEntered.current) return;
 
-      group.current.rotation.x = lerp(0, -0.55, rotProgress);
-      group.current.position.z = lerp(0, 2.59, rotProgress);
-      group.current.position.y = lerp(0, -0.55, rotProgress);
+    const r = useScrollStore.getState().progress;
+    const rotProgress = Math.min(r / 0.35, 1);
 
-      if (r > 0.3 && r < 0.98) {
-        const glowR = (r - 0.3) / 0.65;
+    group.current.rotation.x = lerp(0, -0.55, rotProgress);
+    group.current.position.z = lerp(0, 2.59, rotProgress);
+    group.current.position.y = lerp(0, -0.55, rotProgress);
 
-        crossActive.current = glowR > 0.15 && glowR <= 0.38 ? 1 : 0;
-        triangleActive.current = glowR > 0.38 && glowR <= 0.62 ? 1 : 0;
-        squareActive.current = glowR > 0.62 && glowR <= 0.85 ? 1 : 0;
-        circleActive.current = glowR > 0.85 ? 1 : 0;
-      } else {
-        crossActive.current = 0;
-        triangleActive.current = 0;
-        squareActive.current = 0;
-        circleActive.current = 0;
-      }
+    if (r > 0.3 && r < 0.98) {
+      const glowR = (r - 0.3) / 0.65;
+
+      crossActive.current = glowR > 0.15 && glowR <= 0.38 ? 1 : 0;
+      triangleActive.current = glowR > 0.38 && glowR <= 0.62 ? 1 : 0;
+      squareActive.current = glowR > 0.62 && glowR <= 0.85 ? 1 : 0;
+      circleActive.current = glowR > 0.85 ? 1 : 0;
+    } else {
+      crossActive.current = 0;
+      triangleActive.current = 0;
+      squareActive.current = 0;
+      circleActive.current = 0;
     }
+  };
+
+  useFrame((_state, delta) => {
+    updateEntry(delta);
+    updateScrollRotation();
 
     updateButton(squareDepressRef, squareBeamRef, squareBleedRef, squareGlow);
     updateButton(triangleDepressRef, triangleBeamRef, triangleBleedRef, triangleGlow);
