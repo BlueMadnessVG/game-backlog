@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 
-import { Environment, ContactShadows } from '@react-three/drei';
+import { Environment } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 
 import styles from './css/HeroScene.module.css';
@@ -51,16 +51,6 @@ export function HeroScene() {
 
         {/* Environment for chrome reflections — "studio" or "city" */}
         <Environment preset="studio" />
-
-        {/* Ground shadow for weight */}
-        <ContactShadows
-          position={[0, -0.8, 0]}
-          opacity={0.5}
-          scale={8}
-          blur={2.5}
-          far={4}
-          color="#000000"
-        />
 
         <fog attach="fog" args={['#050505', 6, 18]} />
       </Canvas>

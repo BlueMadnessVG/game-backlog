@@ -1,6 +1,6 @@
 import { User } from 'lucide-react';
 
-import styles from './css/HerpHudChrome.module.css';
+import styles from './css/HeroHudChrome.module.css';
 import { useScrollStore } from '../../store/heroPageScroll.Store';
 import { deriveHudCoordinates, hudChromeContent } from '../../utils/heroContent';
 

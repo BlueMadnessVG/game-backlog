@@ -18,7 +18,12 @@
 /* ─── Content Overlay ─── */
 .contentOverlay {
   position: relative;
-  z-index: 1;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.heroSpacer {
+  min-height: 100vh;
 }
 
 /* ─── Sections ─── */

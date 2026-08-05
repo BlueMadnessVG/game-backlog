@@ -13,4 +13,6 @@ export function useScrollSync(target: RefObject<HTMLElement | null>) {
   useMotionValueEvent(scrollYProgress, 'change', (latest) => {
     useScrollStore.getState().setProgress(latest);
   });
+
+  return scrollYProgress;
 }
