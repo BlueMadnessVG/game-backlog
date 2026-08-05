@@ -1,4 +1,6 @@
-import { ScrollControls, Environment, ContactShadows } from '@react-three/drei';
+import { Suspense } from 'react';
+
+import { Environment, ContactShadows } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 
 import styles from './css/HeroScene.module.css';
@@ -43,9 +45,9 @@ export function HeroScene() {
         <pointLight position={[-1, 1, 2]} intensity={0.8} color="#107C10" distance={10} />
 
         {/* 3 pages of scroll = 3x viewport height */}
-        <ScrollControls pages={3} damping={0.1}>
+        <Suspense fallback={null}>
           <DeconstructedController />
-        </ScrollControls>
+        </Suspense>
 
         {/* Environment for chrome reflections — "studio" or "city" */}
         <Environment preset="studio" />

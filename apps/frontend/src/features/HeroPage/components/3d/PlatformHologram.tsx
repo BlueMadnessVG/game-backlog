@@ -13,6 +13,7 @@ import HologramShell from './HologramShell';
 export const PLATE_W = 84;
 export const PLATE_H = 84;
 export const PLATE_THICK = 3.6;
+export const PANEL_TILT = 0.45;
 
 export const OUTER_X = 40;
 export const OUTER_Y = 40;
@@ -233,7 +234,7 @@ export default function PlatformHologram({
   const updateIdlePulse = (group: THREE.Group, t: number) => {
     group.position.y = position[1] + Math.sin(t * 3) * 1.5;
     group.position.x = position[0];
-    group.rotation.set(0, 0, 0);
+    group.rotation.set(PANEL_TILT, 0, 0);
 
     resetGhosts();
 
@@ -284,7 +285,7 @@ export default function PlatformHologram({
 
   const updateIdle = (group: THREE.Group) => {
     group.position.set(position[0], position[1], position[2]);
-    group.rotation.set(0, 0, 0);
+    group.rotation.set(PANEL_TILT, 0, 0);
     glitchRef.current.active = false;
 
     resetGhosts();

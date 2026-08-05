@@ -1,7 +1,7 @@
 // cspell:words GLTF gltf drei Valorant lerp Sketchfab Dualshock
 import { useRef } from 'react';
 
-import { useGLTF, useAnimations, useScroll } from '@react-three/drei';
+import { useGLTF, useAnimations } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -9,6 +9,7 @@ import { EdgesMesh } from './EdgesMesh';
 import GlowGroup from './GlowGroup';
 import PlatformHologram from './PlatformHologram';
 import updateButton from './utils/DestructuredController.utils';
+import { useScrollStore } from '../../store/heroPageScroll.Store';
 
 import type { Mesh } from 'three';
 
@@ -24,7 +25,6 @@ export function DeconstructedController() {
   const { nodes: rawNodes, animations } = useGLTF('/models/controller/scene.gltf');
   useAnimations(animations, group);
   const nodes = rawNodes as Record<string, Mesh>;
-  const scroll = useScroll();
 
   const entryProgress = useRef(0);
   const hasEntered = useRef(false);
@@ -76,19 +76,19 @@ export function DeconstructedController() {
     }
 
     if (group.current && hasEntered.current) {
-      const r = scroll.offset;
+      const r = useScrollStore.getState().progress;
       const rotProgress = Math.min(r / 0.35, 1);
 
       group.current.rotation.x = lerp(0, -0.55, rotProgress);
       group.current.position.z = lerp(0, 2.59, rotProgress);
       group.current.position.y = lerp(0, -0.55, rotProgress);
 
-      if (r > 0.35) {
-        const glowR = (r - 0.35) / 0.65;
+      if (r > 0.3 && r < 0.98) {
+        const glowR = (r - 0.3) / 0.65;
 
-        crossActive.current = glowR > 0.15 ? 1 : 0;
-        triangleActive.current = glowR > 0.38 ? 1 : 0;
-        squareActive.current = glowR > 0.62 ? 1 : 0;
+        crossActive.current = glowR > 0.15 && glowR <= 0.38 ? 1 : 0;
+        triangleActive.current = glowR > 0.38 && glowR <= 0.62 ? 1 : 0;
+        squareActive.current = glowR > 0.62 && glowR <= 0.85 ? 1 : 0;
         circleActive.current = glowR > 0.85 ? 1 : 0;
       } else {
         crossActive.current = 0;
@@ -158,7 +158,7 @@ export function DeconstructedController() {
                         </mesh>
 
                         <PlatformHologram
-                          position={[0, 80, 0]}
+                          position={[0, 85, 0]}
                           color={PS_BLUE}
                           activeRef={squareActive}
                         />
@@ -196,7 +196,7 @@ export function DeconstructedController() {
                         </mesh>
 
                         <PlatformHologram
-                          position={[0, 80, 0]}
+                          position={[0, 85, 0]}
                           color={XBOX_GREEN}
                           activeRef={triangleActive}
                         />
@@ -234,7 +234,7 @@ export function DeconstructedController() {
                         </mesh>
 
                         <PlatformHologram
-                          position={[0, 80, 0]}
+                          position={[0, 85, 0]}
                           color={STEAM_GREY}
                           activeRef={crossActive}
                         />
@@ -272,7 +272,7 @@ export function DeconstructedController() {
                         </mesh>
 
                         <PlatformHologram
-                          position={[0, 28, 0]}
+                          position={[0, 85, 0]}
                           color={UNIFIED_AMBER}
                           activeRef={circleActive}
                         />
