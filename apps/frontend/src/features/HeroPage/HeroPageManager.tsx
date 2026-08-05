@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 
 import { HeroScene } from './components/canvas/HeroScene';
+import HeroHudChrome from './components/content/HeroHudChrome';
 import styles from './css/HeroPageManager.module.css';
 import { useScrollSync } from './hooks/useScrollSync';
 
@@ -12,6 +13,8 @@ export function HeroPage() {
     <div ref={pageRef} className={styles.heroPage}>
       {/* 3D Scene — fixed behind everything */}
       <HeroScene />
+
+      <HeroHudChrome />
 
       <div className={styles.contentOverlay}></div>
     </div>
