@@ -10,26 +10,31 @@ import styles from './css/HeroPageManager.module.css';
 import { useScrollSync } from './hooks/useScrollSync';
 import { ScrollProgressProvider } from './store/ScrollProgressContext';
 
+import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
+
 export function HeroPageManager() {
-  const pageRef = useRef<HTMLDivElement>(null);
+  const mainRef = useMainScroll();
   const heroSequenceRef = useRef<HTMLDivElement>(null);
-  const scrollYProgress = useScrollSync(pageRef, heroSequenceRef);
+  const scrollYProgress = useScrollSync(mainRef, heroSequenceRef);
 
   return (
-    <div ref={pageRef} className={styles.heroPage}>
+    <div className={styles.heroPage}>
       <ScrollProgressProvider value={scrollYProgress}>
-        <HeroTagline />
-        <FeatureCallouts />
-        <HeroScene />
-        <HeroHudChrome />
-        <HeroButtonHotspots />
-        <ScrollProgressRail containerRef={pageRef} />
+        <div className={styles.heroViewport} ref={heroSequenceRef}>
+          <div className={styles.sceneStage}>
+            <HeroScene />
+            <HeroTagline />
+            <FeatureCallouts />
+            <HeroButtonHotspots />
+          </div>
+        </div>
 
-        <div className={styles.contentOverlay}>
-          <div ref={heroSequenceRef} className={styles.heroSequenceSpacer} />
+        <HeroHudChrome />
+        <ScrollProgressRail />
+
+        <div className={styles.contentBelow}>
           {/* SyncMatrix, Topology, Footer go here next — normal document
-              flow, independent of the progress value driving everything
-              above */}
+              flow after the hero sequence */}
         </div>
       </ScrollProgressProvider>
     </div>

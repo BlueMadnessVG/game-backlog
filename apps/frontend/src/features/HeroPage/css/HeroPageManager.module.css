@@ -3,39 +3,29 @@
 /* ─── Base ─── */
 .heroPage {
   position: relative;
-  height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: none;
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-.heroPage::-webkit-scrollbar {
-  display: none;
-}
-
-/* ─── 3D Scene Container ─── */
-.sceneContainer {
-  position: fixed;
-  inset: 0;
+/* ─── Scroll Timeline + Sticky Scene ─── */
+.heroViewport {
+  position: relative;
+  height: 400vh;
   z-index: 0;
-  background-color: #050505;
 }
 
-/* ─── Content Overlay ─── */
-.contentOverlay {
+.sceneStage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 0;
+}
+
+/* ─── Content After The Hero Sequence ─── */
+.contentBelow {
   position: relative;
   z-index: 10;
-  pointer-events: none;
-}
-
-.heroSpacer {
-  min-height: 100vh;
-}
-
-.heroSequenceSpacer {
-  height: 400vh;
+  background-color: var(--bg);
 }
 
 /* ─── Sections ─── */

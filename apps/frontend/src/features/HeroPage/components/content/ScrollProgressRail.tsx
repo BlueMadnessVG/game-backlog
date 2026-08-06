@@ -1,12 +1,9 @@
 import { useRef } from 'react';
-import type { RefObject } from 'react';
 
 import styles from './css/ScrollProgressRail.module.css';
 import { useScrollStore } from '../../store/heroPageScroll.Store';
 
-interface ScrollProgressRailProps {
-  containerRef: RefObject<HTMLElement | null>;
-}
+import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
 function ratioToScrollTop(container: HTMLElement, ratio: number) {
   const max = container.scrollHeight - container.clientHeight;
@@ -17,12 +14,13 @@ function ratioToScrollTop(container: HTMLElement, ratio: number) {
  * Visible scroll control for the hero. Fills with scroll progress and
  * supports drag-to-scrub. Replaces the (near-invisible) native scrollbar.
  */
-export function ScrollProgressRail({ containerRef }: ScrollProgressRailProps) {
+export function ScrollProgressRail() {
   const progress = useScrollStore((state) => state.progress);
+  const mainRef = useMainScroll();
   const dragging = useRef(false);
 
   const scrub = (clientY: number) => {
-    const el = containerRef.current;
+    const el = mainRef.current;
     if (!el) return;
     const bounds = el.getBoundingClientRect();
     const ratio = bounds.height > 0 ? (clientY - bounds.top) / bounds.height : 0;
