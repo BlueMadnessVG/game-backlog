@@ -11,23 +11,26 @@ export const featureCallouts: FeatureCallout[] = [
   {
     key: 'xbox',
     label: 'XBOX SYNC',
-    body: 'Batched/chunked delivery ensuring seamless integration with Microsoft ecosystem.',
-    tag: 'SYSTEM_STABLE_REV_4.0',
+    body: 'Title history pulled via OpenXBL, achievements synced in batches of five with a 500ms pause; failures are skipped, not retried.',
+    tag: 'xbox.provider.ts',
   },
   {
     key: 'steam',
     label: 'STEAM INTEGRATION',
-    body: 'TanStack Virtual library handling massive game catalogues with minimal DOM overhead.',
+    body: 'Library pulled from the Steam Web API and filtered to titles with visible stats; achievements batched in fives with a 200ms pause.',
+    tag: 'steam.provider.ts',
   },
   {
     key: 'playstation',
     label: 'PLAYSTATION NETWORK',
-    body: 'Legacy trophy synchronization mapping historical achievement data efficiently.',
+    body: 'Synced through the psn-api SDK, with PSN access tokens refreshed automatically 60s before expiry.',
+    tag: 'psn.provider.ts',
   },
   {
     key: 'unified',
     label: 'UNIFIED PERSISTENCE',
-    body: 'Valibot schema validation ensuring cross-platform data normalization integrity.',
+    body: 'One shared catalog keyed on title and platform; three platform queries run in parallel and merge into a single sorted list.',
+    tag: 'library.services.ts',
   },
 ];
 

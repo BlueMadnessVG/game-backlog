@@ -8,6 +8,15 @@ import type { PlatformKey } from './platformColors';
  */
 export const DOCK_COMPLETE = 0.35;
 
+/**
+ * Global page-progress window around the hero→chapters handoff. The docked
+ * mini-controller mounts once `progress >= heroEnd + DOCK_SPAN`, where
+ * `heroEnd` is measured (see useChapterMeasurement) as the moment the
+ * contentBelow section reaches the viewport top.
+ */
+export const DOCK_LEAD = 0.02;
+export const DOCK_SPAN = 0.05;
+
 const ACTIVATION_START = 0.3;
 const ACTIVATION_END = 0.98;
 const ACTIVATION_SPAN = ACTIVATION_END - ACTIVATION_START;

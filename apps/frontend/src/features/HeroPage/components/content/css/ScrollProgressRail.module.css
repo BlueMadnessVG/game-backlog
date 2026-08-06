@@ -20,4 +20,29 @@
   width: 100%;
   background: linear-gradient(180deg, var(--accent), #ffafd3);
   box-shadow: 0 0 8px rgba(208, 188, 255, 0.5);
+  transition: background 0.3s ease;
+}
+
+.dot {
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--dot-color);
+  opacity: 0.55;
+  border: 1px solid rgba(10, 10, 14, 0.6);
+  transition:
+    opacity 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+
+.dotActive {
+  opacity: 1;
+  box-shadow:
+    0 0 10px var(--dot-color),
+    0 0 3px var(--dot-color);
+  transform: translate(-50%, -50%) scale(1.45);
 }
