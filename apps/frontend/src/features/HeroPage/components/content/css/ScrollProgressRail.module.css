@@ -1,0 +1,23 @@
+.rail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 100vh;
+  z-index: 30;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  background: rgba(208, 188, 255, 0.08);
+  transition: background 0.2s ease;
+}
+
+.rail:hover {
+  background: rgba(208, 188, 255, 0.16);
+}
+
+.fill {
+  width: 100%;
+  background: linear-gradient(180deg, var(--accent), #ffafd3);
+  box-shadow: 0 0 8px rgba(208, 188, 255, 0.5);
+}

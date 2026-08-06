@@ -9,16 +9,14 @@ import { EdgesMesh } from './EdgesMesh';
 import GlowGroup from './GlowGroup';
 import PlatformHologram from './PlatformHologram';
 import updateButton from './utils/DestructuredController.utils';
+import { useButtonHotspotsStore } from '../../store/heroButtonHotspots.Store';
 import { useScrollStore } from '../../store/heroPageScroll.Store';
+import { PS_BLUE, XBOX_GREEN, STEAM_GREY, UNIFIED_AMBER } from '../../utils/platformColors';
+import { DOCK_COMPLETE, PLATFORM_TIMELINE } from '../../utils/scrollTimeline';
 
 import type { Mesh } from 'three';
 
 const lerp = THREE.MathUtils.lerp;
-
-const PS_BLUE = '#003791';
-const XBOX_GREEN = '#107C10';
-const STEAM_GREY = '#2a475e';
-const UNIFIED_AMBER = '#ff6600';
 
 export function DeconstructedController() {
   const group = useRef<THREE.Group>(null);
@@ -80,19 +78,22 @@ export function DeconstructedController() {
     if (!group.current || !hasEntered.current) return;
 
     const r = useScrollStore.getState().progress;
-    const rotProgress = Math.min(r / 0.35, 1);
+    const rotProgress = Math.min(r / DOCK_COMPLETE, 1);
 
     group.current.rotation.x = lerp(0, -0.55, rotProgress);
     group.current.position.z = lerp(0, 2.59, rotProgress);
     group.current.position.y = lerp(0, -0.55, rotProgress);
 
     if (r > 0.3 && r < 0.98) {
-      const glowR = (r - 0.3) / 0.65;
+      const [steamStart, steamEnd] = PLATFORM_TIMELINE.steam;
+      const [xboxStart, xboxEnd] = PLATFORM_TIMELINE.xbox;
+      const [psStart, psEnd] = PLATFORM_TIMELINE.playstation;
+      const [unifiedStart] = PLATFORM_TIMELINE.unified;
 
-      crossActive.current = glowR > 0.15 && glowR <= 0.38 ? 1 : 0;
-      triangleActive.current = glowR > 0.38 && glowR <= 0.62 ? 1 : 0;
-      squareActive.current = glowR > 0.62 && glowR <= 0.85 ? 1 : 0;
-      circleActive.current = glowR > 0.85 ? 1 : 0;
+      crossActive.current = r > steamStart && r <= steamEnd ? 1 : 0;
+      triangleActive.current = r > xboxStart && r <= xboxEnd ? 1 : 0;
+      squareActive.current = r > psStart && r <= psEnd ? 1 : 0;
+      circleActive.current = r > unifiedStart ? 1 : 0;
     } else {
       crossActive.current = 0;
       triangleActive.current = 0;
@@ -104,6 +105,12 @@ export function DeconstructedController() {
   useFrame((_state, delta) => {
     updateEntry(delta);
     updateScrollRotation();
+
+    const { glow } = useButtonHotspotsStore.getState();
+    squareGlow.current = glow.square;
+    triangleGlow.current = glow.triangle;
+    crossGlow.current = glow.cross;
+    circleGlow.current = glow.circle;
 
     updateButton(squareDepressRef, squareBeamRef, squareBleedRef, squareGlow);
     updateButton(triangleDepressRef, triangleBeamRef, triangleBleedRef, triangleGlow);
@@ -144,7 +151,7 @@ export function DeconstructedController() {
                           />
                         </mesh>
 
-                        <group ref={squareDepressRef}>
+                        <group name="Hotspot-Square" ref={squareDepressRef}>
                           <EdgesMesh
                             geometry={nodes.Square_Dualshock_Blue_0.geometry}
                             color={PS_BLUE}
@@ -182,7 +189,7 @@ export function DeconstructedController() {
                           />
                         </mesh>
 
-                        <group ref={triangleDepressRef}>
+                        <group name="Hotspot-Triangle" ref={triangleDepressRef}>
                           <EdgesMesh
                             geometry={nodes.Triangle_Dualshock_Blue_0.geometry}
                             color={XBOX_GREEN}
@@ -220,7 +227,7 @@ export function DeconstructedController() {
                           />
                         </mesh>
 
-                        <group ref={crossDepressRef}>
+                        <group name="Hotspot-Cross" ref={crossDepressRef}>
                           <EdgesMesh
                             geometry={nodes.Cross_Dualshock_Blue_0.geometry}
                             color={STEAM_GREY}
@@ -258,7 +265,7 @@ export function DeconstructedController() {
                           />
                         </mesh>
 
-                        <group ref={circleDepressRef}>
+                        <group name="Hotspot-Circle" ref={circleDepressRef}>
                           <EdgesMesh
                             geometry={nodes.Circle_Dualshock_Blue_0.geometry}
                             color={UNIFIED_AMBER}

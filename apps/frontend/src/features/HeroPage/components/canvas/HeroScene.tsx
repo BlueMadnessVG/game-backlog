@@ -4,6 +4,7 @@ import { Environment } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 
 import styles from './css/HeroScene.module.css';
+import { ButtonProjector } from '../3d/ButtonProjector';
 import { DeconstructedController } from '../3d/DestructedController';
 
 export function HeroScene() {
@@ -13,6 +14,7 @@ export function HeroScene() {
         shadows
         camera={{ position: [0, 0, 5], fov: 35, near: 0.1, far: 100 }}
         gl={{ antialias: true, toneMapping: 3, toneMappingExposure: 1.2 }}
+        style={{ touchAction: 'pan-y' }}
       >
         {/* Dramatic studio lighting — key + fill + rim */}
         <ambientLight intensity={0.15} />
@@ -48,6 +50,8 @@ export function HeroScene() {
         <Suspense fallback={null}>
           <DeconstructedController />
         </Suspense>
+
+        <ButtonProjector />
 
         {/* Environment for chrome reflections — "studio" or "city" */}
         <Environment preset="studio" />

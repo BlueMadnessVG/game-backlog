@@ -3,8 +3,16 @@
 /* ─── Base ─── */
 .heroPage {
   position: relative;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+.heroPage::-webkit-scrollbar {
+  display: none;
 }
 
 /* ─── 3D Scene Container ─── */
@@ -24,6 +32,10 @@
 
 .heroSpacer {
   min-height: 100vh;
+}
+
+.heroSequenceSpacer {
+  height: 400vh;
 }
 
 /* ─── Sections ─── */
