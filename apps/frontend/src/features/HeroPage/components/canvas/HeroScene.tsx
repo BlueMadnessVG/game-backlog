@@ -5,6 +5,7 @@ import { Canvas } from '@react-three/fiber';
 
 import styles from './css/HeroScene.module.css';
 import { ButtonProjector } from '../3d/ButtonProjector';
+import { CameraRig } from '../3d/CameraRig';
 import { DeconstructedController } from '../3d/DestructedController';
 
 export function HeroScene() {
@@ -50,6 +51,8 @@ export function HeroScene() {
         <Suspense fallback={null}>
           <DeconstructedController />
         </Suspense>
+
+        <CameraRig />
 
         <ButtonProjector />
 

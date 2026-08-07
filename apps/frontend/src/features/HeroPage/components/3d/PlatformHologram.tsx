@@ -333,7 +333,7 @@ export default function PlatformHologram({
   });
 
   return (
-    <group ref={groupRef} position={position} scale={0}>
+    <group ref={groupRef} position={position} scale={0} userData={{ hologram: true }}>
       {/* ORIGINAL */}
       <group ref={originalRef}>
         <mesh raycast={() => null}>

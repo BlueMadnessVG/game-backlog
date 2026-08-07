@@ -12,13 +12,40 @@ import updateButton from './utils/DestructuredController.utils';
 import { useButtonHotspotsStore } from '../../store/heroButtonHotspots.Store';
 import { useScrollStore } from '../../store/heroPageScroll.Store';
 import { PS_BLUE, XBOX_GREEN, STEAM_GREY, UNIFIED_AMBER } from '../../utils/platformColors';
-import { DOCK_COMPLETE, PLATFORM_TIMELINE } from '../../utils/scrollTimeline';
+import {
+  CONTROLLER_CENTER_END,
+  CONTROLLER_CENTER_START,
+  DOCK_COMPLETE,
+  PLATFORM_TIMELINE,
+  SCENE_FADE_END,
+  SCENE_FADE_START,
+} from '../../utils/scrollTimeline';
 
 import type { Mesh } from 'three';
 
 const lerp = THREE.MathUtils.lerp;
 
-export function DeconstructedController() {
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+export function DeconstructedController({
+  color = '#444444',
+  staticPose = false,
+}: {
+  /**
+   * Color of the controller's body outline (base shell edges). The four face
+   * buttons keep their platform colors regardless.
+   */
+  color?: string;
+  /**
+   * Render a scroll-free, permanently posed controller (tilted dock view,
+   * centered) for the chapter showcase. Disables the hero entry/scroll/dim
+   * passes, which read hero-relative progress and would otherwise dissolve it.
+   */
+  staticPose?: boolean;
+}) {
   const group = useRef<THREE.Group>(null);
   const { nodes: rawNodes, animations } = useGLTF('/models/controller/scene.gltf');
   useAnimations(animations, group);
@@ -26,6 +53,7 @@ export function DeconstructedController() {
 
   const entryProgress = useRef(0);
   const hasEntered = useRef(false);
+  const staticPoseSet = useRef(false);
 
   const squareActive = useRef(0);
   const triangleActive = useRef(0);
@@ -74,17 +102,67 @@ export function DeconstructedController() {
     }
   };
 
-  const updateScrollRotation = () => {
+  const baseOpacities = useRef(new Map<THREE.Material, number>());
+
+  const visitScene = (obj: THREE.Object3D, fn: (o: THREE.Object3D) => void) => {
+    if (obj.userData.hologram) return;
+    fn(obj);
+    obj.children.forEach((child) => visitScene(child, fn));
+  };
+
+  const getMaterialList = (obj: THREE.Object3D): THREE.Material[] => {
+    const material = (obj as { material?: THREE.Material | THREE.Material[] }).material;
+    if (!material) return [];
+    return Array.isArray(material) ? material : [material];
+  };
+
+  const captureBaseOpacities = () => {
+    if (!group.current || baseOpacities.current.size > 0) return;
+    visitScene(group.current, (obj) => {
+      for (const material of getMaterialList(obj)) {
+        if (!baseOpacities.current.has(material)) {
+          baseOpacities.current.set(material, material.opacity);
+        }
+      }
+    });
+  };
+
+  const applyDim = (factor: number) => {
+    if (!group.current) return;
+    visitScene(group.current, (obj) => {
+      for (const material of getMaterialList(obj)) {
+        const base = baseOpacities.current.get(material);
+        if (base === undefined) continue;
+        material.transparent = true;
+        material.opacity = base * factor;
+      }
+    });
+  };
+
+  const updateScrollRotation = (r: number) => {
     if (!group.current || !hasEntered.current) return;
 
-    const r = useScrollStore.getState().progress;
-    const rotProgress = Math.min(r / DOCK_COMPLETE, 1);
+    const centerProgress = smoothstep(
+      CONTROLLER_CENTER_START,
+      CONTROLLER_CENTER_END,
+      r,
+    );
 
-    group.current.rotation.x = lerp(0, -0.55, rotProgress);
-    group.current.position.z = lerp(0, 2.59, rotProgress);
-    group.current.position.y = lerp(0, -0.55, rotProgress);
+    if (centerProgress > 0) {
+      // Exit staging: after the platform holograms play out, glide the
+      // controller back to dead-center, face-on, for the camera close-up.
+      group.current.rotation.x = lerp(-0.55, 0, centerProgress);
+      group.current.position.z = lerp(2.59, 0, centerProgress);
+      group.current.position.y = lerp(-0.55, 0, centerProgress);
+    } else {
+      const rotProgress = Math.min(r / DOCK_COMPLETE, 1);
 
-    if (r > 0.3 && r < 0.98) {
+      group.current.rotation.x = lerp(0, -0.55, rotProgress);
+      group.current.position.z = lerp(0, 2.59, rotProgress);
+      group.current.position.y = lerp(0, -0.55, rotProgress);
+    }
+
+    if (r > 0.2 && r < 0.8) {
       const [steamStart, steamEnd] = PLATFORM_TIMELINE.steam;
       const [xboxStart, xboxEnd] = PLATFORM_TIMELINE.xbox;
       const [psStart, psEnd] = PLATFORM_TIMELINE.playstation;
@@ -103,8 +181,23 @@ export function DeconstructedController() {
   };
 
   useFrame((_state, delta) => {
-    updateEntry(delta);
-    updateScrollRotation();
+    if (staticPose) {
+      if (!staticPoseSet.current) {
+        staticPoseSet.current = true;
+        if (group.current) {
+          group.current.position.set(0, 0, 0);
+          group.current.rotation.set(-0.55, 0, 0);
+        }
+      }
+    } else {
+      updateEntry(delta);
+
+      const r = useScrollStore.getState().progress;
+      updateScrollRotation(r);
+
+      captureBaseOpacities();
+      applyDim(1 - smoothstep(SCENE_FADE_START, SCENE_FADE_END, r));
+    }
 
     const { glow } = useButtonHotspotsStore.getState();
     squareGlow.current = glow.square;
@@ -134,7 +227,7 @@ export function DeconstructedController() {
                     <group name="RightSideBase">
                       <EdgesMesh
                         geometry={nodes.RightSideBase_Dualshock_Blue_0.geometry}
-                        color="#444444"
+                        color={color}
                         threshold={15}
                       />
                     </group>
@@ -325,7 +418,7 @@ export function DeconstructedController() {
                     <group name="LeftSideBase" position={[87.5, 0, 0]}>
                       <EdgesMesh
                         geometry={nodes.LeftSideBase_Dualshock_Blue_0.geometry}
-                        color="#444444"
+                        color={color}
                         threshold={15}
                       />
                     </group>
@@ -380,7 +473,7 @@ export function DeconstructedController() {
                     <group name="CenterBase">
                       <EdgesMesh
                         geometry={nodes.CenterBase_Dualshock_Blue_0.geometry}
-                        color="#444444"
+                        color={color}
                         threshold={15}
                       />
                     </group>

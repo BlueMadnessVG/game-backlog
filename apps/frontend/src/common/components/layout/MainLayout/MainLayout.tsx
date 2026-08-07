@@ -5,8 +5,8 @@ import { AnimatePresence } from 'framer-motion';
 
 import styles from './css/MainLayout.module.css';
 import { MainScrollProvider } from './MainScrollContext';
-import Sidebar from '../Sidebar/Sidebar';
-
+/* import Sidebar from '../Sidebar/Sidebar';
+ */
 interface MainLayoutProps {
   children: ReactNode;
 }
@@ -20,7 +20,8 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
     <AnimatePresence mode="wait">
       <MainScrollProvider value={mainRef}>
         <div className={styles.main_layout}>
-          <Sidebar />
+          {/*           <Sidebar />
+           */}{' '}
           <main ref={mainRef} className={isGameDetail ? styles.main_horizontal : undefined}>
             <div className={styles.content_wrapper}>{children}</div>
           </main>
