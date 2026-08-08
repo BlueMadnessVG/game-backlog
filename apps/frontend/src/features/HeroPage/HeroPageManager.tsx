@@ -3,8 +3,7 @@ import { useRef } from 'react';
 import { motion, useTransform } from 'framer-motion';
 
 import { HeroScene } from './components/canvas/HeroScene';
-import { ChapterSectionList } from './components/content/ChapterSectionList';
-import { FeatureCallouts } from './components/content/FeatureCallouts';
+import { FeatureDisplayPanel } from './components/content/FeatureDisplayPanel';
 import { HeroButtonHotspots } from './components/content/HeroButtonHotspots';
 import { HeroHudChrome } from './components/content/HeroHudChrome';
 import { HeroTagline } from './components/content/HeroTagline';
@@ -44,7 +43,7 @@ export function HeroPageManager() {
 
             <motion.div style={{ opacity: hudOpacity }} className={styles.hudLayer}>
               <HeroTagline />
-              <FeatureCallouts />
+              <FeatureDisplayPanel />
               <HeroButtonHotspots />
             </motion.div>
           </div>
@@ -60,7 +59,7 @@ export function HeroPageManager() {
           {/* Every section is tagged data-chapter="" so useChapterMeasurement
               maps it onto the global progress model — the docked controller
               and the rail chapter markers key off the same windows */}
-          <ChapterSectionList />
+          \{' '}
         </div>
       </ScrollProgressProvider>
     </div>

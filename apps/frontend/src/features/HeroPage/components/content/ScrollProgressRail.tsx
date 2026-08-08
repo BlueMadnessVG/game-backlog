@@ -1,54 +1,60 @@
 import { useMemo, useRef } from 'react';
 
 import styles from './css/ScrollProgressRail.module.css';
-import {
-  usePageProgressStore,
-  getActiveRange,
-  type ChapterRange,
-} from '../../store/pageProgress.Store';
-import { SECTIONS } from '../../utils/sections';
+import { usePageProgressStore, getActiveRange } from '../../store/pageProgress.Store';
+import { PLATFORM_COLORS, type PlatformKey } from '../../utils/platformColors';
+import { PLATFORM_TIMELINE } from '../../utils/scrollTimeline';
 
 import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
+
+const WAVE_LINE_COUNT = 80;
 
 function ratioToScrollTop(container: HTMLElement, ratio: number) {
   const max = container.scrollHeight - container.clientHeight;
   container.scrollTop = ratio * Math.max(0, max);
 }
 
-function centerOf(range: ChapterRange) {
-  return (range.start + range.end) / 2;
-}
-
 /**
  * Visible scroll control for the whole page. Fills with global scroll progress
- * and supports drag-to-scrub across the hero and the deep-dive chapters. Once
- * the chapter sections are measured, each chapter is marked with an accent dot
- * positioned at its progress window; the active chapter's dot glows and the
- * rail glows with the active chapter's accent.
+ * and supports drag-to-scrub across the hero and the deep-dive chapters. A
+ * vertical wave of lines swells into a peak at the current scroll position
+ * (mirroring the SidebarWave mountain), tinted with the active platform's
+ * accent. Each platform hologram window (PLATFORM_TIMELINE, hero-relative) is
+ * mapped into global progress and marked with an accent dot; the active
+ * window's dot glows and the rail glows with the active platform's accent.
  */
 export function ScrollProgressRail() {
   const progress = usePageProgressStore((s) => s.progress);
-  const chapters = usePageProgressStore((s) => s.chapters);
+  const heroEnd = usePageProgressStore((s) => s.heroEnd);
   const mainRef = useMainScroll();
   const dragging = useRef(false);
 
+  const markers = useMemo(() => {
+    const end = heroEnd > 0 ? heroEnd : 0.3;
+    return Object.entries(PLATFORM_TIMELINE).map(([id, [start, windowEnd]]) => ({
+      id,
+      start: start * end,
+      end: windowEnd * end,
+    }));
+  }, [heroEnd]);
+
   const activeId = useMemo(
-    () => getActiveRange(progress, chapters)?.id ?? null,
-    [progress, chapters],
+    () => getActiveRange(progress, markers)?.id ?? null,
+    [progress, markers],
   );
 
-  const markers = useMemo(() => {
-    if (chapters.length > 0) return chapters;
-    const fallback = SECTIONS.length;
-    const width = (1 - 0.3) / fallback;
-    return SECTIONS.map((s, i) => ({
-      id: s.id,
-      start: 0.3 + i * width,
-      end: 0.3 + (i + 1) * width,
-    }));
-  }, [chapters]);
+  const activeColor =
+    activeId && activeId in PLATFORM_COLORS ? PLATFORM_COLORS[activeId as PlatformKey] : null;
 
-  const activeChapter = SECTIONS.find((s) => s.id === activeId);
+  const waveLines = useMemo(() => {
+    const range = 0.12;
+    return Array.from({ length: WAVE_LINE_COUNT }, (_, i) => {
+      const y = i / (WAVE_LINE_COUNT - 1);
+      const dist = Math.abs(progress - y);
+      const swell = dist < range ? Math.pow(1 - dist / range, 2.5) * 56 : 0;
+      return 3 + swell;
+    });
+  }, [progress]);
 
   const scrub = (clientY: number) => {
     const el = mainRef.current;
@@ -79,7 +85,7 @@ export function ScrollProgressRail() {
       className={styles.rail}
       style={
         {
-          '--accent': activeChapter?.accent ?? '#d0bcff',
+          '--accent': activeColor ?? '#d0bcff',
         } as React.CSSProperties
       }
       role="scrollbar"
@@ -93,10 +99,12 @@ export function ScrollProgressRail() {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      <div className={styles.fill} style={{ height: `${progress * 100}%` }} />
+      <div className={styles.wave}>
+        {waveLines.map((width, i) => (
+          <div key={i} className={styles.waveLine} style={{ width: `${width}px` }} />
+        ))}
+      </div>
       {markers.map((range) => {
-        const chapter = SECTIONS.find((s) => s.id === range.id);
-        if (!chapter) return null;
         const active = range.id === activeId;
         return (
           <div
@@ -104,11 +112,11 @@ export function ScrollProgressRail() {
             className={`${styles.dot}${active ? ` ${styles.dotActive}` : ''}`}
             style={
               {
-                '--dot-color': chapter.accent,
-                top: `${centerOf(range) * 100}%`,
+                '--dot-color': PLATFORM_COLORS[range.id as PlatformKey],
+                top: `${range.start * 100}%`,
               } as React.CSSProperties
             }
-            title={chapter.headline}
+            title={range.id}
           />
         );
       })}

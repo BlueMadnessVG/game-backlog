@@ -21,7 +21,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
       <MainScrollProvider value={mainRef}>
         <div className={styles.main_layout}>
           {/*           <Sidebar />
-           */}{' '}
+           */}
           <main ref={mainRef} className={isGameDetail ? styles.main_horizontal : undefined}>
             <div className={styles.content_wrapper}>{children}</div>
           </main>

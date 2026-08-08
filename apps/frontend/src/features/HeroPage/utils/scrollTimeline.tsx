@@ -9,6 +9,13 @@ import type { PlatformKey } from './platformColors';
 export const DOCK_COMPLETE = 0.35;
 
 /**
+ * Hard end of the platform-hologram sequence (hero-relative progress). Past
+ * this value the controller kills every hologram (DestructedController) and
+ * the DOM info panel drops out of view, keeping both in lockstep.
+ */
+export const HOLOGRAM_GATE_END = 0.8;
+
+/**
  * Hero-exit choreography (hero-relative progress). The sequence is strictly
  * staged so each beat finishes before the next begins:
  *  1. platform holograms play out (all off by 0.80),
@@ -55,3 +62,32 @@ export const PLATFORM_TIMELINE: Record<PlatformKey, [number, number]> = {
   playstation: rangeFromGlow(0.46, 0.6),
   unified: rangeFromGlow(0.61, 0.8),
 };
+
+/**
+ * Display order for the DOM info panel — one entry per platform hologram,
+ * numbered in scroll-activation order (1 = steam … 4 = unified).
+ */
+export const DISPLAY_TIMELINE: { key: PlatformKey; display: number }[] = [
+  { key: 'steam', display: 1 },
+  { key: 'xbox', display: 2 },
+  { key: 'playstation', display: 3 },
+  { key: 'unified', display: 4 },
+];
+
+/**
+ * Which display is currently on stage for a given hero-relative progress.
+ * Returns 0 outside the activation window; inside it, holds the most
+ * recently reached display so the short gaps between platform windows
+ * never blank the panel.
+ */
+export function activeDisplayIndex(progress: number): number {
+  if (progress < ACTIVATION_START || progress >= HOLOGRAM_GATE_END) return 0;
+
+  let current = 0;
+  for (const { key, display } of DISPLAY_TIMELINE) {
+    const [start, end] = PLATFORM_TIMELINE[key];
+    if (progress >= start) current = display;
+    if (progress < end) break;
+  }
+  return current;
+}

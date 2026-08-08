@@ -9,7 +9,7 @@ import {
 } from '../../store/pageProgress.Store';
 import {
   PS_BLUE,
-  STEAM_GREY,
+  STEAM_BLUE,
   UNIFIED_AMBER,
   XBOX_GREEN,
 } from '../../utils/platformColors';
@@ -22,7 +22,7 @@ const BUTTON_KEYS: HeroButtonKey[] = ['square', 'triangle', 'cross', 'circle'];
 const BUTTON_COLORS: Record<HeroButtonKey, string> = {
   square: PS_BLUE,
   triangle: XBOX_GREEN,
-  cross: STEAM_GREY,
+  cross: STEAM_BLUE,
   circle: UNIFIED_AMBER,
 };
 

@@ -1,0 +1,273 @@
+.panel {
+  position: absolute;
+  left: 6vw;
+  top: 9vh;
+  z-index: 9;
+  width: 50vw;
+  min-height: max(40vw, 55vh);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ─── Circuit-board backdrop (merges with the HUD) ─── */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(208, 188, 255, 0.025) 0 1px,
+      transparent 1px 3px
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent) 8%, transparent),
+      transparent 60%
+    );
+  clip-path: polygon(
+    0 0,
+    calc(100% - 24px) 0,
+    100% 24px,
+    100% 100%,
+    24px 100%,
+    0 calc(100% - 24px)
+  );
+}
+
+/* ─── Connecting traces into the HUD frame ─── */
+.connectTrace {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.connectPath {
+  fill: none;
+  stroke: rgba(208, 188, 255, 0.08);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.connectNode {
+  position: absolute;
+  left: 6.5%;
+  top: 9%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(208, 188, 255, 0.2);
+  box-shadow: 0 0 4px rgba(208, 188, 255, 0.1);
+  transform: translate(-50%, -50%);
+}
+
+/* ─── Chapter number plate ─── */
+.indexPlate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 55%, transparent),
+    rgba(208, 188, 255, 0.12)
+  );
+  padding: 1px;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 10px) 0,
+    100% 10px,
+    100% 100%,
+    10px 100%,
+    0 calc(100% - 10px)
+  );
+}
+
+.indexPlateNumber {
+  display: block;
+  padding: 0.35rem 0.7rem 0.4rem 0.6rem;
+  background: var(--code-bg);
+  clip-path: polygon(
+    0 0,
+    calc(100% - 10px) 0,
+    100% 10px,
+    100% 100%,
+    10px 100%,
+    0 calc(100% - 10px)
+  );
+  font-family: var(--heading);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-h);
+}
+
+.display {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-items: center;
+  grid-template-columns: 50% auto;
+}
+
+/* ─── Content stack ─── */
+.content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3rem 1.5rem 1.5rem;
+}
+
+.content_text {
+  display: flex;
+  flex-direction: column;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1.25rem;
+  padding: 0.3rem 0.65rem;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.eyebrow::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  transform: rotate(45deg);
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.headline {
+  margin: 0 0 1.25rem;
+  font-family: var(--heading);
+  font-size: var(--font-headline-lg);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+}
+
+.paragraphs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.body {
+  margin: 0;
+  max-width: 400px;
+  font-family: var(--sans);
+  font-size: var(--font-body-md);
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--text) 78%, transparent);
+}
+
+/* ─── Code panel ─── */
+.codePanel {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 8px;
+  background: #16161f;
+}
+
+.codeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.codeTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--text) 60%, transparent);
+}
+
+.codeBadge {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding: 0.18rem 0.4rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.code {
+  margin: 0;
+  padding: 1.1rem 1.2rem;
+  max-height: 340px;
+  overflow: hidden;
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: rgba(232, 230, 227, 0.88);
+  background:
+    repeating-linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent) 3%, transparent) 0,
+      color-mix(in srgb, var(--accent) 3%, transparent) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    rgba(8, 8, 12, 0.92);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 0 0 8px 8px;
+  box-shadow: inset 0 0 24px color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.tokKey {
+  color: color-mix(in srgb, var(--accent) 62%, var(--text));
+}
+
+.tokStr {
+  color: rgba(133, 196, 168, 0.85);
+}
+
+.tokNum {
+  color: rgba(255, 196, 132, 0.8);
+}
+
+.tokLit {
+  color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+@media (max-width: 640px) {
+  .panel {
+    left: 1rem;
+    bottom: 1rem;
+    width: min(340px, calc(100vw - 2rem));
+  }
+
+  .connectTrace,
+  .connectNode {
+    display: none;
+  }
+}

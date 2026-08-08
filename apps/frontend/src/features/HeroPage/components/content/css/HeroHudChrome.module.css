@@ -8,6 +8,7 @@
   flex-direction: column;
   justify-content: space-between;
   font-family: var(--mono);
+  overflow: hidden;
 }
 
 @media (min-width: 768px) {
@@ -16,106 +17,169 @@
   }
 }
 
+/* ─── Scanlines ─── */
+.chrome::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(208, 188, 255, 0.025) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+/* ─── Full-screen circuit frame ─── */
+.circuit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.circuitSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.traceDim {
+  fill: none;
+  stroke: rgba(208, 188, 255, 0.05);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.traceCharge {
+  fill: none;
+  stroke: rgba(208, 188, 255, 0.28);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 3px rgba(208, 188, 255, 0.15));
+}
+
+.circuitNode {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(208, 188, 255, 0.12);
+  box-shadow: 0 0 4px rgba(208, 188, 255, 0.05);
+  transform: translate(-50%, -50%);
+}
+
 /* ─── Top bar ─── */
 .topBar {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
+  padding-top: 0.5rem;
 }
 
-.topLeft {
+/* ─── Angular panel (cyberpunk clipped corners) ─── */
+.panel {
+  width: fit-content;
+  background: linear-gradient(180deg, var(--accent-border), rgba(208, 188, 255, 0.1));
+  padding: 1px;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 12px) 0,
+    100% 12px,
+    100% 100%,
+    12px 100%,
+    0 calc(100% - 12px)
+  );
+  transition: opacity 0.5s ease;
+}
+
+.panelInner {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.coreLabel {
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  color: var(--text-h);
+  background: var(--code-bg);
+  clip-path: polygon(
+    0 0,
+    calc(100% - 12px) 0,
+    100% 12px,
+    100% 100%,
+    12px 100%,
+    0 calc(100% - 12px)
+  );
   font-size: var(--font-label-caps);
   letter-spacing: 0.15em;
-  color: var(--tertiary);
+  text-transform: uppercase;
 }
 
-.statLine {
-  font-size: var(--font-label-caps);
-  letter-spacing: 0.05em;
-  color: var(--text);
-  opacity: 0.7;
+.panelFade {
+  opacity: 0;
 }
 
-.topRight {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-}
-
-.sysStats {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.15rem;
-  font-size: var(--font-label-caps);
-  color: var(--text);
-  opacity: 0.6;
-  text-align: right;
-}
-
-.syncBadge {
+/* ─── Platform node map ─── */
+.nodeMap {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: var(--font-label-caps);
-  letter-spacing: 0.1em;
-  color: var(--text-h);
+  gap: 6px;
+  padding: 0.45rem 0.6rem;
+  background: var(--accent-bg);
   border: 1px solid var(--border);
-  border-radius: 2px;
-  padding: 0.3rem 0.6rem;
-  height: fit-content;
 }
 
-.syncDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--tertiary);
-  box-shadow: 0 0 6px var(--tertiary);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--tertiary);
-  color: var(--bg);
+.nodeLink {
   display: flex;
   align-items: center;
-  justify-content: center;
-  pointer-events: auto;
+  gap: 6px;
+}
+
+.wire {
+  width: 20px;
+  height: 1px;
+  background: var(--border);
+  transition:
+    background 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.wireLit {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.node {
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  border-radius: 1px;
+  background: var(--node);
+  opacity: 0.35;
+  transition:
+    opacity 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+
+.nodeLit {
+  opacity: 0.85;
+  box-shadow: 0 0 8px var(--node);
+}
+
+.nodeActive {
+  opacity: 1;
+  transform: rotate(45deg) scale(1.5);
+  box-shadow:
+    0 0 12px var(--node),
+    0 0 4px var(--node);
 }
 
 /* ─── Bottom bar ─── */
 .bottomBar {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 1rem;
+  justify-content: flex-end;
 }
 
-.scrollInit,
-.coords {
-  font-size: var(--font-label-caps);
-  letter-spacing: 0.08em;
-  color: var(--text);
-  opacity: 0.45;
+.promptArrow {
+  color: var(--accent);
+  font-size: 0.6rem;
 }

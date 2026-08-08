@@ -11,11 +11,12 @@ import PlatformHologram from './PlatformHologram';
 import updateButton from './utils/DestructuredController.utils';
 import { useButtonHotspotsStore } from '../../store/heroButtonHotspots.Store';
 import { useScrollStore } from '../../store/heroPageScroll.Store';
-import { PS_BLUE, XBOX_GREEN, STEAM_GREY, UNIFIED_AMBER } from '../../utils/platformColors';
+import { PS_BLUE, XBOX_GREEN, STEAM_BLUE, UNIFIED_AMBER } from '../../utils/platformColors';
 import {
   CONTROLLER_CENTER_END,
   CONTROLLER_CENTER_START,
   DOCK_COMPLETE,
+  HOLOGRAM_GATE_END,
   PLATFORM_TIMELINE,
   SCENE_FADE_END,
   SCENE_FADE_START,
@@ -162,7 +163,7 @@ export function DeconstructedController({
       group.current.position.y = lerp(0, -0.55, rotProgress);
     }
 
-    if (r > 0.2 && r < 0.8) {
+    if (r > 0.2 && r < HOLOGRAM_GATE_END) {
       const [steamStart, steamEnd] = PLATFORM_TIMELINE.steam;
       const [xboxStart, xboxEnd] = PLATFORM_TIMELINE.xbox;
       const [psStart, psEnd] = PLATFORM_TIMELINE.playstation;
@@ -313,7 +314,7 @@ export function DeconstructedController({
                         <mesh ref={crossBleedRef} position={[0, -2, 0]} scale={0}>
                           <cylinderGeometry args={[4, 6, 1, 6]} />
                           <meshBasicMaterial
-                            color={STEAM_GREY}
+                            color={STEAM_BLUE}
                             transparent
                             opacity={0.4}
                             toneMapped={false}
@@ -323,7 +324,7 @@ export function DeconstructedController({
                         <group name="Hotspot-Cross" ref={crossDepressRef}>
                           <EdgesMesh
                             geometry={nodes.Cross_Dualshock_Blue_0.geometry}
-                            color={STEAM_GREY}
+                            color={STEAM_BLUE}
                             threshold={15}
                             activeRef={crossGlow}
                             glowIntensity={4}
@@ -333,7 +334,7 @@ export function DeconstructedController({
                         <mesh ref={crossBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
                           <boxGeometry args={[0.3, 30, 0.3]} />
                           <meshBasicMaterial
-                            color={STEAM_GREY}
+                            color={STEAM_BLUE}
                             transparent
                             opacity={0.6}
                             toneMapped={false}
@@ -342,7 +343,7 @@ export function DeconstructedController({
 
                         <PlatformHologram
                           position={[0, 85, 0]}
-                          color={STEAM_GREY}
+                          color={STEAM_BLUE}
                           activeRef={crossActive}
                         />
                       </GlowGroup>

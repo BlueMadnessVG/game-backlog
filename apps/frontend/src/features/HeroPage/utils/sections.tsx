@@ -1,3 +1,5 @@
+import { PLATFORM_COLORS } from './platformColors';
+
 import type { HeroButtonKey } from '../store/heroButtonHotspots.Store';
 
 /**
@@ -37,15 +39,6 @@ export interface Chapter {
   redacted?: string[];
 }
 
-export const CHAPTER_COLORS: Record<ChapterId, string> = {
-  ingest: '#4fd1c5',
-  normalization: '#d0bcff',
-  persistence: '#45dfa4',
-  'unified-read': '#ffafd3',
-  enrichment: '#fbbf24',
-  security: '#f87171',
-};
-
 export const SECTIONS: Chapter[] = [
   {
     id: 'ingest',
@@ -55,9 +48,8 @@ export const SECTIONS: Chapter[] = [
     paragraphs: [
       'Steam, Xbox and PlayStation never share a protocol. Each is wrapped by its own provider — a thin client that owns authentication, URL building and response parsing.',
       'SteamProvider talks to the Steam Web API (GetOwnedGames, GetSchemaForGame). XboxProvider talks to OpenXBL (title history, player stats). PsnProvider wraps the psn-api SDK (profile, titles, trophies). IgdbProvider is used for cover enrichment only.',
-      'Every provider classifies failures: 401/403 becomes ProviderAuthError, 429 becomes ProviderRateLimitError, everything else becomes ProviderUnavailableError. Achievement sync runs in batches of five — Steam with a 200ms pause, Xbox with 500ms — and individual failures are skipped, never retried.',
     ],
-    accent: CHAPTER_COLORS.ingest,
+    accent: PLATFORM_COLORS.steam,
     alignment: 'left',
     tag: 'providers/*.provider.ts',
     button: 'cross',
@@ -70,9 +62,8 @@ export const SECTIONS: Chapter[] = [
     paragraphs: [
       'Every provider response is parsed with a Valibot schema before it is allowed near the DB. The schema is the trust boundary between what a third-party API returns and what this system believes.',
       'A schema mismatch throws a typed ProviderUnavailableError instead of corrupting rows. Nice-to-have data — like global achievement percentages — fails soft: it is logged and dropped, never fatal.',
-      'The same discipline applies on the way out. Every Game, Achievement and Stats payload the API returns is validated against the @repo/shared schemas.',
     ],
-    accent: CHAPTER_COLORS.normalization,
+    accent: PLATFORM_COLORS.xbox,
     alignment: 'right',
     tag: 'providers/schemas/*.schemas.ts',
     button: 'circle',
@@ -85,9 +76,9 @@ export const SECTIONS: Chapter[] = [
     paragraphs: [
       'Games live in a single shared catalog keyed on (title, platform) — two users owning the same Steam title share one row.',
       'Per-platform mapping tables (steam_games, xbox_games, psn_games) bind external IDs — appId, titleId, npCommunicationId — back to the catalog.',
-      'Everything user-specific — status, play time, completion, last played — is written to user_games, so one user\'s sync can never overwrite another\'s.',
+      "Everything user-specific — status, play time, completion, last played — is written to user_games, so one user's sync can never overwrite another's.",
     ],
-    accent: CHAPTER_COLORS.persistence,
+    accent: PLATFORM_COLORS.playstation,
     alignment: 'left',
     tag: 'db/schema/core.ts',
     button: 'square',
@@ -102,45 +93,9 @@ export const SECTIONS: Chapter[] = [
       'Achievements are dispatched by the stored platform — steam, xbox or playstation — each resolved through its own service.',
       'Stats are computed per platform and folded into one total: games, completion percentage, achievements and completed count.',
     ],
-    accent: CHAPTER_COLORS['unified-read'],
+    accent: PLATFORM_COLORS.unified,
     alignment: 'right',
     tag: 'modules/library/library.services.ts',
     button: 'circle',
-  },
-  {
-    id: 'enrichment',
-    index: 5,
-    kicker: 'ENRICHMENT // IGDB',
-    headline: 'Covers backfilled in the background',
-    paragraphs: [
-      'Xbox and PlayStation titles missing a cover are enriched from IGDB after the initial sync.',
-      'Runs in batches of four with a 1.1s pause to respect IGDB rate limits, and fires in the background so the request returns immediately.',
-    ],
-    accent: CHAPTER_COLORS.enrichment,
-    alignment: 'left',
-    tag: 'modules/library/library.services.ts',
-    button: 'triangle',
-  },
-  {
-    id: 'security',
-    index: 6,
-    kicker: 'SECURITY // TRUST BOUNDARY',
-    headline: 'Secrets stay server-side',
-    paragraphs: [
-      'API keys are read from environment variables at boot and never leave the backend.',
-      'PSN OAuth tokens are stored in the database and auto-refreshed before expiry; they are never returned to the browser.',
-      'Personal data — emails, usernames, linked account IDs — is scoped to the owning user and never exposed cross-account.',
-    ],
-    accent: CHAPTER_COLORS.security,
-    alignment: 'right',
-    tag: '.env // REDACTED',
-    redacted: [
-      'STEAM_API_KEY',
-      'OPENXBL_API_KEY',
-      'IGDB_CLIENT_ID',
-      'IGDB_CLIENT_SECRET',
-      'NPSSO',
-      'PSN_REFRESH_TOKEN',
-    ],
   },
 ];
