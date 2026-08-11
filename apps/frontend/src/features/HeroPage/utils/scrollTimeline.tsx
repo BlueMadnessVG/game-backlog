@@ -3,7 +3,7 @@ import type { PlatformKey } from './platformColors';
 /**
  * Single source of truth for scroll-progress thresholds shared between the
  * 3D controller (button glow / hologram activation) and DOM content
- * (FeatureCallouts). `progress` here is relative to the dedicated
+ * (FeatureDisplayPanel). `progress` here is relative to the dedicated
  * hero-sequence spacer in HeroPageManager, not the whole page.
  */
 export const DOCK_COMPLETE = 0.35;
