@@ -5,6 +5,7 @@ import { useGLTF, useAnimations } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
+import ButtonHoverPortal from './ButtonHoverPortal';
 import { EdgesMesh } from './EdgesMesh';
 import GlowGroup from './GlowGroup';
 import PlatformHologram from './PlatformHologram';
@@ -77,11 +78,6 @@ export function DeconstructedController({
   const triangleDepressRef = useRef<THREE.Group>(null);
   const crossDepressRef = useRef<THREE.Group>(null);
   const circleDepressRef = useRef<THREE.Group>(null);
-
-  const squareBleedRef = useRef<THREE.Mesh>(null);
-  const triangleBleedRef = useRef<THREE.Mesh>(null);
-  const crossBleedRef = useRef<THREE.Mesh>(null);
-  const circleBleedRef = useRef<THREE.Mesh>(null);
 
   const updateEntry = (delta: number) => {
     if (hasEntered.current) return;
@@ -169,10 +165,10 @@ export function DeconstructedController({
     crossGlow.current = glow.cross;
     circleGlow.current = glow.circle;
 
-    updateButton(squareDepressRef, squareBleedRef, squareGlow);
-    updateButton(triangleDepressRef, triangleBleedRef, triangleGlow);
-    updateButton(crossDepressRef, crossBleedRef, crossGlow);
-    updateButton(circleDepressRef, circleBleedRef, circleGlow);
+    updateButton(squareDepressRef, squareGlow);
+    updateButton(triangleDepressRef, triangleGlow);
+    updateButton(crossDepressRef, crossGlow);
+    updateButton(circleDepressRef, circleGlow);
   });
 
   return (
@@ -198,15 +194,7 @@ export function DeconstructedController({
 
                     <group name="Buttons">
                       <GlowGroup name="Square" activeRef={squareGlow}>
-                        <mesh ref={squareBleedRef} position={[0, -2, 0]} scale={0}>
-                          <cylinderGeometry args={[4, 6, 1, 6]} />
-                          <meshBasicMaterial
-                            color={PS_BLUE}
-                            transparent
-                            opacity={0.4}
-                            toneMapped={false}
-                          />
-                        </mesh>
+                        <ButtonHoverPortal color={PS_BLUE} activeRef={squareGlow} />
 
                         <group name="Hotspot-Square" ref={squareDepressRef}>
                           <EdgesMesh
@@ -226,15 +214,7 @@ export function DeconstructedController({
                       </GlowGroup>
 
                       <GlowGroup name="Triangle" activeRef={triangleGlow}>
-                        <mesh ref={triangleBleedRef} position={[0, -2, 0]} scale={0}>
-                          <cylinderGeometry args={[4, 6, 1, 6]} />
-                          <meshBasicMaterial
-                            color={XBOX_GREEN}
-                            transparent
-                            opacity={0.4}
-                            toneMapped={false}
-                          />
-                        </mesh>
+                        <ButtonHoverPortal color={XBOX_GREEN} activeRef={triangleGlow} />
 
                         <group name="Hotspot-Triangle" ref={triangleDepressRef}>
                           <EdgesMesh
@@ -254,15 +234,7 @@ export function DeconstructedController({
                       </GlowGroup>
 
                       <GlowGroup name="Cross" activeRef={crossGlow}>
-                        <mesh ref={crossBleedRef} position={[0, -2, 0]} scale={0}>
-                          <cylinderGeometry args={[4, 6, 1, 6]} />
-                          <meshBasicMaterial
-                            color={STEAM_BLUE}
-                            transparent
-                            opacity={0.4}
-                            toneMapped={false}
-                          />
-                        </mesh>
+                        <ButtonHoverPortal color={STEAM_BLUE} activeRef={crossGlow} />
 
                         <group name="Hotspot-Cross" ref={crossDepressRef}>
                           <EdgesMesh
@@ -282,15 +254,7 @@ export function DeconstructedController({
                       </GlowGroup>
 
                       <GlowGroup name="Circle" activeRef={circleGlow}>
-                        <mesh ref={circleBleedRef} position={[0, -2, 0]} scale={0}>
-                          <cylinderGeometry args={[4, 6, 1, 6]} />
-                          <meshBasicMaterial
-                            color={UNIFIED_AMBER}
-                            transparent
-                            opacity={0.4}
-                            toneMapped={false}
-                          />
-                        </mesh>
+                        <ButtonHoverPortal color={UNIFIED_AMBER} activeRef={circleGlow} />
 
                         <group name="Hotspot-Circle" ref={circleDepressRef}>
                           <EdgesMesh
