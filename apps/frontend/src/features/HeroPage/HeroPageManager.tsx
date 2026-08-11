@@ -59,7 +59,6 @@ export function HeroPageManager() {
           {/* Every section is tagged data-chapter="" so useChapterMeasurement
               maps it onto the global progress model — the docked controller
               and the rail chapter markers key off the same windows */}
-          \{' '}
         </div>
       </ScrollProgressProvider>
     </div>

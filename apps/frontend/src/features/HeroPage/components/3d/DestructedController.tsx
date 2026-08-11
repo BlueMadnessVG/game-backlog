@@ -13,18 +13,25 @@ import { useButtonHotspotsStore } from '../../store/heroButtonHotspots.Store';
 import { useScrollStore } from '../../store/heroPageScroll.Store';
 import { PS_BLUE, XBOX_GREEN, STEAM_BLUE, UNIFIED_AMBER } from '../../utils/platformColors';
 import {
+  CAMERA_CLOSEUP_END,
+  CAMERA_CLOSEUP_START,
   CONTROLLER_CENTER_END,
   CONTROLLER_CENTER_START,
   DOCK_COMPLETE,
   HOLOGRAM_GATE_END,
   PLATFORM_TIMELINE,
-  SCENE_FADE_END,
-  SCENE_FADE_START,
 } from '../../utils/scrollTimeline';
 
 import type { Mesh } from 'three';
 
 const lerp = THREE.MathUtils.lerp;
+
+/**
+ * World-space x-offset applied to the controller group during the camera
+ * close-up. Shifting it to the left pushes the D-pad/grip side off-screen so
+ * only the right half (face buttons, right stick, R1/R2) stays framed.
+ */
+const CONTROLLER_RIGHT_SIDE_OFFSET = -1.2;
 
 function smoothstep(edge0: number, edge1: number, value: number) {
   const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
@@ -71,11 +78,6 @@ export function DeconstructedController({
   const crossDepressRef = useRef<THREE.Group>(null);
   const circleDepressRef = useRef<THREE.Group>(null);
 
-  const squareBeamRef = useRef<THREE.Mesh>(null);
-  const triangleBeamRef = useRef<THREE.Mesh>(null);
-  const crossBeamRef = useRef<THREE.Mesh>(null);
-  const circleBeamRef = useRef<THREE.Mesh>(null);
-
   const squareBleedRef = useRef<THREE.Mesh>(null);
   const triangleBleedRef = useRef<THREE.Mesh>(null);
   const crossBleedRef = useRef<THREE.Mesh>(null);
@@ -103,51 +105,10 @@ export function DeconstructedController({
     }
   };
 
-  const baseOpacities = useRef(new Map<THREE.Material, number>());
-
-  const visitScene = (obj: THREE.Object3D, fn: (o: THREE.Object3D) => void) => {
-    if (obj.userData.hologram) return;
-    fn(obj);
-    obj.children.forEach((child) => visitScene(child, fn));
-  };
-
-  const getMaterialList = (obj: THREE.Object3D): THREE.Material[] => {
-    const material = (obj as { material?: THREE.Material | THREE.Material[] }).material;
-    if (!material) return [];
-    return Array.isArray(material) ? material : [material];
-  };
-
-  const captureBaseOpacities = () => {
-    if (!group.current || baseOpacities.current.size > 0) return;
-    visitScene(group.current, (obj) => {
-      for (const material of getMaterialList(obj)) {
-        if (!baseOpacities.current.has(material)) {
-          baseOpacities.current.set(material, material.opacity);
-        }
-      }
-    });
-  };
-
-  const applyDim = (factor: number) => {
-    if (!group.current) return;
-    visitScene(group.current, (obj) => {
-      for (const material of getMaterialList(obj)) {
-        const base = baseOpacities.current.get(material);
-        if (base === undefined) continue;
-        material.transparent = true;
-        material.opacity = base * factor;
-      }
-    });
-  };
-
   const updateScrollRotation = (r: number) => {
     if (!group.current || !hasEntered.current) return;
 
-    const centerProgress = smoothstep(
-      CONTROLLER_CENTER_START,
-      CONTROLLER_CENTER_END,
-      r,
-    );
+    const centerProgress = smoothstep(CONTROLLER_CENTER_START, CONTROLLER_CENTER_END, r);
 
     if (centerProgress > 0) {
       // Exit staging: after the platform holograms play out, glide the
@@ -162,6 +123,11 @@ export function DeconstructedController({
       group.current.position.z = lerp(0, 2.59, rotProgress);
       group.current.position.y = lerp(0, -0.55, rotProgress);
     }
+
+    // Camera close-up beat: instead of keeping the controller dead-center,
+    // ease it to the left so the framing shows only its right side.
+    const closeupProgress = smoothstep(CAMERA_CLOSEUP_START, CAMERA_CLOSEUP_END, r);
+    group.current.position.x = lerp(0, CONTROLLER_RIGHT_SIDE_OFFSET, closeupProgress);
 
     if (r > 0.2 && r < HOLOGRAM_GATE_END) {
       const [steamStart, steamEnd] = PLATFORM_TIMELINE.steam;
@@ -195,9 +161,6 @@ export function DeconstructedController({
 
       const r = useScrollStore.getState().progress;
       updateScrollRotation(r);
-
-      captureBaseOpacities();
-      applyDim(1 - smoothstep(SCENE_FADE_START, SCENE_FADE_END, r));
     }
 
     const { glow } = useButtonHotspotsStore.getState();
@@ -206,10 +169,10 @@ export function DeconstructedController({
     crossGlow.current = glow.cross;
     circleGlow.current = glow.circle;
 
-    updateButton(squareDepressRef, squareBeamRef, squareBleedRef, squareGlow);
-    updateButton(triangleDepressRef, triangleBeamRef, triangleBleedRef, triangleGlow);
-    updateButton(crossDepressRef, crossBeamRef, crossBleedRef, crossGlow);
-    updateButton(circleDepressRef, circleBeamRef, circleBleedRef, circleGlow);
+    updateButton(squareDepressRef, squareBleedRef, squareGlow);
+    updateButton(triangleDepressRef, triangleBleedRef, triangleGlow);
+    updateButton(crossDepressRef, crossBleedRef, crossGlow);
+    updateButton(circleDepressRef, circleBleedRef, circleGlow);
   });
 
   return (
@@ -255,16 +218,6 @@ export function DeconstructedController({
                           />
                         </group>
 
-                        <mesh ref={squareBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
-                          <boxGeometry args={[0.3, 30, 0.3]} />
-                          <meshBasicMaterial
-                            color={PS_BLUE}
-                            transparent
-                            opacity={0.6}
-                            toneMapped={false}
-                          />
-                        </mesh>
-
                         <PlatformHologram
                           position={[0, 85, 0]}
                           color={PS_BLUE}
@@ -292,16 +245,6 @@ export function DeconstructedController({
                             glowIntensity={4}
                           />
                         </group>
-
-                        <mesh ref={triangleBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
-                          <boxGeometry args={[0.3, 30, 0.3]} />
-                          <meshBasicMaterial
-                            color={XBOX_GREEN}
-                            transparent
-                            opacity={0.6}
-                            toneMapped={false}
-                          />
-                        </mesh>
 
                         <PlatformHologram
                           position={[0, 85, 0]}
@@ -331,16 +274,6 @@ export function DeconstructedController({
                           />
                         </group>
 
-                        <mesh ref={crossBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
-                          <boxGeometry args={[0.3, 30, 0.3]} />
-                          <meshBasicMaterial
-                            color={STEAM_BLUE}
-                            transparent
-                            opacity={0.6}
-                            toneMapped={false}
-                          />
-                        </mesh>
-
                         <PlatformHologram
                           position={[0, 85, 0]}
                           color={STEAM_BLUE}
@@ -368,16 +301,6 @@ export function DeconstructedController({
                             glowIntensity={4}
                           />
                         </group>
-
-                        <mesh ref={circleBeamRef} position={[0, 15, 0]} scale={[1, 0, 1]}>
-                          <boxGeometry args={[0.3, 30, 0.3]} />
-                          <meshBasicMaterial
-                            color={UNIFIED_AMBER}
-                            transparent
-                            opacity={0.6}
-                            toneMapped={false}
-                          />
-                        </mesh>
 
                         <PlatformHologram
                           position={[0, 85, 0]}
