@@ -17,6 +17,17 @@ import { HUD_FADE_END, HUD_FADE_START } from './utils/scrollTimeline';
 
 import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
+/**
+ * Top-level composition for the HeroPage.
+ *
+ * Wires the scroll pipelines together: the hero-relative MotionValue
+ * (useScrollSync) drives the 3D controller, HUD and DOM panels via
+ * ScrollProgressProvider, while page-relative progress (usePageProgress +
+ * useChapterMeasurement) feeds the docked mini-controller / rail handoff.
+ * Chapter sections are meant to be injected into `contentBelow` and must be
+ * tagged `data-chapter` so useChapterMeasurement can map them onto the global
+ * progress model.
+ */
 export function HeroPageManager() {
   const mainRef = useMainScroll();
   const heroSequenceRef = useRef<HTMLDivElement>(null);
@@ -34,9 +45,6 @@ export function HeroPageManager() {
       <ScrollProgressProvider value={scrollYProgress}>
         <div className={styles.heroViewport} ref={heroSequenceRef}>
           <div className={styles.sceneStage}>
-            {/* The controller dissolves in-canvas (see DestructedController);
-                this wrapper must stay fully opaque so only the controller dims
-                and the --bg backdrop behind the transparent canvas never does */}
             <div className={styles.sceneLayer}>
               <HeroScene />
             </div>
@@ -55,11 +63,7 @@ export function HeroPageManager() {
 
         <ScrollProgressRail />
 
-        <div className={styles.contentBelow} ref={contentRef}>
-          {/* Every section is tagged data-chapter="" so useChapterMeasurement
-              maps it onto the global progress model — the docked controller
-              and the rail chapter markers key off the same windows */}
-        </div>
+        <div className={styles.contentBelow} ref={contentRef}></div>
       </ScrollProgressProvider>
     </div>
   );

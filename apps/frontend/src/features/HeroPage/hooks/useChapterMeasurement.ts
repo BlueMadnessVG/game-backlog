@@ -3,6 +3,15 @@ import type { RefObject } from 'react';
 
 import { usePageProgressStore } from '../store/pageProgress.Store';
 
+/**
+ * Chapter-window measurement for the hero → chapters handoff.
+ *
+ * Exports:
+ *  - useChapterMeasurement(mainRef, rootRef, contentRef): measures global
+ *    progress windows (0..1 of the main scroll container) for the handoff
+ *    point and every `[data-chapter]` section, writing heroEnd + chapter
+ *    ranges into usePageProgressStore.
+ */
 function clamp01(value: number) {
   return Math.min(1, Math.max(0, value));
 }

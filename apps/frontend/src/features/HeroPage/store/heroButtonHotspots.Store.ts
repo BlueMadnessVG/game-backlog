@@ -1,5 +1,19 @@
 import { create } from 'zustand';
 
+/**
+ * Tracks the live screen-space positions and glow state of the four
+ * controller face buttons.
+ *
+ * The 3D controller writes real projected positions into `hotspots` each
+ * frame; the DOM overlay reads them to place clickable hot spots over the
+ * rendered buttons. `glow` flags which button is currently highlighted by the
+ * docked mini-controller / chapter accents.
+ *
+ * Exports:
+ *  - HeroButtonKey: 'square' | 'triangle' | 'cross' | 'circle'.
+ *  - Hotspot: { x, y, visible }.
+ *  - useButtonHotspotsStore: zustand store (hotspots + glow + setters).
+ */
 export type HeroButtonKey = 'square' | 'triangle' | 'cross' | 'circle';
 
 export interface Hotspot {

@@ -2,6 +2,18 @@ import { createContext, useContext, type ReactNode } from 'react';
 
 import type { MotionValue } from 'framer-motion';
 
+/**
+ * React context carrying the hero scroll-progress MotionValue.
+ *
+ * The MotionValue is created once by the hero controller (via
+ * useScrollProgress / the scroll container) and passed down here so any
+ * subtree — 3D scene, HUD, DOM panels — can read the same animated number
+ * without prop drilling.
+ *
+ * Exports:
+ *  - ScrollProgressProvider: mounts the context with a given MotionValue.
+ *  - useScrollProgressValue(): reads it, throwing outside the provider.
+ */
 const ScrollProgressContext = createContext<MotionValue<number> | null>(null);
 
 export function ScrollProgressProvider({
