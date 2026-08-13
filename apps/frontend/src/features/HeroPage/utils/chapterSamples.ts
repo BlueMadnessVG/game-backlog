@@ -2,6 +2,16 @@ import { mappingRows, statsSample, steamAchievementBatch, validatedGame } from '
 
 import type { Chapter } from './sections';
 
+/**
+ * Maps each HeroPage deep-dive chapter to the sample payload it should
+ * display, sourced from ./sampleData.
+ *
+ * Exports:
+ *  - SamplePanelData: { title, code } shape handed to the panel renderer.
+ *  - getChapterSample(chapter): resolves the sample for a Chapter, falling
+ *    back to the sampleData items above (or a per-chapter computed payload,
+ *    e.g. the redacted .env lines for the security chapter).
+ */
 export interface SamplePanelData {
   title: string;
   code: string;

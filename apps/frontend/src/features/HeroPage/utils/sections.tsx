@@ -3,6 +3,15 @@ import { PLATFORM_COLORS } from './platformColors';
 import type { HeroButtonKey } from '../store/heroButtonHotspots.Store';
 
 /**
+ * Deep-dive chapter definitions rendered below the hero sequence.
+ *
+ * Exports:
+ *  - ChapterId: union of the six pipeline-stage ids.
+ *  - Chapter: shape of a single chapter (headline, body copy, accent color,
+ *    controller button mapping, optional redacted secrets).
+ *  - SECTIONS: the ordered Chapter[] used by the chapter list.
+ */
+/**
  * Single source of truth for the deep-dive chapters rendered below the hero
  * sequence. Each chapter documents one stage of the sync pipeline and is
  * anchored by an accent color drawn from the PlatformHologram theme tokens so

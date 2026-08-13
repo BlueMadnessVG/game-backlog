@@ -1,6 +1,24 @@
 import type { Achievement, Game, Stats } from '@repo/shared';
 
 /**
+ * Static sample data for the HeroPage deep-dive chapter panels.
+ *
+ * Everything here is fabricated — fake titles, ids and numbers — so the
+ * panels can render realistic payload structure (matching the @repo/shared
+ * Valibot schemas) without ever touching real user data. It is purely
+ * display data: nothing is fetched at runtime.
+ *
+ * Exports:
+ *  - SYNTHETIC_NOTICE: banner text marking the data as fake.
+ *  - steamAchievementBatch: an Achievement[] batch mirroring the batched
+ *    sync window.
+ *  - validatedGame / enrichedGame: Game rows (post-validation and post-IGDB
+ *    cover backfill).
+ *  - MappingRow / UserGameRow + mappingRows: catalog ↔ external-id bindings
+ *    and a per-user row.
+ *  - statsSample: aggregated library stats (total + per-platform).
+ */
+/**
  * Synthetic sample payloads used by the deep-dive chapter panels. Every value
  * here is fabricated — fake titles, ids and numbers — but each object is
  * shaped exactly like the Valibot schema it documents so the panels show real

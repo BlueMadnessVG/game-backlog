@@ -1,6 +1,23 @@
 import type { PlatformKey } from './platformColors';
 
 /**
+ * Hero-page scroll choreography constants and helpers.
+ *
+ * Every export here is expressed in "hero-relative" progress, where 0 is the
+ * moment the hero sequence spacer enters the viewport and 1 is the moment it
+ * exits at the top. This module is the single source of truth so the 3D
+ * controller, the DOM info panel, and the HUD all read the same thresholds
+ * and stay in lockstep.
+ *
+ * Exports fall into three groups:
+ *  - Thresholds: DOCK_COMPLETE, HOLOGRAM_GATE_END, and the hero-exit beat
+ *    windows (CONTROLLER_CENTER_*, CAMERA_CLOSEUP_*, HUD_FADE_*, SCENE_FADE_*).
+ *  - Timelines: PLATFORM_TIMELINE (per-platform glow/hologram activation
+ *    windows) and DISPLAY_TIMELINE (panel display order).
+ *  - Helpers: activeDisplayIndex(progress) resolves which platform is on
+ *    stage at a given progress value.
+ */
+/**
  * Single source of truth for scroll-progress thresholds shared between the
  * 3D controller (button glow / hologram activation) and DOM content
  * (FeatureDisplayPanel). `progress` here is relative to the dedicated
