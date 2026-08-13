@@ -1,5 +1,16 @@
 import * as v from "valibot";
 
+/**
+ * Valibot schemas for the IGDB provider's two call shapes.
+ *
+ * Exports:
+ *  - TwitchTokenSchema: the app-access-token response IGDB requires for auth.
+ *  - IgdbGameSchema + IgdbGamesResponseSchema: game search / cover lookups.
+ *    `category`, `parent_game` and `version_parent` are captured so the
+ *    enrichment step can filter out DLC, editions and parent re-releases
+ *    that would pollute the catalog with duplicate rows.
+ *  - IgdbGame / IgdbGamesResponse: inferred output types.
+ */
 export const TwitchTokenSchema = v.object({
   access_token: v.string(),
   expires_in: v.number(),

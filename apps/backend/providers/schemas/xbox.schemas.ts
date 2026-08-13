@@ -1,11 +1,28 @@
 import * as v from "valibot";
 
+/**
+ * Valibot schemas for the OpenXBL API responses consumed by the provider.
+ *
+ * Every OpenXBL response is wrapped in an envelope of the shape
+ * `{ content: { ... }, code: number }`, so each schema mirrors that wrapper
+ * and the provider checks `code` (a non-2xx HTTP status throws earlier).
+ *
+ * Exports:
+ *  - XboxProfileSchema: GetPlayer profile (profileUsers + settings array).
+ *  - XboxTitleHistorySchema: GetTitleHistory library rows (titleId, name,
+ *    displayImage, achievement progress, lastTimePlayed).
+ *  - XboxAchievementsResponseSchema: GetAchievements (achievements array +
+ *    pagingInfo.totalRecords — the provider uses this to detect truncated
+ *    responses).
+ *  - XboxPlayerStatSchema: GetPlayerStats playtime collection. Note the
+ *    stat `titleid` field is lowercase (not camelCase) and `value` is
+ *    omitted when no playtime was recorded.
+ */
 const XboxSettingSchema = v.object({
   id: v.string(),
   value: v.string(),
 });
 
-// ✅ All OpenXBL responses are wrapped: { content: { ... }, code: number }
 const XboxProfileUserSchema = v.object({
   id: v.string(),
   hostId: v.optional(v.string()),
@@ -20,7 +37,6 @@ export const XboxProfileSchema = v.object({
   code: v.optional(v.number()),
 });
 
-// Title history uses the same envelope
 export const XboxTitleSchema = v.object({
   titleId: v.string(),
   name: v.string(),
@@ -49,7 +65,6 @@ export const XboxTitleHistorySchema = v.object({
   code: v.optional(v.number()),
 });
 
-// Achievements response — add the same envelope to be safe
 export const XboxAchievementSchema = v.object({
   id: v.string(),
   name: v.string(),
@@ -106,9 +121,9 @@ export const XboxPlayerStatSchema = v.object({
           stats: v.optional(
             v.array(
               v.object({
-                titleid: v.optional(v.string()), // ✅ lowercase, not camelCase
+                titleid: v.optional(v.string()),
                 name: v.string(),
-                value: v.optional(v.string()), // missing = no playtime recorded
+                value: v.optional(v.string()),
                 type: v.optional(v.string()),
               }),
             ),

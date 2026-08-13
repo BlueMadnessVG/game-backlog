@@ -1,5 +1,21 @@
 import * as v from "valibot";
 
+/**
+ * Valibot schemas for the Steam Web API responses consumed by the provider.
+ *
+ * Exports:
+ *  - SteamPlayerSchema: GetPlayerSummaries profile payload.
+ *  - SteamOwnedGamesResponseSchema: GetOwnedGames library row (playtime in
+ *    minutes via `playtime_forever`, last-played epoch via
+ *    `rtime_last_played`).
+ *  - SteamRecentlyPlayedSchema: GetRecentlyPlayedGames.
+ *  - SteamPlayerAchievementsSchema: GetPlayerAchievements for one game
+ *    (`achieved` is a 0/1 number).
+ *  - SteamAchievementDefinitionsSchema: GetSchemaForGame — display names,
+ *    icons and hidden flags for each achievement.
+ *  - SteamGlobalAchievementSchema: GetGlobalAchievementPercentagesForApp
+ *    (percent is a number in 0–100).
+ */
 export const SteamPlayerSchema = v.object({
   response: v.object({
     players: v.array(
