@@ -5,6 +5,15 @@ import { motion, useMotionValueEvent, useTransform } from 'framer-motion';
 import styles from './css/HeroTagline.module.css';
 import { useScrollProgressValue } from '../../store/ScrollProgressContext';
 
+/**
+ * Hero tagline ("One library / All platform") layered over the 3D controller.
+ *
+ * Drifts up slightly on early scroll and fades out once hero-relative progress
+ * passes the dock threshold (0.3), making room for the deep-dive content.
+ *
+ * Exports:
+ *  - HeroTagline: the animated tagline block (default export too).
+ */
 export function HeroTagline() {
   const progress = useScrollProgressValue();
   const [gone, setGone] = useState(false);

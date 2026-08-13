@@ -8,6 +8,19 @@ import { ButtonProjector } from '../3d/ButtonProjector';
 import { CameraRig } from '../3d/CameraRig';
 import { DeconstructedController } from '../3d/DestructedController';
 
+/**
+ * The full Three.js canvas for the hero sequence.
+ *
+ * Sets up the R3F Canvas (camera, shadows, tonemapping) with a three-point
+ * studio light rig, the DeconstructedController hologram, the CameraRig
+ * scroll choreography, the ButtonProjector (which publishes face-button
+ * screen positions to the hotspots store) and an Environment map for chrome
+ * reflections. Everything is suspended behind the light — kept mounted the
+ * whole scroll so the dissolve / re-materialize reads smoothly.
+ *
+ * Exports:
+ *  - HeroScene: the <Canvas> wrapper (default export too).
+ */
 export function HeroScene() {
   return (
     <div className={styles.sceneContainer}>
@@ -17,10 +30,8 @@ export function HeroScene() {
         gl={{ antialias: true, toneMapping: 3, toneMappingExposure: 1.2 }}
         style={{ touchAction: 'pan-y' }}
       >
-        {/* Dramatic studio lighting — key + fill + rim */}
         <ambientLight intensity={0.15} />
 
-        {/* Key light — warm, from upper right */}
         <spotLight
           position={[4, 6, 4]}
           angle={0.4}
@@ -31,7 +42,6 @@ export function HeroScene() {
           shadow-mapSize={[2048, 2048]}
         />
 
-        {/* Fill light — cool, from lower left */}
         <spotLight
           position={[-3, -2, 3]}
           angle={0.6}
@@ -40,14 +50,11 @@ export function HeroScene() {
           color="#c0d0ff"
         />
 
-        {/* Rim light — sharp, from behind */}
         <directionalLight position={[0, 3, -5]} intensity={2} color="#ffffff" />
 
-        {/* Subtle platform-colored accent lights */}
         <pointLight position={[1, 1, 2]} intensity={0.8} color="#003791" distance={10} />
         <pointLight position={[-1, 1, 2]} intensity={0.8} color="#107C10" distance={10} />
 
-        {/* 3 pages of scroll = 3x viewport height */}
         <Suspense fallback={null}>
           <DeconstructedController />
         </Suspense>

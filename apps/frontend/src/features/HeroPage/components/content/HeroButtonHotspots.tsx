@@ -7,6 +7,15 @@ import {
 } from '../../store/heroButtonHotspots.Store';
 import { PLATFORM_COLORS } from '../../utils/platformColors';
 
+/**
+ * Viewport-anchored click targets positioned over the (non-interactive) 3D
+ * controller face buttons. Positions come from ButtonProjector inside the
+ * canvas; hovering drives the 3D glow/depress effect via the store.
+ *
+ * Exports:
+ *  - HeroButtonHotspots: renders one invisible hot spot per face button; each
+ *    navigates to /library on click.
+ */
 const BUTTON_COLORS: Record<HeroButtonKey, string> = {
   square: PLATFORM_COLORS.playstation,
   triangle: PLATFORM_COLORS.xbox,

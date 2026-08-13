@@ -2,6 +2,18 @@ import { Gamepad2 } from 'lucide-react';
 
 import styles from './css/HeroHudChrome.module.css';
 import { useScrollStore } from '../../store/heroPageScroll.Store';
+
+/**
+ * Static HUD chrome framing the hero viewport.
+ *
+ * Renders the corner frame, circuit-board traces and node dots as pure SVG /
+ * div decoration (aria-hidden). The frame's "charge" path fills in with
+ * hero-relative scroll progress, and the bottom "SCROLL TO EXPLORE" prompt
+ * fades out once scrolling starts (progress >= 0.04).
+ *
+ * Exports:
+ *  - HeroHudChrome: the HUD overlay (default export too).
+ */
 const FRAME_PATH =
   'M 1 2 H 76 L 82 8 H 99 V 58 L 94 64 V 98 H 24 L 18 92 H 1 V 36 L 5 30 V 2';
 

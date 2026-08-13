@@ -9,6 +9,17 @@ import { getChapterSample } from '../../utils/chapterSamples';
 import { activeDisplayIndex } from '../../utils/scrollTimeline';
 import { SECTIONS, type Chapter } from '../../utils/sections';
 
+/**
+ * DOM info panel showing the deep-dive chapter for the currently active
+ * platform hologram.
+ *
+ * Resolves hero-relative scroll progress through activeDisplayIndex
+ * (scrollTimeline) into a display number, maps it to a SECTIONS chapter, and
+ * cross-fades the chapter copy plus its synthetic code sample.
+ *
+ * Exports:
+ *  - FeatureDisplayPanel: the animated panel (default export too).
+ */
 const CONNECT_PATH = 'M 6.5 9 V 2 L 5 2 M 22 9 V 2 M 40 9 V 2';
 
 const CHAPTER_ICONS: Record<Chapter['id'], LucideIcon> = {

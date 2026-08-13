@@ -7,6 +7,15 @@ import { PLATFORM_TIMELINE } from '../../utils/scrollTimeline';
 
 import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
+/**
+ * Visible scroll control for the whole page — the vertical rail on the right
+ * edge. Reads global page progress from usePageProgressStore (and the active
+ * chapter window) to drive the wave, the platform markers and the scrubber.
+ *
+ * Exports:
+ *  - ScrollProgressRail: renders the rail; drag-to-scrub scrolls the main
+ *    container.
+ */
 const WAVE_LINE_COUNT = 80;
 
 function ratioToScrollTop(container: HTMLElement, ratio: number) {
