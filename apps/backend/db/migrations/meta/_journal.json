@@ -57,6 +57,13 @@
       "when": 1782270863475,
       "tag": "0007_burly_selene",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786583490255,
+      "tag": "0008_bored_shatterstar",
+      "breakpoints": true
     }
   ]
 }

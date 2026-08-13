@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createXboxController } from "../xbox.controller";
+import { withAuth } from "../../../tests/auth.helpers";
 
 const makeMockService = () => ({
   getUserGames: vi.fn(),
   getUserGame: vi.fn(),
   syncUserProfile: vi.fn(),
   syncUserGames: vi.fn(),
-  syncAllGameAchievements: vi.fn(),
+  syncAllGameAchievements: vi.fn().mockResolvedValue(undefined),
   syncGameAchievements: vi.fn(),
   getGameAchievements: vi.fn(),
+});
+
+const makeMockLibraryService = () => ({
+  enrichGameCovers: vi.fn().mockResolvedValue({ enriched: 0 }),
 });
 
 const makeGame = () => ({
@@ -31,9 +36,12 @@ describe("XboxController", () => {
   let service: ReturnType<typeof makeMockService>;
   let app: ReturnType<typeof createXboxController>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     service = makeMockService();
-    app = createXboxController(service as never);
+    const libraryService = makeMockLibraryService();
+    app = await withAuth(
+      createXboxController(service as never, libraryService as never),
+    );
   });
 
   describe("GET /games", () => {

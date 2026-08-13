@@ -9,6 +9,8 @@ import { PsnService } from "./psn.services";
 import * as v from "valibot";
 import type { LibraryService } from "../library/library.services";
 
+import { authMiddleware } from "../../middleware/auth.middleware";
+
 type PsnSyncRequest = {
   npsso: string;
   onlineId: string;
@@ -29,8 +31,8 @@ type Bindings = {
  * to {@link PsnService} and {@link LibraryService}, and formats the
  * JSON response. No business logic lives here.
  *
- * Hardcoded user IDs are placeholders replaced by auth middleware before
- * this controller is reached.
+ * The user id comes from the authenticated session — authMiddleware
+ * resolves the JWT and exposes it as `c.get("userId")`.
  *
  * @param psnService - Service layer for PSN account, game, and trophy
  *   operations.
@@ -49,6 +51,8 @@ export const createPsnController = (
 ) => {
   const app = new Hono<Bindings>();
 
+  app.use("*", authMiddleware);
+
   /**
    * GET /psn/games
    *
@@ -59,7 +63,7 @@ export const createPsnController = (
    * @returns 200 with `{ status, meta: { total, limit, offset }, data }`.
    */
   app.get("/games", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
 
     const limit = Number(c.req.query("limit")) || 50;
     const offset = Number(c.req.query("offset")) || 0;
@@ -95,7 +99,7 @@ export const createPsnController = (
    * @returns 200 with `{ status, data }`, or 404 when the game is not found.
    */
   app.get("/games/:id", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
     const gameId = c.req.param("id");
 
     try {
@@ -128,7 +132,7 @@ export const createPsnController = (
   app.post("/sync", vValidator("json", PsnSyncSchema), async (c) => {
     const body = c.req.valid("json");
     const { npsso, onlineId } = body as PsnSyncRequest;
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
 
     try {
       const profile = await psnService.syncUserProfile(userId, npsso, onlineId);
@@ -186,7 +190,7 @@ export const createPsnController = (
    *   `PsnGameNotFoundError`).
    */
   app.post("/games/:gameId/sync-trophies", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
     const gameId = c.req.param("gameId");
 
     try {
@@ -216,7 +220,7 @@ export const createPsnController = (
    *   or 400 when filter/sort values are invalid.
    */
   app.post("/games/:gameId/trophies", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
     const gameId = c.req.param("gameId");
 
     const filterResult = v.safeParse(

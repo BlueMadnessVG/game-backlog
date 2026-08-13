@@ -18,6 +18,10 @@ import { createPsnController } from "./modules/psn/psn.controller";
 import { LibraryService } from "./modules/library/library.services";
 import { createLibraryController } from "./modules/library/library.controller";
 import { IgdbProvider } from "./providers/igdb.provider";
+import { GoogleOAuthProvider } from "./providers/google.provider";
+import { DiscordOAuthProvider } from "./providers/discord.provider";
+import { AuthService } from "./modules/auth/auth.services";
+import { createAuthController } from "./modules/auth/auth.controller";
 
 /**
  * 1. Dependency Injection / Composition Root
@@ -44,6 +48,23 @@ const libraryService = new LibraryService(
   xboxService,
   psnService,
 );
+
+const googleProvider = new GoogleOAuthProvider(
+  process.env.GOOGLE_CLIENT_ID!,
+  process.env.GOOGLE_CLIENT_SECRET!,
+  process.env.GOOGLE_REDIRECT_URI!,
+);
+
+const discordProvider = new DiscordOAuthProvider(
+  process.env.DISCORD_CLIENT_ID!,
+  process.env.DISCORD_CLIENT_SECRET!,
+  process.env.DISCORD_REDIRECT_URI!,
+);
+
+const authService = new AuthService(db, {
+  google: googleProvider,
+  discord: discordProvider,
+});
 
 /**
  * 2. App Initialization
@@ -88,6 +109,8 @@ apiV1.route("/xbox", createXboxController(xboxService, libraryService));
 apiV1.route("/psn", createPsnController(psnService, libraryService));
 
 apiV1.route("/library", createLibraryController(libraryService));
+
+apiV1.route("/auth", createAuthController(authService));
 
 app.route("/api/v1", apiV1);
 

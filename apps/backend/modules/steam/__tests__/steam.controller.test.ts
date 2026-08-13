@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSteamController } from "../steam.controller";
+import { withAuth } from "../../../tests/auth.helpers";
 
 const makeMockService = () => ({
   getUserGames: vi.fn(),
@@ -34,9 +35,9 @@ describe("SteamController", () => {
   let service: ReturnType<typeof makeMockService>;
   let app: ReturnType<typeof createSteamController>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     service = makeMockService();
-    app = createSteamController(service as never);
+    app = await withAuth(createSteamController(service as never));
   });
 
   // ── GET /games ────────────────────────────────────────────────────────────

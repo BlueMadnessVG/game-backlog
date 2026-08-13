@@ -1,11 +1,7 @@
 import { createMiddleware } from "hono/factory";
-import { jwtVerify } from "jose";
 import { HTTPException } from "hono/http-exception";
 
-interface CustomJWTPayload {
-  sub: string;
-  email: string;
-}
+import { verifyAuthToken } from "../lib/jwt.utils";
 
 type Env = {
   Variables: {
@@ -14,14 +10,15 @@ type Env = {
   };
 };
 
-const JWT_SECRET_STRING = process.env.JWT_SECRET;
-
-if (!JWT_SECRET_STRING) {
-  throw new Error("❌ JWT_SECRET is not defined in environment variables.");
-}
-
-const encodedSecret = new TextEncoder().encode(JWT_SECRET_STRING);
-
+/**
+ * Validates the `Authorization: Bearer <jwt>` header and exposes the
+ * authenticated user via `c.get("userId")` / `c.get("userEmail")`.
+ *
+ * Tokens are issued by AuthService and signed with the shared JWT_SECRET.
+ *
+ * @throws {HTTPException} 401 when the header is missing or the token is
+ *   invalid/expired.
+ */
 export const authMiddleware = createMiddleware<Env>(async (c, next) => {
   const authHeader = c.req.header("Authorization");
 
@@ -39,16 +36,14 @@ export const authMiddleware = createMiddleware<Env>(async (c, next) => {
   }
 
   try {
-    const { payload } = await jwtVerify(token, encodedSecret);
+    const payload = await verifyAuthToken(token);
 
-    const userPayload = payload as unknown as CustomJWTPayload;
-
-    if (!userPayload.sub || !userPayload.email) {
+    if (!payload.sub || !payload.email) {
       throw new Error("Incomplete payload");
     }
 
-    c.set("userId", userPayload.sub);
-    c.set("userEmail", userPayload.email);
+    c.set("userId", payload.sub);
+    c.set("userEmail", payload.email);
 
     await next();
   } catch (error) {

@@ -3,3 +3,4 @@ export * from "./steam";
 export * from "./xbox";
 export * from "./psn";
 export * from "./user-games";
+export * from "./oauth";

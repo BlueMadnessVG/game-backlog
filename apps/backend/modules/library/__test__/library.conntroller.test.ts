@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createLibraryController } from "../library.controller";
+import { withAuth } from "../../../tests/auth.helpers";
 
 // ── Mock factory ──────────────────────────────────────────────────────────────
 
@@ -31,9 +32,9 @@ describe("LibraryController GET /stats", () => {
   let service: ReturnType<typeof makeMockService>;
   let app: ReturnType<typeof createLibraryController>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     service = makeMockService();
-    app = createLibraryController(service as never);
+    app = await withAuth(createLibraryController(service as never));
   });
 
   it("returns 200 with stats data", async () => {
@@ -141,15 +142,15 @@ describe("LibraryController GET /stats", () => {
 
     await app.request("/stats");
 
-    expect(service.getStats).toHaveBeenCalledWith(
-      "8234858e-0f4b-4860-9f5e-26f633355462",
-    );
+    expect(service.getStats).toHaveBeenCalledWith("test-user-1");
   });
 
-  it("throws when service throws — error propagates to error handler", async () => {
+  it("surfaces service errors as a 500", async () => {
     service.getStats.mockRejectedValue(new Error("DB connection lost"));
 
-    await expect(app.request("/stats")).rejects.toThrow("DB connection lost");
+    const res = await app.request("/stats");
+
+    expect(res.status).toBe(500);
   });
 
   it("calls getStats exactly once per request", async () => {

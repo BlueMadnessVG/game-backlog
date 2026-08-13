@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createPsnController } from "../psn.controller";
+import { withAuth } from "../../../tests/auth.helpers";
 
 declare global {
   interface Response {
@@ -12,9 +13,13 @@ const makeMockService = () => ({
   getUserGame: vi.fn(),
   syncUserProfile: vi.fn(),
   syncUserGames: vi.fn(),
-  syncAllGameTrophies: vi.fn(),
+  syncAllGameTrophies: vi.fn().mockResolvedValue(undefined),
   syncGameTrophies: vi.fn(),
   getGameTrophies: vi.fn(),
+});
+
+const makeMockLibraryService = () => ({
+  enrichGameCovers: vi.fn().mockResolvedValue({ enriched: 0 }),
 });
 
 const makeGame = (overrides = {}) => ({
@@ -38,9 +43,12 @@ describe("PsnController", () => {
   let service: ReturnType<typeof makeMockService>;
   let app: ReturnType<typeof createPsnController>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     service = makeMockService();
-    app = createPsnController(service as never);
+    const libraryService = makeMockLibraryService();
+    app = await withAuth(
+      createPsnController(service as never, libraryService as never),
+    );
   });
 
   // ── GET /games ────────────────────────────────────────────────────────────

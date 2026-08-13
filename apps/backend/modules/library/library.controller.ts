@@ -5,9 +5,12 @@ import {
   type GameLibraryFilter,
 } from "./library.services";
 
+import { authMiddleware } from "../../middleware/auth.middleware";
+
 type Bindings = {
   Variables: {
     userId: string;
+    userEmail: string;
   };
 };
 
@@ -99,6 +102,8 @@ function parseAchievementOptions(query: Record<string, string | undefined>): {
 export const createLibraryController = (libraryService: LibraryService) => {
   const app = new Hono<Bindings>();
 
+  app.use("*", authMiddleware);
+
   // GET /library/games
   // Returns the user's combined game library across steam, xbox, and psn,
   // sorted by most recently updated, with limit/offset pagination.
@@ -109,7 +114,7 @@ export const createLibraryController = (libraryService: LibraryService) => {
   //   ?platform=steam|xbox|playstation
   //   ?status=backlog|in-progress|completed|retired
   app.get("/games", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
 
     const limit = Number(c.req.query("limit")) || 50;
     const offset = Number(c.req.query("offset")) || 0;
@@ -149,7 +154,7 @@ export const createLibraryController = (libraryService: LibraryService) => {
 
   // POST /library/enrich-covers
   app.post("/enrich-covers", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
 
     try {
       libraryService
@@ -181,7 +186,7 @@ export const createLibraryController = (libraryService: LibraryService) => {
 
   // GET /library/stats
   app.get("/stats", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
 
     try {
       const stats = await libraryService.getStats(userId);
@@ -207,7 +212,7 @@ export const createLibraryController = (libraryService: LibraryService) => {
   //   ?sort=unlock-date|name|rarity
   //   ?limit=<number>   ?offset=<number>
   app.get("/games/:gameId/achievements", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
     const gameId = c.req.param("gameId");
 
     const { options, error } = parseAchievementOptions({
@@ -254,7 +259,7 @@ export const createLibraryController = (libraryService: LibraryService) => {
   // Forces a fresh achievement/trophy sync for one game, dispatched to
   // whichever platform (steam/xbox/psn) it belongs to.
   app.post("/games/:gameId/achievements/sync", async (c) => {
-    const userId = "8234858e-0f4b-4860-9f5e-26f633355462";
+    const userId = c.get("userId");
     const gameId = c.req.param("gameId");
 
     try {
