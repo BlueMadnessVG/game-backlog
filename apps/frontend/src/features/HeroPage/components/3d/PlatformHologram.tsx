@@ -7,6 +7,22 @@ import { lerp } from 'three/src/math/MathUtils.js';
 
 import HologramShell from './HologramShell';
 
+/**
+ * The platform hologram plate that blooms under a face button during its
+ * scroll window.
+ *
+ * Full "analysis" animation loop: idle pulse when dormant, a rising scan
+ * sweep + 0→100% progress readout, and periodic glitch bursts (RGB ghost
+ * copies via HologramShell + point-light flicker) while active. Activation is
+ * driven per-frame from an `activeRef` number (0..1) so the plate scales up
+ * smoothly and never re-renders React.
+ *
+ * Exports:
+ *  - PlatformHologram (default): the animated hologram group.
+ *  - Shared plate dims used by HologramShell: PLATE_W/H/THICK, PANEL_TILT,
+ *    OUTER_X/Y, ARM_LEN, FRAME_SX/SY.
+ */
+
 /* ═══════════════════════════════════════════
    SIZE CONFIG — tweak these to resize the panel
    ═══════════════════════════════════════════ */
@@ -192,9 +208,9 @@ export default function PlatformHologram({
     if (dupARef.current) {
       dupARef.current.visible = true;
       dupARef.current.position.set(
-        r() * 27 * intensity, // was 4.5
-        r() * 21 * intensity, // was 3.5
-        r() * 15 * intensity, // was 2.5
+        r() * 27 * intensity,
+        r() * 21 * intensity,
+        r() * 15 * intensity,
       );
       dupARef.current.rotation.z = r() * 0.6 * intensity;
       dupARef.current.rotation.y = r() * 0.25 * intensity;
@@ -204,9 +220,9 @@ export default function PlatformHologram({
     if (dupBRef.current) {
       dupBRef.current.visible = Math.random() > 0.25;
       dupBRef.current.position.set(
-        r() * 33 * intensity, // was 5.5
-        r() * 24 * intensity, // was 4.0
-        r() * 18 * intensity, // was 3.0
+        r() * 33 * intensity,
+        r() * 24 * intensity,
+        r() * 18 * intensity,
       );
       dupBRef.current.rotation.z = r() * 0.9 * intensity;
       dupBRef.current.rotation.y = r() * 0.4 * intensity;
@@ -214,13 +230,13 @@ export default function PlatformHologram({
     }
 
     // Parent jitter
-    group.position.x = position[0] + r() * 3.6 * intensity; // was 0.6
-    group.position.y = baseY + r() * 2.4 * intensity; // was 0.4
+    group.position.x = position[0] + r() * 3.6 * intensity;
+    group.position.y = baseY + r() * 2.4 * intensity;
     group.rotation.z = r() * 0.9 * intensity;
 
     if (glyphRef.current) {
-      glyphRef.current.rotation.z = r() * 3.0 * intensity; // was 0.5
-      glyphRef.current.position.z = 0.3 + r() * 1.8 * intensity; // was 0.3
+      glyphRef.current.rotation.z = r() * 3.0 * intensity;
+      glyphRef.current.position.z = 0.3 + r() * 1.8 * intensity;
     }
 
     if (lightRef.current) {

@@ -25,6 +25,24 @@ import {
 
 import type { Mesh } from 'three';
 
+/**
+ * The DualShock controller hologram at the heart of the hero sequence.
+ *
+ * Loads the Sketchfab scene, re-renders every piece as an EdgesMesh wireframe,
+ * and animates the whole lifecycle from a single hero-relative scroll value:
+ *  - entry: tumbles up from below and settles dead-center face-on,
+ *  - dock: tilts up and pulls back as scrolling begins,
+ *  - platform beats: lights each face button's PlatformHologram in
+ *    PLATFORM_TIMELINE order (cross/Steam → triangle/Xbox → square/PS →
+ *    circle/Unified),
+ *  - exit: glides back to center, then slides left so the camera close-up
+ *    frames only the right half.
+ * Hover glow/depress is driven per-frame from the hotspots store. A
+ * `staticPose` mode renders a frozen tilted dock view for chapter showcases.
+ *
+ * Exports:
+ *  - DeconstructedController: the controller group (named + default export).
+ */
 const lerp = THREE.MathUtils.lerp;
 
 /**

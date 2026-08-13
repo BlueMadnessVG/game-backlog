@@ -4,6 +4,18 @@ import { Edges } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
+/**
+ * Wireframe building block for the deconstructed controller: every visible
+ * part is an invisible depth-writing body plus a crease-edge overlay, so back
+ * faces self-hide and only sharp edges render.
+ *
+ * When given an `activeRef`, the edge color eases between `color` and a glow
+ * target each frame (no re-renders) — this is how the platform buttons pulse
+ * and light up on hover / platform beats.
+ *
+ * Exports:
+ *  - EdgesMesh: a <mesh> with an <Edges> child.
+ */
 interface EdgesMeshProps {
   name?: string;
   geometry: THREE.BufferGeometry;

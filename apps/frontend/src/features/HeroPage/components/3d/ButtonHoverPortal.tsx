@@ -9,6 +9,10 @@ const lerp = THREE.MathUtils.lerp;
  * Hexagonal "portal" glow that blooms under a face button while it's hovered.
  * A bright hex core + soft outer hex ring, additive-blended and pulsing, so the
  * hover reads as a charged socket rather than a flat puddle of light.
+ *
+ * Exports:
+ *  - ButtonHoverPortal (default): reads its glow state from activeRef every
+ *    frame (no React re-renders) and eases scale + opacity toward hovered.
  */
 export default function ButtonHoverPortal({
   color,

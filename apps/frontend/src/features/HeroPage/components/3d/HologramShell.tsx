@@ -3,6 +3,17 @@ import * as THREE from 'three';
 
 import { OUTER_Y, PLATE_H, PLATE_THICK, PLATE_W } from './PlatformHologram';
 
+/**
+ * Pure presentational shell for a platform hologram plate.
+ *
+ * Renders the fixed hologram look — translucent plate body, wireframe edge,
+ * corner brackets, inner frame + blob lines, the "{label} — {percent}%"
+ * billboard and a rotating sweep texture. Opacity is passed down so the
+ * parent can fade the whole shell in/out; every mesh opts out of raycasting.
+ *
+ * Exports:
+ *  - HologramShell (default): the shared hologram plate visual.
+ */
 export default function HologramShell({
   color,
   bracketPoints,

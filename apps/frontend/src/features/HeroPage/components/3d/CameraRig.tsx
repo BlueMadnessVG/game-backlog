@@ -8,18 +8,22 @@ import {
   CAMERA_CLOSEUP_START,
 } from '../../utils/scrollTimeline';
 
-function smoothstep(edge0: number, edge1: number, value: number) {
-  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
 /**
  * Scroll-driven camera rig for the hero exit. Once the platform activations
  * complete and the controller has glided back to dead-center, the camera eases
  * into the controller middle (a dolly-in via z-position plus fov) aimed at the
  * face center. Purely functional — reads the shared scroll store every frame,
  * so it stays in sync with the controller pose without any re-renders.
+ *
+ * Exports:
+ *  - CameraRig: renderless component mounted in the Canvas (default export
+ *    too).
  */
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
 export function CameraRig() {
   useFrame(({ camera: cam }) => {
     const camera = cam as THREE.PerspectiveCamera;

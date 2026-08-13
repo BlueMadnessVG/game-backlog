@@ -6,6 +6,18 @@ import {
   type HeroButtonKey,
 } from '../../store/heroButtonHotspots.Store';
 
+/**
+ * Projects the four controller face buttons into DOM pixel coordinates.
+ *
+ * Lives inside the Canvas. Each frame it resolves the world position of each
+ * `Hotspot-*` anchor object, projects it through the camera into client
+ * pixel space, and writes { x, y, visible } to useButtonHotspotsStore so the
+ * DOM hotspot overlay can render click targets on top of the (non-interactive)
+ * scene. Geometry centers are cached per mesh via WeakMap.
+ *
+ * Exports:
+ *  - ButtonProjector: a renderless component mounted in the Canvas.
+ */
 const _v = new THREE.Vector3();
 
 const _geometryCenter = new WeakMap<THREE.BufferGeometry, THREE.Vector3>();
@@ -27,12 +39,6 @@ const BUTTON_ANCHORS: { key: HeroButtonKey; objectName: string }[] = [
   { key: 'circle', objectName: 'Hotspot-Circle' },
 ];
 
-/**
- * Lives inside the Canvas. Each frame it projects the world position of the
- * four controller face buttons into client pixel space and stores it so the
- * DOM hotspot overlay can render click targets on top of the (non-interactive)
- * scene.
- */
 export function ButtonProjector() {
   const camera = useThree((state) => state.camera);
   const size = useThree((state) => state.size);
