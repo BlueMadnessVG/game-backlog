@@ -68,7 +68,7 @@ type GameRow = {
  *
  * @remarks
  * All methods that touch the PSN API obtain a valid access token via
- * {@link PsnService.getValidAccessToken}, which transparently refreshes
+ * {@link PsnService["getValidAccessToken"]}, which transparently refreshes
  * expired tokens.
  *
  * @example
