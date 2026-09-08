@@ -6,6 +6,12 @@ if (!JWT_SECRET_STRING) {
   throw new Error("❌ JWT_SECRET is not defined in environment variables.");
 }
 
+if (JWT_SECRET_STRING.length < 32) {
+  throw new Error(
+    "❌ JWT_SECRET is too short (must be at least 32 characters). Generate a strong secret with `openssl rand -hex 32`.",
+  );
+}
+
 const encodedSecret = new TextEncoder().encode(JWT_SECRET_STRING);
 
 /**
