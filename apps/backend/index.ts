@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { timeout } from "hono/timeout";
-import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
+
+import { corsMiddleware } from "./middleware/cors.middleware";
 
 import { db } from "./db";
 import { SteamProvider } from "./providers/steam.provider";
@@ -83,7 +84,7 @@ const app = new Hono<{
 app.use("*", requestId());
 app.use("*", timeout(10000));
 app.use("*", logger());
-app.use("*", cors());
+app.use("*", corsMiddleware);
 
 /**
  * 4. Health & Diagnostics

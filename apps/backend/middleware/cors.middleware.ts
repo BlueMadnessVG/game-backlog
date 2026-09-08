@@ -2,14 +2,16 @@ import { cors } from "hono/cors";
 
 export const corsMiddleware = cors({
   origin: (origin) => {
-    if (origin.startsWith("http://localhost:")) {
+    const normalized = origin.toLowerCase();
+
+    if (normalized.startsWith("http://localhost:")) {
       return origin;
     }
 
     if (
-      origin === "tauri://localhost" ||
-      origin === "http://tauri.localhost" ||
-      origin.startsWith("ipc://")
+      normalized === "tauri://localhost" ||
+      normalized === "http://tauri.localhost" ||
+      normalized.startsWith("ipc://")
     ) {
       return origin;
     }
