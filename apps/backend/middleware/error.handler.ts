@@ -18,11 +18,14 @@ export const errorHandler = async (err: Error, c: Context) => {
     );
   }
 
-  return c.json({
-    error: "Internal Command Center Failure",
-    message:
-      process.env.VITE_APP_ENV === "development"
-        ? err.message
-        : "Unknown Error",
-  });
+  return c.json(
+    {
+      error: "Internal Command Center Failure",
+      message:
+        process.env.APP_ENV === "development"
+          ? err.message
+          : "Unknown Error",
+    },
+    500,
+  );
 };
