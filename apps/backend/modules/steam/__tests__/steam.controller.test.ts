@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSteamController } from "../steam.controller";
 import { withAuth } from "../../../tests/auth.helpers";
+import type { AdvisoryLockClient } from "../../../lib/locks";
+
+const makeMockLock: () => AdvisoryLockClient = () => ({
+  tryAcquire: vi.fn(async () => true),
+  release: vi.fn(async () => undefined),
+});
 
 const makeMockService = () => ({
   getUserGames: vi.fn(),
@@ -37,7 +43,7 @@ describe("SteamController", () => {
 
   beforeEach(async () => {
     service = makeMockService();
-    app = await withAuth(createSteamController(service as never));
+    app = await withAuth(createSteamController(service as never, makeMockLock()));
   });
 
   // ── GET /games ────────────────────────────────────────────────────────────

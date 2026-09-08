@@ -10,6 +10,7 @@ import * as v from "valibot";
 import type { LibraryService } from "../library/library.services";
 
 import { authMiddleware } from "../../middleware/auth.middleware";
+import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 type PsnSyncRequest = {
   npsso: string;
@@ -48,6 +49,7 @@ type Bindings = {
 export const createPsnController = (
   psnService: PsnService,
   libraryService: LibraryService,
+  lock?: AdvisoryLockClient,
 ) => {
   const app = new Hono<Bindings>();
 
@@ -135,8 +137,19 @@ export const createPsnController = (
     const userId = c.get("userId");
 
     try {
-      const profile = await psnService.syncUserProfile(userId, npsso, onlineId);
-      const insertedGames = await psnService.syncUserGames(userId);
+      const { profile, insertedGames } = await withLock(
+        `sync:psn:${userId}`,
+        async () => {
+          const profile = await psnService.syncUserProfile(
+            userId,
+            npsso,
+            onlineId,
+          );
+          const insertedGames = await psnService.syncUserGames(userId);
+          return { profile, insertedGames };
+        },
+        lock ? { client: lock } : {},
+      );
 
       c.status(200);
       const response = c.json({

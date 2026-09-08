@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createPsnController } from "../psn.controller";
 import { withAuth } from "../../../tests/auth.helpers";
+import type { AdvisoryLockClient } from "../../../lib/locks";
+
+const makeMockLock: () => AdvisoryLockClient = () => ({
+  tryAcquire: vi.fn(async () => true),
+  release: vi.fn(async () => undefined),
+});
 
 declare global {
   interface Response {
@@ -47,7 +53,7 @@ describe("PsnController", () => {
     service = makeMockService();
     const libraryService = makeMockLibraryService();
     app = await withAuth(
-      createPsnController(service as never, libraryService as never),
+      createPsnController(service as never, libraryService as never, makeMockLock()),
     );
   });
 

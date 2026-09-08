@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SteamService } from "../steam.services";
+import type { AdvisoryLockClient } from "../../../lib/locks";
 
 // ── Mock factories ────────────────────────────────────────────────────────────
+
+const makeMockLock: () => AdvisoryLockClient = () => ({
+  tryAcquire: vi.fn(async () => true),
+  release: vi.fn(async () => undefined),
+});
 
 const makeMockDb = () => ({
   select: vi.fn().mockReturnThis(),
@@ -71,7 +77,7 @@ describe("SteamService.getUserGames", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new SteamService(db as never, provider as never);
+    service = new SteamService(db as never, provider as never, makeMockLock());
   });
 
   it("returns mapped games for a user", async () => {
@@ -129,7 +135,7 @@ describe("SteamService.getUserGame", () => {
 
   beforeEach(() => {
     db = makeMockDb();
-    service = new SteamService(db as never, makeMockProvider() as never);
+    service = new SteamService(db as never, makeMockProvider() as never, makeMockLock());
   });
 
   it("returns a single game by id", async () => {
@@ -155,7 +161,7 @@ describe("SteamService.syncUserProfile", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new SteamService(db as never, provider as never);
+    service = new SteamService(db as never, provider as never, makeMockLock());
   });
 
   it("returns steam data on success", async () => {
@@ -201,7 +207,7 @@ describe("SteamService.syncUserGames", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new SteamService(db as never, provider as never);
+    service = new SteamService(db as never, provider as never, makeMockLock());
   });
 
   it("returns empty array when Steam returns no games", async () => {
@@ -280,7 +286,7 @@ describe("SteamService.syncGameAchievements", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new SteamService(db as never, provider as never);
+    service = new SteamService(db as never, provider as never, makeMockLock());
   });
 
   it("throws when no Steam mapping found for game", async () => {
@@ -380,7 +386,7 @@ describe("SteamService.syncAllGameAchievements", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new SteamService(db as never, provider as never);
+    service = new SteamService(db as never, provider as never, makeMockLock());
     vi.useFakeTimers();
   });
 

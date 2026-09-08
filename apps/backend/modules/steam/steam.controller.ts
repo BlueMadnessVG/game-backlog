@@ -9,6 +9,7 @@ import { SteamService } from "./steam.services";
 import * as v from "valibot";
 
 import { authMiddleware } from "../../middleware/auth.middleware";
+import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 type Bindings = {
   Variables: {
@@ -38,7 +39,10 @@ type Bindings = {
  * app.route("/steam", steam);
  * ```
  */
-export const createSteamController = (steamService: SteamService) => {
+export const createSteamController = (
+  steamService: SteamService,
+  lock?: AdvisoryLockClient,
+) => {
   const app = new Hono<Bindings>();
 
   app.use("*", authMiddleware);
@@ -124,10 +128,15 @@ export const createSteamController = (steamService: SteamService) => {
     const userId = c.get("userId");
 
     try {
-      const [profile, games] = await Promise.all([
-        steamService.syncUserProfile(userId, steamId),
-        steamService.syncUserGames(userId, steamId),
-      ]);
+      const [profile, games] = await withLock(
+        `sync:steam:${userId}`,
+        () =>
+          Promise.all([
+            steamService.syncUserProfile(userId, steamId),
+            steamService.syncUserGames(userId, steamId),
+          ]),
+        lock ? { client: lock } : {},
+      );
 
       c.status(200);
       const response = c.json({

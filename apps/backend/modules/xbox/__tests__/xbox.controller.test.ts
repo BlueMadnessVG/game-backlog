@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createXboxController } from "../xbox.controller";
 import { withAuth } from "../../../tests/auth.helpers";
+import type { AdvisoryLockClient } from "../../../lib/locks";
+
+const makeMockLock: () => AdvisoryLockClient = () => ({
+  tryAcquire: vi.fn(async () => true),
+  release: vi.fn(async () => undefined),
+});
 
 const makeMockService = () => ({
   getUserGames: vi.fn(),
@@ -40,7 +46,7 @@ describe("XboxController", () => {
     service = makeMockService();
     const libraryService = makeMockLibraryService();
     app = await withAuth(
-      createXboxController(service as never, libraryService as never),
+      createXboxController(service as never, libraryService as never, makeMockLock()),
     );
   });
 

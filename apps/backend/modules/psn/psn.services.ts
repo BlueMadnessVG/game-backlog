@@ -19,9 +19,16 @@ import type {
 } from "@repo/shared";
 import { deriveGameStatus } from "./psn.utils";
 import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
+import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
+
+type PsnAccountTokenRow = {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: Date;
+};
 
 /**
  * Custom error thrown when a PSN game cannot be found for a given user.
@@ -81,9 +88,31 @@ export class PsnService {
   constructor(
     private readonly db: DbClient,
     private readonly provider: PsnProvider,
+    private readonly lock?: AdvisoryLockClient,
   ) {}
 
   private async getValidAccessToken(localUserId: string): Promise<string> {
+    const account = await this.loadPsnAccount(localUserId);
+    if (account && this.hasFreshToken(account)) {
+      return account.accessToken;
+    }
+
+    return withLock(
+      `psn-refresh:${localUserId}`,
+      async () => {
+        const current = await this.loadPsnAccount(localUserId);
+        if (current && this.hasFreshToken(current)) {
+          return current.accessToken;
+        }
+        return this.refreshPsnAccount(localUserId, current);
+      },
+      this.lock ? { client: this.lock } : {},
+    );
+  }
+
+  private async loadPsnAccount(
+    localUserId: string,
+  ): Promise<PsnAccountTokenRow | null> {
     const [account] = await this.db
       .select({
         accessToken: psnAccounts.accessToken,
@@ -94,17 +123,21 @@ export class PsnService {
       .where(eq(psnAccounts.userId, localUserId))
       .limit(1);
 
+    return account ?? null;
+  }
+
+  private hasFreshToken(account: PsnAccountTokenRow): boolean {
+    return Date.now() < account.accessTokenExpiresAt.getTime() - 60_000;
+  }
+
+  private async refreshPsnAccount(
+    localUserId: string,
+    account: PsnAccountTokenRow | null,
+  ): Promise<string> {
     if (!account) {
       throw new Error(
         `No PSN account linked for user ${localUserId} — sync required`,
       );
-    }
-
-    const expiresAt = account.accessTokenExpiresAt.getTime();
-    const isExpired = Date.now() >= expiresAt - 60_000;
-
-    if (!isExpired) {
-      return account.accessToken;
     }
 
     console.log(
@@ -449,24 +482,30 @@ export class PsnService {
    * ```
    */
   async syncAllGameTrophies(localUserId: string, gameIds: string[]) {
-    for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
-      const batch = gameIds.slice(i, i + BATCH_SIZE);
+    return withLock(
+      `job:ach:psn:${localUserId}`,
+      async () => {
+        for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
+          const batch = gameIds.slice(i, i + BATCH_SIZE);
 
-      await Promise.allSettled(
-        batch.map((gameId) =>
-          this.syncGameTrophies(localUserId, gameId).catch((err) => {
-            console.warn(
-              `[PsnService] Trophy sync skipped for game ${gameId}:`,
-              err,
-            );
-          }),
-        ),
-      );
+          await Promise.allSettled(
+            batch.map((gameId) =>
+              this.syncGameTrophies(localUserId, gameId).catch((err) => {
+                console.warn(
+                  `[PsnService] Trophy sync skipped for game ${gameId}:`,
+                  err,
+                );
+              }),
+            ),
+          );
 
-      if (i + BATCH_SIZE < gameIds.length) {
-        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
-      }
-    }
+          if (i + BATCH_SIZE < gameIds.length) {
+            await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+          }
+        }
+      },
+      this.lock ? { client: this.lock } : {},
+    );
   }
 
   /**
@@ -695,7 +734,11 @@ export class PsnService {
       );
 
     if (!existing || existing.count === 0) {
-      await this.syncGameTrophies(userId, gameId);
+      await withLock(
+        `ach:psn:${userId}:${gameId}`,
+        () => this.syncGameTrophies(userId, gameId),
+        this.lock ? { client: this.lock } : {},
+      );
     }
 
     const filterConditions = and(

@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PsnService } from "../psn.services";
+import type { AdvisoryLockClient } from "../../../lib/locks";
 
 // ── Mock factories ────────────────────────────────────────────────────────────
+
+const makeMockLock: () => AdvisoryLockClient = () => ({
+  tryAcquire: vi.fn(async () => true),
+  release: vi.fn(async () => undefined),
+});
 
 const makeMockDb = () => ({
   select: vi.fn().mockReturnThis(),
@@ -111,7 +117,7 @@ describe("PsnService token management", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new PsnService(db as never, provider as never);
+    service = new PsnService(db as never, provider as never, makeMockLock());
   });
 
   it("uses stored token when not expired", async () => {
@@ -145,6 +151,23 @@ describe("PsnService token management", () => {
       "No PSN account linked",
     );
   });
+
+  it("refreshes a stale token only once for concurrent syncs", async () => {
+    db.limit = vi.fn().mockResolvedValue([
+      makeAccount({
+        accessTokenExpiresAt: new Date(Date.now() - 1000), // expired
+      }),
+    ]);
+    provider.getOwnedGames.mockResolvedValue([]);
+    provider.refreshTokens.mockResolvedValue(makeTokens());
+
+    await Promise.all([
+      service.syncUserGames("user-1"),
+      service.syncUserGames("user-1"),
+    ]);
+
+    expect(provider.refreshTokens).toHaveBeenCalledOnce();
+  });
 });
 
 // ── getUserGames ──────────────────────────────────────────────────────────────
@@ -155,7 +178,7 @@ describe("PsnService.getUserGames", () => {
 
   beforeEach(() => {
     db = makeMockDb();
-    service = new PsnService(db as never, makeMockProvider() as never);
+    service = new PsnService(db as never, makeMockProvider() as never, makeMockLock());
     // Default: valid token always available
     db.limit = vi.fn().mockResolvedValue([makeAccount()]);
   });
@@ -205,7 +228,7 @@ describe("PsnService.getUserGame", () => {
 
   beforeEach(() => {
     db = makeMockDb();
-    service = new PsnService(db as never, makeMockProvider() as never);
+    service = new PsnService(db as never, makeMockProvider() as never, makeMockLock());
   });
 
   it("returns a single game", async () => {
@@ -232,7 +255,7 @@ describe("PsnService.syncUserProfile", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new PsnService(db as never, provider as never);
+    service = new PsnService(db as never, provider as never, makeMockLock());
   });
 
   it("exchanges NPSSO, fetches profile, and persists tokens", async () => {
@@ -293,7 +316,7 @@ describe("PsnService.syncUserGames", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new PsnService(db as never, provider as never);
+    service = new PsnService(db as never, provider as never, makeMockLock());
     db.limit = vi.fn().mockResolvedValue([makeAccount()]);
   });
 
@@ -401,7 +424,7 @@ describe("PsnService.syncGameTrophies", () => {
   beforeEach(() => {
     db = makeMockDb();
     provider = makeMockProvider();
-    service = new PsnService(db as never, provider as never);
+    service = new PsnService(db as never, provider as never, makeMockLock());
   });
 
   it("throws when no PSN mapping found for game", async () => {
@@ -515,6 +538,7 @@ describe("PsnService.syncAllGameTrophies", () => {
     service = new PsnService(
       makeMockDb() as never,
       makeMockProvider() as never,
+      makeMockLock(),
     );
     vi.useFakeTimers();
   });

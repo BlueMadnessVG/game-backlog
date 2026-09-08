@@ -19,6 +19,7 @@ import type {
 } from "@repo/shared";
 import { deriveGameStatus } from "./steam.utils";
 import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
+import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 /**
  * Custom error thrown when a Steam game cannot be found for a given user.
@@ -82,6 +83,7 @@ export class SteamService {
   constructor(
     private readonly db: DbClient,
     private readonly provider: SteamProvider,
+    private readonly lock?: AdvisoryLockClient,
   ) {}
 
   private mapRowToGame(row: GameRow): Game {
@@ -366,27 +368,33 @@ export class SteamService {
    * ```
    */
   async syncAllGameAchievements(localUserId: string, gameIds: string[]) {
-    const BATCH_SIZE = 5;
-    const DELAY_MS = 200;
+    return withLock(
+      `job:ach:steam:${localUserId}`,
+      async () => {
+        const BATCH_SIZE = 5;
+        const DELAY_MS = 200;
 
-    for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
-      const batch = gameIds.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
+          const batch = gameIds.slice(i, i + BATCH_SIZE);
 
-      await Promise.allSettled(
-        batch.map((gameId) =>
-          this.syncGameAchievements(localUserId, gameId).catch((err) => {
-            console.warn(
-              `[SteamService] Achievement sync skipped for game ${gameId}:`,
-              err,
-            );
-          }),
-        ),
-      );
+          await Promise.allSettled(
+            batch.map((gameId) =>
+              this.syncGameAchievements(localUserId, gameId).catch((err) => {
+                console.warn(
+                  `[SteamService] Achievement sync skipped for game ${gameId}:`,
+                  err,
+                );
+              }),
+            ),
+          );
 
-      if (i + BATCH_SIZE < gameIds.length) {
-        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
-      }
-    }
+          if (i + BATCH_SIZE < gameIds.length) {
+            await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+          }
+        }
+      },
+      this.lock ? { client: this.lock } : {},
+    );
   }
 
   /**
@@ -608,7 +616,11 @@ export class SteamService {
       );
 
     if (!existing || existing.count === 0) {
-      await this.syncGameAchievements(userId, gameId);
+      await withLock(
+        `ach:steam:${userId}:${gameId}`,
+        () => this.syncGameAchievements(userId, gameId),
+        this.lock ? { client: this.lock } : {},
+      );
     }
 
     const filterConditions = and(

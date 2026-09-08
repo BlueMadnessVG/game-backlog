@@ -19,6 +19,7 @@ import type {
 } from "@repo/shared";
 import { deriveGameStatus } from "./xbox.utils";
 import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
+import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
@@ -85,6 +86,7 @@ export class XboxService {
   constructor(
     private readonly db: DbClient,
     private readonly provider: XboxProvider,
+    private readonly lock?: AdvisoryLockClient,
   ) {}
 
   private mapRowToGame(row: GameRow): Game {
@@ -400,24 +402,30 @@ export class XboxService {
    * ```
    */
   async syncAllGameAchievements(localUserId: string, gameIds: string[]) {
-    for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
-      const batch = gameIds.slice(i, i + BATCH_SIZE);
+    return withLock(
+      `job:ach:xbox:${localUserId}`,
+      async () => {
+        for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
+          const batch = gameIds.slice(i, i + BATCH_SIZE);
 
-      await Promise.allSettled(
-        batch.map((gameId) =>
-          this.syncGameAchievements(localUserId, gameId).catch((err) => {
-            console.warn(
-              `[XboxService] Achievement sync skipped for game ${gameId}:`,
-              err,
-            );
-          }),
-        ),
-      );
+          await Promise.allSettled(
+            batch.map((gameId) =>
+              this.syncGameAchievements(localUserId, gameId).catch((err) => {
+                console.warn(
+                  `[XboxService] Achievement sync skipped for game ${gameId}:`,
+                  err,
+                );
+              }),
+            ),
+          );
 
-      if (i + BATCH_SIZE < gameIds.length) {
-        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
-      }
-    }
+          if (i + BATCH_SIZE < gameIds.length) {
+            await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+          }
+        }
+      },
+      this.lock ? { client: this.lock } : {},
+    );
   }
 
   /**
@@ -645,7 +653,11 @@ export class XboxService {
       );
 
     if (!existing || existing.count === 0) {
-      await this.syncGameAchievements(userId, gameId);
+      await withLock(
+        `ach:xbox:${userId}:${gameId}`,
+        () => this.syncGameAchievements(userId, gameId),
+        this.lock ? { client: this.lock } : {},
+      );
     }
 
     const filterConditions = and(

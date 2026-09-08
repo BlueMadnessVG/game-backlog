@@ -8,6 +8,7 @@ import { XboxSyncSchema } from "@repo/shared";
 import type { LibraryService } from "../library/library.services";
 
 import { authMiddleware } from "../../middleware/auth.middleware";
+import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 type Bindings = {
   Variables: {
@@ -41,6 +42,7 @@ type Bindings = {
 export const createXboxController = (
   xboxService: XboxService,
   libraryService: LibraryService,
+  lock?: AdvisoryLockClient,
 ) => {
   const app = new Hono<Bindings>();
 
@@ -127,10 +129,15 @@ export const createXboxController = (
     const userId = c.get("userId");
 
     try {
-      const [profile, games] = await Promise.all([
-        xboxService.syncUserProfile(userId, xuid),
-        xboxService.syncUserGames(userId, xuid),
-      ]);
+      const [profile, games] = await withLock(
+        `sync:xbox:${userId}`,
+        () =>
+          Promise.all([
+            xboxService.syncUserProfile(userId, xuid),
+            xboxService.syncUserGames(userId, xuid),
+          ]),
+        lock ? { client: lock } : {},
+      );
 
       c.status(200);
       const response = c.json({

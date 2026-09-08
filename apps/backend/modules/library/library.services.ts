@@ -14,6 +14,7 @@ import {
   psnUserTrophies,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
+import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 import type {
   Achievement,
   AchievementFilter,
@@ -55,6 +56,7 @@ export class LibraryService {
     private readonly steamService: SteamService,
     private readonly xboxService: XboxService,
     private readonly psnService: PsnService,
+    private readonly lock?: AdvisoryLockClient,
   ) {}
 
   // ── Combined games list ──────────────────────────────────────────────────
@@ -404,53 +406,65 @@ export class LibraryService {
     alreadyEnriched: number;
     noMatch: number;
   }> {
-    const [xboxRows, psnRows] = await Promise.all([
-      this.getXboxGames(userId),
-      this.getPsnGames(userId),
-    ]);
+    return withLock(
+      `job:covers:${userId}`,
+      async () => {
+        const [xboxRows, psnRows] = await Promise.all([
+          this.getXboxGames(userId),
+          this.getPsnGames(userId),
+        ]);
 
-    const allRows = [...xboxRows, ...psnRows];
+        const allRows = [...xboxRows, ...psnRows];
 
-    const alreadyEnrichedRows = allRows.filter((g) =>
-      g.coverUrl?.includes("images.igdb.com"),
-    );
-    const targetGames = allRows
-      .filter((g) => !g.coverUrl?.includes("images.igdb.com"))
-      .map((g) => ({ id: g.id, title: g.title }));
+        const alreadyEnrichedRows = allRows.filter((g) =>
+          g.coverUrl?.includes("images.igdb.com"),
+        );
+        const targetGames = allRows
+          .filter((g) => !g.coverUrl?.includes("images.igdb.com"))
+          .map((g) => ({ id: g.id, title: g.title }));
 
-    console.debug(
-      `[LibraryService] enrichGameCovers: xbox=${xboxRows.length} psn=${psnRows.length}, ` +
-        `already enriched=${alreadyEnrichedRows.length}, targeting=${targetGames.length}`,
-    );
+        console.debug(
+          `[LibraryService] enrichGameCovers: xbox=${xboxRows.length} psn=${psnRows.length}, ` +
+            `already enriched=${alreadyEnrichedRows.length}, targeting=${targetGames.length}`,
+        );
 
-    let enriched = 0;
-    let noMatch = 0;
+        let enriched = 0;
+        let noMatch = 0;
 
-    for (let i = 0; i < targetGames.length; i += IGDB_BATCH_SIZE) {
-      const batch = targetGames.slice(i, i + IGDB_BATCH_SIZE);
+        for (let i = 0; i < targetGames.length; i += IGDB_BATCH_SIZE) {
+          const batch = targetGames.slice(i, i + IGDB_BATCH_SIZE);
 
-      await Promise.allSettled(
-        batch.map(async (game) => {
-          const coverUrl = await this.igdbProvider.searchGameCover(game.title);
+          await Promise.allSettled(
+            batch.map(async (game) => {
+              const coverUrl = await this.igdbProvider.searchGameCover(
+                game.title,
+              );
 
-          if (coverUrl) {
-            await this.db
-              .update(games)
-              .set({ coverUrl })
-              .where(eq(games.id, game.id));
-            enriched++;
-          } else {
-            noMatch++;
+              if (coverUrl) {
+                await this.db
+                  .update(games)
+                  .set({ coverUrl })
+                  .where(eq(games.id, game.id));
+                enriched++;
+              } else {
+                noMatch++;
+              }
+            }),
+          );
+
+          if (i + IGDB_BATCH_SIZE < targetGames.length) {
+            await new Promise((resolve) => setTimeout(resolve, IGDB_DELAY_MS));
           }
-        }),
-      );
+        }
 
-      if (i + IGDB_BATCH_SIZE < targetGames.length) {
-        await new Promise((resolve) => setTimeout(resolve, IGDB_DELAY_MS));
-      }
-    }
-
-    return { enriched, alreadyEnriched: alreadyEnrichedRows.length, noMatch };
+        return {
+          enriched,
+          alreadyEnriched: alreadyEnrichedRows.length,
+          noMatch,
+        };
+      },
+      this.lock ? { client: this.lock } : {},
+    );
   }
 
   async removeGame(gameId: string): Promise<void> {
