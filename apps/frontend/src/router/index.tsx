@@ -2,6 +2,7 @@ import { createRouter } from '@tanstack/react-router';
 
 import { rootRoute } from './root';
 
+import { authRoute } from '@/pages/Auth/router/Auth.route';
 import { authCallbackRoute } from '@/pages/AuthCallback/router/AuthCallback.route';
 import { gameDetailRoute } from '@/pages/GameDetail/router/GameDetail';
 import { heroRoute } from '@/pages/HeroPage/router/Hero.route';
@@ -11,6 +12,7 @@ const routeTree = rootRoute.addChildren([
   libraryRoute,
   heroRoute,
   gameDetailRoute,
+  authRoute,
   authCallbackRoute,
 ]);
 

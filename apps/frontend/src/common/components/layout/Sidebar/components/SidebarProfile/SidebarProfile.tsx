@@ -1,9 +1,8 @@
-import { type OAuthProvider } from '@repo/shared';
+import { useNavigate } from '@tanstack/react-router';
 import { Lock, LogIn, LogOut, Settings, Unlock } from 'lucide-react';
 
 import styles from './css/SidebarProfile.module.css';
 
-import { authService } from '@/api/auth/auth.service';
 import { useAuthStore } from '@/store/useAuth.store';
 
 interface SidebarProfileProps {
@@ -12,13 +11,12 @@ interface SidebarProfileProps {
   sidebarLocked: boolean;
 }
 
-const PROVIDERS: OAuthProvider[] = ['google', 'discord'];
-
 export const SidebarProfile = ({
   isExpanded,
   toggleSidebarLocked,
   sidebarLocked,
 }: SidebarProfileProps) => {
+  const navigate = useNavigate();
   const status = useAuthStore((state) => state.status);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.actions.logout);
@@ -47,16 +45,13 @@ export const SidebarProfile = ({
 
       {isExpanded && !isAuthenticated && (
         <div className={styles.quick_actions}>
-          {PROVIDERS.map((provider) => (
-            <button
-              key={provider}
-              className={styles.action_btn}
-              title={`Sign in with ${provider}`}
-              onClick={() => authService.login(provider)}
-            >
-              <LogIn size={16} />
-            </button>
-          ))}
+          <button
+            className={styles.action_btn}
+            title="Sign in / Register"
+            onClick={() => void navigate({ to: '/auth' })}
+          >
+            <LogIn size={16} />
+          </button>
         </div>
       )}
 

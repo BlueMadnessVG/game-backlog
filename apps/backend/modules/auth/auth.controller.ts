@@ -1,9 +1,19 @@
 import { Hono } from "hono";
 import { vValidator } from "@hono/valibot-validator";
-import { OAuthCallbackQuerySchema, OAuthProviderSchema } from "@repo/shared";
+import {
+  LoginSchema,
+  OAuthCallbackQuerySchema,
+  OAuthProviderSchema,
+  RegisterSchema,
+} from "@repo/shared";
 import * as v from "valibot";
 
-import { AuthService, OAuthCallbackError } from "./auth.services";
+import {
+  AuthService,
+  EmailAlreadyRegisteredError,
+  InvalidCredentialsError,
+  OAuthCallbackError,
+} from "./auth.services";
 import { authMiddleware } from "../../middleware/auth.middleware";
 
 type Bindings = {
@@ -62,6 +72,90 @@ export const createAuthController = (authService: AuthService) => {
       },
       200,
     );
+  });
+
+  /**
+   * GET /auth/providers
+   *
+   * Returns the configured social sign-in providers so the frontend can render
+   * its buttons from a single source of truth instead of hardcoding them.
+   * The UI decides which of these to surface.
+   */
+  app.get("/providers", async (c) => {
+    return c.json(
+      {
+        status: "SUCCESS",
+        data: {
+          providers: authService.getAvailableProviders(),
+        },
+      },
+      200,
+    );
+  });
+
+  /**
+   * POST /auth/register
+   *
+   * Creates an email/password account and returns a session token.
+   */
+  app.post("/register", vValidator("json", RegisterSchema), async (c) => {
+    try {
+      const { token, user, created } = await authService.register(
+        c.req.valid("json"),
+      );
+
+      return c.json(
+        {
+          status: "SUCCESS",
+          data: { token, user, created },
+        },
+        201,
+      );
+    } catch (error) {
+      if (error instanceof EmailAlreadyRegisteredError) {
+        return c.json(
+          {
+            status: "ERROR",
+            message:
+              "This email is already registered. Sign in or use a different account.",
+          },
+          409,
+        );
+      }
+      throw error;
+    }
+  });
+
+  /**
+   * POST /auth/login
+   *
+   * Validates email/password and returns a session token.
+   */
+  app.post("/login", vValidator("json", LoginSchema), async (c) => {
+    try {
+      const { token, user, created } = await authService.login(
+        c.req.valid("json"),
+      );
+
+      return c.json(
+        {
+          status: "SUCCESS",
+          data: { token, user, created },
+        },
+        200,
+      );
+    } catch (error) {
+      if (error instanceof InvalidCredentialsError) {
+        return c.json(
+          {
+            status: "ERROR",
+            message: "Invalid email or password",
+          },
+          401,
+        );
+      }
+      throw error;
+    }
   });
 
   /**

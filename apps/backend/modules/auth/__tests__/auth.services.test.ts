@@ -1,8 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { AuthService, OAuthCallbackError } from "../auth.services";
+import {
+  AuthService,
+  EmailAlreadyRegisteredError,
+  InvalidCredentialsError,
+  OAuthCallbackError,
+} from "../auth.services";
 import { oauthStateStore } from "../auth.state";
 import { verifyAuthToken } from "../../../lib/jwt.utils";
+
+vi.mock("../../../lib/password.utils", () => ({
+  hashPassword: vi.fn(),
+  verifyPassword: vi.fn(),
+}));
+
+import { hashPassword, verifyPassword } from "../../../lib/password.utils";
 
 const makeMockDb = () => ({
   select: vi.fn().mockReturnThis(),
@@ -25,6 +37,7 @@ const makeUser = (overrides = {}) => ({
   id: "user-uuid-1",
   username: "testuser",
   email: "test@example.com",
+  passwordHash: null,
   avatarUrl: null,
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
@@ -54,6 +67,9 @@ describe("AuthService", () => {
       google: google as never,
       discord: discord as never,
     });
+    vi.mocked(hashPassword).mockReset();
+    vi.mocked(verifyPassword).mockReset();
+    vi.mocked(hashPassword).mockResolvedValue("argon2-hash");
   });
 
   describe("createAuthorizationUrl", () => {
@@ -175,6 +191,113 @@ describe("AuthService", () => {
     it("returns null when not found", async () => {
       const user = await service.getUserById("missing");
       expect(user).toBeNull();
+    });
+  });
+
+  describe("getAvailableProviders", () => {
+    it("returns every configured provider", () => {
+      expect(service.getAvailableProviders()).toEqual(["google", "discord"]);
+    });
+  });
+
+  describe("register", () => {
+    const credentials = {
+      username: "newbie",
+      email: "  NEW@Example.com  ",
+      password: "supersecret123",
+    };
+
+    it("hashes the password and signs a token with provider=email", async () => {
+      db.limit.mockResolvedValue([]);
+      db.returning.mockResolvedValue([
+        makeUser({ username: "newbie", email: "new@example.com" }),
+      ]);
+
+      const result = await service.register(credentials);
+
+      expect(hashPassword).toHaveBeenCalledWith("supersecret123");
+      expect(result.created).toBe(true);
+      expect(result.user.email).toBe("new@example.com");
+
+      const payload = await verifyAuthToken(result.token);
+      expect(payload.sub).toBe("user-uuid-1");
+      expect(payload.email).toBe("new@example.com");
+      expect(payload.provider).toBe("email");
+    });
+
+    it("rejects an email that is already registered", async () => {
+      db.limit.mockResolvedValue([makeUser()]);
+
+      await expect(service.register(credentials)).rejects.toThrow(
+        EmailAlreadyRegisteredError,
+      );
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it("wins the race against a concurrent duplicate registration", async () => {
+      db.limit
+        .mockResolvedValueOnce([]) // initial check: email free
+        .mockResolvedValueOnce([makeUser({ email: "new@example.com" })]); // re-read after unique violation
+      db.returning.mockResolvedValue([]); // insert "fails" with no row
+
+      await expect(service.register(credentials)).rejects.toThrow(
+        EmailAlreadyRegisteredError,
+      );
+    });
+  });
+
+  describe("login", () => {
+    const credentials = {
+      email: "  Test@Example.com  ",
+      password: "supersecret123",
+    };
+
+    it("verifies the password and signs a token", async () => {
+      db.limit.mockResolvedValue([
+        makeUser({ passwordHash: "argon2-hash" }),
+      ]);
+      vi.mocked(verifyPassword).mockResolvedValue(true);
+
+      const result = await service.login(credentials);
+
+      expect(verifyPassword).toHaveBeenCalledWith(
+        "supersecret123",
+        "argon2-hash",
+      );
+      expect(result.created).toBe(false);
+      expect(result.user.email).toBe("test@example.com");
+
+      const payload = await verifyAuthToken(result.token);
+      expect(payload.provider).toBe("email");
+    });
+
+    it("rejects an unknown email without consulting the hasher", async () => {
+      db.limit.mockResolvedValue([]);
+
+      await expect(service.login(credentials)).rejects.toThrow(
+        InvalidCredentialsError,
+      );
+      expect(verifyPassword).not.toHaveBeenCalled();
+    });
+
+    it("rejects an OAuth-only account with no password set", async () => {
+      db.limit.mockResolvedValue([makeUser({ passwordHash: null })]);
+
+      await expect(service.login(credentials)).rejects.toThrow(
+        InvalidCredentialsError,
+      );
+      expect(verifyPassword).not.toHaveBeenCalled();
+    });
+
+    it("rejects a wrong password", async () => {
+      db.limit.mockResolvedValue([
+        makeUser({ passwordHash: "argon2-hash" }),
+      ]);
+      vi.mocked(verifyPassword).mockResolvedValue(false);
+
+      await expect(service.login(credentials)).rejects.toThrow(
+        InvalidCredentialsError,
+      );
     });
   });
 });

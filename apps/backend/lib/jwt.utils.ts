@@ -17,12 +17,13 @@ const encodedSecret = new TextEncoder().encode(JWT_SECRET_STRING);
 /**
  * Claims carried by the app's session tokens. `sub` is the internal user id
  * (matches the `users.id` column) and is what auth.middleware exposes as
- * `c.get("userId")`.
+ * `c.get("userId")`. `provider` records which authentication method signed the
+ * session in: a social provider or `"email"` for email/password accounts.
  */
 export interface AuthTokenPayload extends JWTPayload {
   sub: string;
   email: string;
-  provider: "google" | "discord";
+  provider: "google" | "discord" | "email";
 }
 
 /**

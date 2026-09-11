@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { createAuthController } from "../auth.controller";
-import { OAuthCallbackError } from "../auth.services";
+import {
+  EmailAlreadyRegisteredError,
+  InvalidCredentialsError,
+  OAuthCallbackError,
+} from "../auth.services";
 import { authHeaders } from "../../../tests/auth.helpers";
 
 const makeMockAuthService = () => ({
   getUserById: vi.fn(),
   createAuthorizationUrl: vi.fn(),
   handleCallback: vi.fn(),
+  getAvailableProviders: vi.fn(),
+  register: vi.fn(),
+  login: vi.fn(),
 });
 
 const makeUser = (overrides = {}) => ({
@@ -54,6 +61,127 @@ describe("AuthController", () => {
       const res = await app.request("/me", { headers });
 
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe("GET /providers", () => {
+    it("returns the configured providers", async () => {
+      authService.getAvailableProviders.mockReturnValue(["google", "discord"]);
+
+      const res = await app.request("/providers");
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.status).toBe("SUCCESS");
+      expect(body.data.providers).toEqual(["google", "discord"]);
+    });
+  });
+
+  describe("POST /register", () => {
+    const payload = {
+      username: "newbie",
+      email: "new@example.com",
+      password: "supersecret123",
+    };
+
+    it("creates the account and returns a token", async () => {
+      authService.register.mockResolvedValue({
+        token: "signed-jwt",
+        user: makeUser(),
+        created: true,
+      });
+
+      const res = await app.request("/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(201);
+      expect(body.status).toBe("SUCCESS");
+      expect(body.data.created).toBe(true);
+      expect(body.data.user.email).toBe("test@example.com");
+    });
+
+    it("returns 400 for invalid input", async () => {
+      const res = await app.request("/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "", email: "not-an-email", password: "1" }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 409 when the email is already registered", async () => {
+      authService.register.mockRejectedValue(
+        new EmailAlreadyRegisteredError("Email is already registered"),
+      );
+
+      const res = await app.request("/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        status: "ERROR",
+        message: expect.any(String),
+      });
+    });
+  });
+
+  describe("POST /login", () => {
+    const payload = {
+      email: "test@example.com",
+      password: "supersecret123",
+    };
+
+    it("returns a token for valid credentials", async () => {
+      authService.login.mockResolvedValue({
+        token: "signed-jwt",
+        user: makeUser(),
+        created: false,
+      });
+
+      const res = await app.request("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.status).toBe("SUCCESS");
+      expect(body.data.token).toBe("signed-jwt");
+    });
+
+    it("returns 401 for invalid credentials", async () => {
+      authService.login.mockRejectedValue(
+        new InvalidCredentialsError("Invalid email or password"),
+      );
+
+      const res = await app.request("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(401);
+      expect(body.message).toBe("Invalid email or password");
+    });
+
+    it("returns 400 for invalid input", async () => {
+      const res = await app.request("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "not-an-email", password: "" }),
+      });
+
+      expect(res.status).toBe(400);
     });
   });
 

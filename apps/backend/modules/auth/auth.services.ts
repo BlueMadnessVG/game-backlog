@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 
-import type { OAuthProvider } from "@repo/shared";
+import type { LoginInput, OAuthProvider, RegisterInput } from "@repo/shared";
 
 import { oauthAccounts, users } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { signAuthToken } from "../../lib/jwt.utils";
+import { hashPassword, verifyPassword } from "../../lib/password.utils";
 import type { OAuthProfile, OAuthProviderClient } from "../../providers/oauth.types";
 import { oauthStateStore } from "./auth.state";
 
@@ -19,6 +20,35 @@ export class OAuthCallbackError extends Error {
     this.name = "OAuthCallbackError";
   }
 }
+
+/**
+ * Thrown when a registration tries to use an email that already belongs to an
+ * existing account (password or OAuth). Maps to HTTP 409.
+ */
+export class EmailAlreadyRegisteredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmailAlreadyRegisteredError";
+  }
+}
+
+/**
+ * Thrown when the email/password pair does not match. Intentionally the same
+ * error for "unknown email" and "wrong password" so sign-in attempts cannot
+ * enumerate which emails have registered accounts. Maps to HTTP 401.
+ */
+export class InvalidCredentialsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidCredentialsError";
+  }
+}
+
+/**
+ * Normalizes the credential login method into the JWT `provider` claim. The
+ * auth middleware only reads `sub`/`email`, so nothing downstream changes.
+ */
+const EMAIL_PROVIDER = "email" as const;
 
 export interface AuthSession {
   token: string;
@@ -104,6 +134,103 @@ export class AuthService {
       user: { id: user.id, username: user.username, email: user.email },
       created,
     };
+  }
+
+  /**
+   * List of configured social providers. The frontend decides which of these
+   * to surface (currently only Google); adding a new platform later means
+   * registering it in `index.ts` and nothing else changes here.
+   */
+  getAvailableProviders(): OAuthProvider[] {
+    return Object.keys(this.providers) as OAuthProvider[];
+  }
+
+  /**
+   * Creates an email/password account and issues a session token.
+   *
+   * Emails are normalized (trimmed + lowercased) before the uniqueness check
+   * so `Foo@Bar.com` and `foo@bar.com` cannot create duplicate accounts.
+   *
+   * @throws {EmailAlreadyRegisteredError} When the email is already in use.
+   */
+  async register(input: RegisterInput): Promise<AuthSession> {
+    const email = input.email.trim().toLowerCase();
+    const existing = await this.findUserByEmail(email);
+    if (existing) {
+      throw new EmailAlreadyRegisteredError("Email is already registered");
+    }
+
+    const passwordHash = await hashPassword(input.password);
+
+    try {
+      const [user] = await this.db
+        .insert(users)
+        .values({
+          username: input.username.trim(),
+          email,
+          passwordHash,
+        })
+        .returning();
+
+      if (!user) {
+        throw new Error("Failed to create user");
+      }
+
+      const token = await this.#signEmailSession(user);
+      return {
+        token,
+        user: { id: user.id, username: user.username, email: user.email },
+        created: true,
+      };
+    } catch (error) {
+      // Race: another request registered the same email first. Resolve the
+      // winner instead of leaking a unique-violation stack trace.
+      const winner = await this.findUserByEmail(email);
+      if (winner) {
+        throw new EmailAlreadyRegisteredError("Email is already registered");
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Validates an email/password pair and issues a session token.
+   *
+   * Unknown emails, password-less (OAuth-only) accounts, and wrong passwords
+   * all produce the same {@link InvalidCredentialsError} to prevent account
+   * enumeration.
+   *
+   * @throws {InvalidCredentialsError} When the credentials do not match.
+   */
+  async login(input: LoginInput): Promise<AuthSession> {
+    const email = input.email.trim().toLowerCase();
+    const user = await this.findUserByEmail(email);
+
+    if (!user?.passwordHash) {
+      throw new InvalidCredentialsError("Invalid email or password");
+    }
+
+    const valid = await verifyPassword(input.password, user.passwordHash);
+    if (!valid) {
+      throw new InvalidCredentialsError("Invalid email or password");
+    }
+
+    const token = await this.#signEmailSession(user);
+    return {
+      token,
+      user: { id: user.id, username: user.username, email: user.email },
+      created: false,
+    };
+  }
+
+  async #signEmailSession(
+    user: { id: string; username: string; email: string },
+  ) {
+    return signAuthToken({
+      sub: user.id,
+      email: user.email,
+      provider: EMAIL_PROVIDER,
+    });
   }
 
   /**
