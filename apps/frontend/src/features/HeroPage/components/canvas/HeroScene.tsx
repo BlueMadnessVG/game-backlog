@@ -4,6 +4,7 @@ import { Environment } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 
 import styles from './css/HeroScene.module.css';
+import { SceneInvalidator } from './SceneInvalidator';
 import { ButtonProjector } from '../3d/ButtonProjector';
 import { CameraRig } from '../3d/CameraRig';
 import { DeconstructedController } from '../3d/DestructedController';
@@ -26,6 +27,7 @@ export function HeroScene() {
     <div className={styles.sceneContainer}>
       <Canvas
         shadows
+        frameloop="demand"
         camera={{ position: [0, 0, 5], fov: 35, near: 0.1, far: 100 }}
         gl={{ antialias: true, toneMapping: 3, toneMappingExposure: 1.2 }}
         style={{ touchAction: 'pan-y' }}
@@ -60,6 +62,8 @@ export function HeroScene() {
         </Suspense>
 
         <CameraRig />
+
+        <SceneInvalidator />
 
         <ButtonProjector />
 

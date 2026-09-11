@@ -1,7 +1,7 @@
 import { useMemo, useRef, type ComponentRef } from 'react';
 
 import { Edges } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 /**
@@ -42,6 +42,7 @@ export function EdgesMesh({
   glowSpeed = 10,
 }: EdgesMeshProps) {
   const edgesRef = useRef<ComponentRef<typeof Edges>>(null);
+  const invalidate = useThree((state) => state.invalidate);
 
   const baseColor = useMemo(() => new THREE.Color(color), [color]);
   const targetColor = useMemo(
@@ -63,6 +64,8 @@ export function EdgesMesh({
     const pulse = activeRef.current ? 0.9 + Math.sin(state.clock.elapsedTime * 6) * 0.1 : 1;
 
     material.color.copy(baseColor).lerp(targetColor, glow.current * pulse);
+
+    if (activeRef.current || glow.current > 0.01) invalidate();
   });
 
   return (

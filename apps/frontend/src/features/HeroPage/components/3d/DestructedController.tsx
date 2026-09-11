@@ -2,7 +2,7 @@
 import { useRef } from 'react';
 
 import { useGLTF, useAnimations } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import ButtonHoverPortal from './ButtonHoverPortal';
@@ -74,6 +74,7 @@ export function DeconstructedController({
   staticPose?: boolean;
 }) {
   const group = useRef<THREE.Group>(null);
+  const invalidate = useThree((state) => state.invalidate);
   const { nodes: rawNodes, animations } = useGLTF('/models/controller/scene.gltf');
   useAnimations(animations, group);
   const nodes = rawNodes as Record<string, Mesh>;
@@ -172,6 +173,8 @@ export function DeconstructedController({
       }
     } else {
       updateEntry(delta);
+
+      if (!hasEntered.current) invalidate();
 
       const r = useScrollStore.getState().progress;
       updateScrollRotation(r);
