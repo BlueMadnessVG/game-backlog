@@ -9,6 +9,9 @@ import { ButtonProjector } from '../3d/ButtonProjector';
 import { CameraRig } from '../3d/CameraRig';
 import { DeconstructedController } from '../3d/DestructedController';
 
+import { useInteractionObserver } from '@/common/hooks/useInteractionObserver/useInteractionObserver';
+import { isSoftwareRenderer } from '@/common/utils/webgl/capabilities';
+
 /**
  * The full Three.js canvas for the hero sequence.
  *
@@ -23,13 +26,21 @@ import { DeconstructedController } from '../3d/DestructedController';
  *  - HeroScene: the <Canvas> wrapper (default export too).
  */
 export function HeroScene() {
+  const softwareRenderer = isSoftwareRenderer();
+  const { targetRef, isInteracting } = useInteractionObserver({ threshold: 0.05 });
+
   return (
-    <div className={styles.sceneContainer}>
+    <div className={styles.sceneContainer} ref={targetRef}>
       <Canvas
-        shadows
-        frameloop="demand"
+        shadows={!softwareRenderer}
+        frameloop={isInteracting ? 'demand' : 'never'}
+        dpr={softwareRenderer ? 1 : [1, 1.75]}
         camera={{ position: [0, 0, 5], fov: 35, near: 0.1, far: 100 }}
-        gl={{ antialias: true, toneMapping: 3, toneMappingExposure: 1.2 }}
+        gl={{
+          antialias: !softwareRenderer,
+          toneMapping: 3,
+          toneMappingExposure: 1.2,
+        }}
         style={{ touchAction: 'pan-y' }}
       >
         <ambientLight intensity={0.15} />
@@ -41,7 +52,7 @@ export function HeroScene() {
           intensity={3}
           color="#ffe0c0"
           castShadow
-          shadow-mapSize={[2048, 2048]}
+          shadow-mapSize={[1024, 1024]}
         />
 
         <spotLight
@@ -68,7 +79,7 @@ export function HeroScene() {
         <ButtonProjector />
 
         {/* Environment for chrome reflections — "studio" or "city" */}
-        <Environment preset="studio" />
+        {!softwareRenderer && <Environment preset="studio" />}
 
         <fog attach="fog" args={['#050505', 6, 18]} />
       </Canvas>

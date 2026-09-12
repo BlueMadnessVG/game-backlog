@@ -41,6 +41,7 @@ export const FRAME_SY = 18;
 const SCAN_DURATION = 2.4;
 const GLITCH_INTERVAL = 5;
 const GLITCH_DURATION = 0.3;
+const LABEL_UPDATE_INTERVAL = 0.3;
 
 /* Backlog HUD theme tokens */
 const THEME_MAGENTA = '#ffafd3';
@@ -97,6 +98,7 @@ export default function PlatformHologram({
   const glitchRef = useRef({ active: false, startTime: 0 });
   const nextGlitchRef = useRef(5);
   const wasIdleRef = useRef(true);
+  const idleRestRef = useRef(false);
 
   /* ── Vertical blob in XY plane ── */
   const blobPoints = useMemo(() => {
@@ -189,7 +191,7 @@ export default function PlatformHologram({
       const fade = phase < 0.08 ? phase / 0.08 : phase > 0.92 ? (1 - phase) / 0.08 : 1;
       scanMatRef.current.opacity = fade * 0.6;
     }
-    if (t - lastLabelUpdate.current > 0.15) {
+    if (t - lastLabelUpdate.current > LABEL_UPDATE_INTERVAL) {
       lastLabelUpdate.current = t;
       setPercent(Math.floor(phase * 100));
     }
@@ -333,6 +335,7 @@ export default function PlatformHologram({
     group.scale.setScalar(Math.max(0, s));
 
     if (target > 0.01 && s > 0.01) {
+      idleRestRef.current = false;
       if (wasIdleRef.current) {
         wasIdleRef.current = false;
         nextGlitchRef.current = t + GLITCH_INTERVAL;
@@ -344,7 +347,10 @@ export default function PlatformHologram({
       updateActive(group, t);
     } else {
       wasIdleRef.current = true;
-      updateIdle(group);
+      if (!idleRestRef.current) {
+        updateIdle(group);
+        idleRestRef.current = true;
+      }
     }
   });
 
