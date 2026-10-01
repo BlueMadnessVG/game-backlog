@@ -5,7 +5,8 @@ import {
   type GameLibraryFilter,
 } from "./library.services";
 
-import { authMiddleware } from "../../middleware/auth.middleware";
+import { createAuthMiddleware } from "../../middleware/auth.middleware";
+import type { AuthService } from "../auth/auth.services";
 
 type Bindings = {
   Variables: {
@@ -99,10 +100,13 @@ function parseAchievementOptions(query: Record<string, string | undefined>): {
   return { options };
 }
 
-export const createLibraryController = (libraryService: LibraryService) => {
+export const createLibraryController = (
+  libraryService: LibraryService,
+  authService: AuthService,
+) => {
   const app = new Hono<Bindings>();
 
-  app.use("*", authMiddleware);
+  app.use("*", createAuthMiddleware(authService));
 
   // GET /library/games
   // Returns the user's combined game library across steam, xbox, and psn,

@@ -2,11 +2,15 @@ import { and, eq } from "drizzle-orm";
 
 import type { LoginInput, OAuthProvider, RegisterInput } from "@repo/shared";
 
-import { oauthAccounts, users } from "../../db/schema";
+import { apiTokens, oauthAccounts, users } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { signAuthToken } from "../../lib/jwt.utils";
 import { hashPassword, verifyPassword } from "../../lib/password.utils";
-import type { OAuthProfile, OAuthProviderClient } from "../../providers/oauth.types";
+import { generateOpaqueToken, hashApiToken } from "../../lib/api-token.utils";
+import type {
+  OAuthProfile,
+  OAuthProviderClient,
+} from "../../providers/oauth.types";
 import { oauthStateStore } from "./auth.state";
 
 /**
@@ -60,19 +64,30 @@ export interface AuthSession {
   created: boolean;
 }
 
+export interface ApiTokenSummary {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  scope: string;
+  lastUsedAt: Date | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+}
+
 /**
- * Orchestrates the OAuth registration/login flow and session issuance.
- *
- * First-time sign-in auto-registers the user (users + oauth_accounts rows);
- * returning users are resolved by (provider, providerAccountId), with an
- * email fallback so a user signing in with a second provider links to their
- * existing account instead of creating a duplicate.
+ * Orchestrates the OAuth registration/login flow, session issuance, and
+ * (now) opaque API token issuance for machine/service clients — API
+ * tokens are a second credential kind in the same "how does this user
+ * authenticate" domain this class already owns, so they live here rather
+ * than in a separate service.
  *
  * @example
  * ```ts
  * const auth = new AuthService(db, { google, discord });
  * const url = await auth.createAuthorizationUrl("google");
  * const { token, user } = await auth.handleCallback("google", code, state);
+ * const apiToken = await auth.createApiToken(user.id, { name: "achievement-ai" });
  * ```
  */
 export class AuthService {
@@ -223,9 +238,11 @@ export class AuthService {
     };
   }
 
-  async #signEmailSession(
-    user: { id: string; username: string; email: string },
-  ) {
+  async #signEmailSession(user: {
+    id: string;
+    username: string;
+    email: string;
+  }) {
     return signAuthToken({
       sub: user.id,
       email: user.email,
@@ -243,6 +260,115 @@ export class AuthService {
       .where(eq(users.id, userId))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  // ---------------------------------------------------------------------
+  // API tokens — a second credential kind (see lib/api-token.utils.ts for
+  // the pure generate/hash/isApiToken helpers this calls into).
+  // ---------------------------------------------------------------------
+
+  /**
+   * Creates a new opaque API token for `userId` (e.g. for the
+   * achievement-ai assistant, or any other machine client).
+   *
+   * @returns The plaintext token — returned exactly ONCE, here. Only its
+   *   hash is ever persisted; there is no way to recover it later.
+   */
+  async createApiToken(
+    userId: string,
+    opts: { name: string; scope?: string; expiresAt?: Date },
+  ): Promise<{ id: string; token: string; tokenPrefix: string }> {
+    const { token, tokenHash, tokenPrefix } = generateOpaqueToken();
+
+    const [row] = await this.db
+      .insert(apiTokens)
+      .values({
+        userId,
+        name: opts.name,
+        tokenHash,
+        tokenPrefix,
+        scope: opts.scope ?? "read:library",
+        expiresAt: opts.expiresAt ?? null,
+      })
+      .returning({ id: apiTokens.id });
+
+    if (!row) {
+      throw new Error("Failed to create API token");
+    }
+
+    return { id: row.id, token, tokenPrefix };
+  }
+
+  /**
+   * Verifies an opaque API token — called from auth.middleware for any
+   * `bkl_...`-prefixed bearer credential. Mirrors verifyAuthToken's
+   * "give me a userId or nothing" contract (jwt.utils.ts) so the
+   * middleware can treat both credential kinds the same way once it
+   * knows which one it has.
+   *
+   * @returns `{ userId }`, or `null` if the token is unknown, revoked, or
+   *   past its expiry.
+   */
+  async verifyApiToken(token: string): Promise<{ userId: string } | null> {
+    const tokenHash = hashApiToken(token);
+
+    const rows = await this.db
+      .select({
+        id: apiTokens.id,
+        userId: apiTokens.userId,
+        expiresAt: apiTokens.expiresAt,
+        revokedAt: apiTokens.revokedAt,
+      })
+      .from(apiTokens)
+      .where(eq(apiTokens.tokenHash, tokenHash))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row || row.revokedAt) return null;
+    if (row.expiresAt && row.expiresAt.getTime() < Date.now()) return null;
+
+    // Fire-and-forget, matching the background-job style this codebase
+    // already uses for sync/enrichment (see xbox/steam/psn controllers) —
+    // a request shouldn't be slowed down or fail because this
+    // bookkeeping write is slow.
+    void this.db
+      .update(apiTokens)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiTokens.id, row.id))
+      .catch((err: unknown) => {
+        console.error("[AuthService] Failed to update token lastUsedAt:", err);
+      });
+
+    return { userId: row.userId };
+  }
+
+  /** Lists a user's API tokens. Never includes the secret — only the prefix. */
+  async listApiTokens(userId: string): Promise<ApiTokenSummary[]> {
+    return this.db
+      .select({
+        id: apiTokens.id,
+        name: apiTokens.name,
+        tokenPrefix: apiTokens.tokenPrefix,
+        scope: apiTokens.scope,
+        lastUsedAt: apiTokens.lastUsedAt,
+        expiresAt: apiTokens.expiresAt,
+        revokedAt: apiTokens.revokedAt,
+        createdAt: apiTokens.createdAt,
+      })
+      .from(apiTokens)
+      .where(eq(apiTokens.userId, userId));
+  }
+
+  /**
+   * Revokes a token (soft delete — see api-tokens.ts schema comment).
+   * Scoped to `userId` so one user can never revoke another user's token
+   * by guessing an id.
+   */
+  async revokeApiToken(userId: string, tokenId: string): Promise<void> {
+    await this.db
+      .update(apiTokens)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(apiTokens.id, tokenId), eq(apiTokens.userId, userId)));
   }
 
   private async findAccountUser(profile: OAuthProfile) {
