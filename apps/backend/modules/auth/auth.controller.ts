@@ -5,6 +5,7 @@ import {
   OAuthCallbackQuerySchema,
   OAuthProviderSchema,
   RegisterSchema,
+  CreateApiTokenSchema,
 } from "@repo/shared";
 import * as v from "valibot";
 
@@ -24,21 +25,6 @@ type Bindings = {
 };
 
 const FRONTEND_FALLBACK = "http://localhost:5173";
-
-// Not added to @repo/shared — I don't have that package's structure in
-// front of me, so this validates inline the same way library.controller.ts
-// hand-validates its query params. Worth moving to @repo/shared later for
-// consistency with LoginSchema/RegisterSchema if you want every request
-// schema living in one place.
-const CreateApiTokenSchema = v.object({
-  name: v.pipe(
-    v.string(),
-    v.minLength(1, "name is required"),
-    v.maxLength(100),
-  ),
-  scope: v.optional(v.string()),
-  expiresInDays: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
-});
 
 /**
  * Creates the Hono router for all auth-related HTTP endpoints.
