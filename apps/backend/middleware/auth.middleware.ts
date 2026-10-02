@@ -1,8 +1,10 @@
 import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
+import { getCookie } from "hono/cookie";
 
 import { verifyAuthToken } from "../lib/jwt.utils";
 import { isApiToken } from "../lib/api-token.utils";
+import { SESSION_COOKIE_NAME } from "../lib/session-cookie";
 import type { AuthService } from "../modules/auth/auth.services";
 
 type Env = {
@@ -12,47 +14,61 @@ type Env = {
   };
 };
 
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 /**
  * Builds the auth middleware for a given `AuthService` instance.
  *
- * This is now a FACTORY, not a bare middleware export — it needs
- * `authService.verifyApiToken`, a real DB lookup, so it needs an
- * `AuthService` to call it on. Every existing
- * `app.use("*", authMiddleware)` call site becomes
- * `app.use("*", createAuthMiddleware(authService))`, matching how every
- * controller already receives its services from the composition root
- * rather than importing a singleton.
+ * Still a FACTORY (unchanged from the API-token addition) — every
+ * `app.use("*", createAuthMiddleware(authService))` call site is
+ * unaffected by this change.
  *
- * Validates the `Authorization: Bearer <token>` header and exposes the
- * authenticated user via `c.get("userId")` / `c.get("userEmail")`.
+ * Credential resolution, in order:
+ *  1. `Authorization: Bearer <token>` header, if present — covers both
+ *     opaque API tokens (`bkl_...`, machine clients like achievement-ai)
+ *     and any existing Bearer-JWT client. Behavior here is UNCHANGED.
+ *  2. Otherwise, the `backlog_session` HttpOnly cookie — the new path,
+ *     used by the browser frontend, which no longer handles the token
+ *     itself at all.
  *
- * Two credential kinds, told apart by prefix:
- *  - `bkl_...`  — an opaque API token (lib/api-token.utils.ts), for
- *    machine/service clients (e.g. the achievement-ai assistant).
- *    Verified via `authService.verifyApiToken`. NOTE: this path does not
- *    set `userEmail` (no join to `users` there) — add one in
- *    AuthService.verifyApiToken if something downstream ever needs it.
- *  - anything else — the existing session JWT for human logins, verified
- *    exactly as before.
+ * Whichever source the token came from, verification is identical from
+ * that point on — a session JWT is a session JWT regardless of how it
+ * arrived.
  *
- * @throws {HTTPException} 401 when the header is missing, or the
- *   credential is invalid/expired/revoked.
+ * CSRF check: when the credential came from the COOKIE (never for
+ * Bearer-token requests, which a browser doesn't auto-attach the way it
+ * does a cookie) and the request is a mutating method, requires the
+ * `X-Request-With` header — already allowlisted in cors.middleware.ts,
+ * previously unused. A cross-site <form> submission can't set custom
+ * headers, so this blocks the classic CSRF attack shape without a full
+ * token-exchange scheme.
+ *
+ * @throws {HTTPException} 401 when no credential is present or it's
+ *   invalid/expired/revoked; 403 when the CSRF header check fails.
  */
 export function createAuthMiddleware(authService: AuthService) {
   return createMiddleware<Env>(async (c, next) => {
     const authHeader = c.req.header("Authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : undefined;
+    const sessionCookie = getCookie(c, SESSION_COOKIE_NAME);
 
-    if (!authHeader?.startsWith("Bearer ")) {
+    const token = bearerToken ?? sessionCookie;
+    const usedCookie = !bearerToken && !!sessionCookie;
+
+    if (!token) {
       throw new HTTPException(401, {
         message: "MISSING_COORDINATES: Authorization required",
       });
     }
 
-    const token = authHeader.split(" ")[1];
-    if (!token) {
-      throw new HTTPException(401, {
-        message: "MISSING_COORDINATES: Authorization required",
-      });
+    if (usedCookie && MUTATING_METHODS.has(c.req.method)) {
+      if (!c.req.header("X-Request-With")) {
+        throw new HTTPException(403, {
+          message: "CSRF_CHECK_FAILED: Missing required header",
+        });
+      }
     }
 
     if (isApiToken(token)) {

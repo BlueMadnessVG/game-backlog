@@ -16,6 +16,7 @@ import {
   OAuthCallbackError,
 } from "./auth.services";
 import { createAuthMiddleware } from "../../middleware/auth.middleware";
+import { setSessionCookie, clearSessionCookie } from "../../lib/session-cookie";
 
 type Bindings = {
   Variables: {
@@ -30,17 +31,26 @@ const FRONTEND_FALLBACK = "http://localhost:5173";
  * Creates the Hono router for all auth-related HTTP endpoints.
  *
  * Flow: `GET /auth/:provider` starts the provider dance; the provider
- * redirects back to `GET /auth/:provider/callback`, which exchanges the code,
- * upserts the user, signs a session JWT and bounces the browser to
- * `FRONTEND_URL/auth/callback#token=<jwt>` (fragment so the token never
- * reaches server logs).
+ * redirects back to `GET /auth/:provider/callback`, which exchanges the
+ * code, upserts the user, signs a session JWT, sets it as an HttpOnly
+ * cookie, and bounces the browser to `FRONTEND_URL/auth/callback` — no
+ * token in the URL fragment anymore (see setSessionCookie's doc comment
+ * for why a cookie instead of a response-body token is the fix here).
  *
- * Also exposes `/api-tokens` (create/list/revoke) for opaque, long-lived
- * credentials meant for machine/service clients rather than a browser
- * session — see AuthService.createApiToken.
+ * `/login` and `/register` follow the same cookie-setting pattern. The
+ * JSON response body for all three no longer includes the raw token —
+ * only `user`/`created`. Call `/auth/me` to confirm an active session
+ * instead of inspecting a token the frontend never sees.
  *
- * @param authService - Service layer for the OAuth flow, session issuance,
- *   and API token issuance.
+ * `/api-tokens` (create/list/revoke) is UNCHANGED by this — those are
+ * opaque, long-lived credentials for machine clients (e.g. the
+ * achievement-ai assistant), issued over Bearer auth, and deliberately
+ * still returned in the response body exactly once. That's a different
+ * credential for a different kind of client; this change is specifically
+ * about the browser session.
+ *
+ * @param authService - Service layer for the OAuth flow, session
+ *   issuance, and API token issuance.
  * @returns A configured `Hono` app instance with all auth routes mounted.
  */
 export const createAuthController = (authService: AuthService) => {
@@ -103,7 +113,8 @@ export const createAuthController = (authService: AuthService) => {
   /**
    * POST /auth/register
    *
-   * Creates an email/password account and returns a session token.
+   * Creates an email/password account, sets the session cookie, and
+   * returns the user (no token in the body — see setSessionCookie).
    */
   app.post("/register", vValidator("json", RegisterSchema), async (c) => {
     try {
@@ -111,10 +122,12 @@ export const createAuthController = (authService: AuthService) => {
         c.req.valid("json"),
       );
 
+      setSessionCookie(c, token);
+
       return c.json(
         {
           status: "SUCCESS",
-          data: { token, user, created },
+          data: { user, created },
         },
         201,
       );
@@ -136,7 +149,8 @@ export const createAuthController = (authService: AuthService) => {
   /**
    * POST /auth/login
    *
-   * Validates email/password and returns a session token.
+   * Validates email/password, sets the session cookie, and returns the
+   * user (no token in the body — see setSessionCookie).
    */
   app.post("/login", vValidator("json", LoginSchema), async (c) => {
     try {
@@ -144,10 +158,12 @@ export const createAuthController = (authService: AuthService) => {
         c.req.valid("json"),
       );
 
+      setSessionCookie(c, token);
+
       return c.json(
         {
           status: "SUCCESS",
-          data: { token, user, created },
+          data: { user, created },
         },
         200,
       );
@@ -166,10 +182,28 @@ export const createAuthController = (authService: AuthService) => {
   });
 
   /**
+   * POST /auth/logout
+   *
+   * Clears the session cookie. Doesn't invalidate the underlying JWT
+   * itself (it's stateless, same as before this change) — it just stops
+   * the browser from presenting it. A stolen cookie's JWT remains valid
+   * until its own expiry regardless; that was already true before this
+   * change too, and is a separate concern from what this step addresses.
+   */
+  app.post("/logout", async (c) => {
+    clearSessionCookie(c);
+    return c.json({ status: "SUCCESS", message: "Logged out" }, 200);
+  });
+
+  /**
    * POST /auth/api-tokens
    *
    * Creates a new opaque API token for the authenticated user (e.g. for
    * the achievement-ai assistant, or any other machine client).
+   * UNCHANGED by the cookie change — accepts either credential kind via
+   * requireAuth, same as every other protected route here, but in
+   * practice is called with a Bearer session JWT or an existing API
+   * token, not a cookie.
    *
    * @body { name: string, scope?: string, expiresInDays?: number }
    * @returns 201 with `{ status, data: { id, token, tokenPrefix } }`. The
@@ -268,8 +302,13 @@ export const createAuthController = (authService: AuthService) => {
   /**
    * GET /auth/:provider/callback
    *
-   * Completes the OAuth flow, then redirects to the frontend with the JWT in
-   * the URL fragment (or an error fragment on failure).
+   * Completes the OAuth flow, sets the session cookie, and redirects to
+   * the frontend with NO token in the URL anymore (the old `#token=`
+   * fragment approach existed specifically to keep the token out of
+   * server logs — a cookie set via a Set-Cookie header on this same
+   * response achieves that more directly, with nothing sensitive in the
+   * redirect URL at all). On failure, still redirects with an error
+   * fragment so the frontend can show why.
    */
   app.get(
     "/:provider/callback",
@@ -291,7 +330,8 @@ export const createAuthController = (authService: AuthService) => {
           code,
           state,
         );
-        return c.redirect(`${frontendUrl()}/auth/callback#token=${token}`, 302);
+        setSessionCookie(c, token);
+        return c.redirect(`${frontendUrl()}/auth/callback`, 302);
       } catch (error) {
         console.error("[AuthController] OAuth callback failed:", error);
         const reason =
