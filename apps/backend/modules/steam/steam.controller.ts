@@ -8,7 +8,8 @@ import {
 import { SteamService } from "./steam.services";
 import * as v from "valibot";
 
-import { authMiddleware } from "../../middleware/auth.middleware";
+import { createAuthMiddleware } from "../../middleware/auth.middleware";
+import type { AuthService } from "../auth/auth.services";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 type Bindings = {
@@ -26,26 +27,30 @@ type Bindings = {
  * to {@link SteamService}, and formats the JSON response. No business
  * logic lives here.
  *
- * The user id comes from the authenticated session — authMiddleware
- * resolves the JWT and exposes it as `c.get("userId")`.
+ * The user id comes from the authenticated session — createAuthMiddleware
+ * resolves either a Bearer credential (API token or JWT) or the session
+ * cookie, and exposes the result as `c.get("userId")`.
  *
  * @param steamService - Service layer for Steam account, game, and
  *   achievement operations.
+ * @param authService - Needed by createAuthMiddleware for its DB-backed
+ *   API-token verification path — not used for anything Steam-specific.
  * @returns A configured `Hono` app instance with all Steam routes mounted.
  *
  * @example
  * ```ts
- * const steam = createSteamController(steamService);
+ * const steam = createSteamController(steamService, authService);
  * app.route("/steam", steam);
  * ```
  */
 export const createSteamController = (
   steamService: SteamService,
+  authService: AuthService,
   lock?: AdvisoryLockClient,
 ) => {
   const app = new Hono<Bindings>();
 
-  app.use("*", authMiddleware);
+  app.use("*", createAuthMiddleware(authService));
 
   /**
    * GET /steam/games

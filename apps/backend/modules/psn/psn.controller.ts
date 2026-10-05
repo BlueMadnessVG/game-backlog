@@ -8,8 +8,9 @@ import {
 import { PsnService } from "./psn.services";
 import * as v from "valibot";
 import type { LibraryService } from "../library/library.services";
+import type { AuthService } from "../auth/auth.services";
 
-import { authMiddleware } from "../../middleware/auth.middleware";
+import { createAuthMiddleware } from "../../middleware/auth.middleware";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 type PsnSyncRequest = {
@@ -32,28 +33,32 @@ type Bindings = {
  * to {@link PsnService} and {@link LibraryService}, and formats the
  * JSON response. No business logic lives here.
  *
- * The user id comes from the authenticated session — authMiddleware
- * resolves the JWT and exposes it as `c.get("userId")`.
+ * The user id comes from the authenticated session — createAuthMiddleware
+ * resolves either a Bearer credential (API token or JWT) or the session
+ * cookie, and exposes the result as `c.get("userId")`.
  *
  * @param psnService - Service layer for PSN account, game, and trophy
  *   operations.
  * @param libraryService - Service layer for cross-platform cover enrichment.
+ * @param authService - Needed by createAuthMiddleware for its DB-backed
+ *   API-token verification path — not used for anything PSN-specific.
  * @returns A configured `Hono` app instance with all PSN routes mounted.
  *
  * @example
  * ```ts
- * const psn = createPsnController(psnService, libraryService);
+ * const psn = createPsnController(psnService, libraryService, authService);
  * app.route("/psn", psn);
  * ```
  */
 export const createPsnController = (
   psnService: PsnService,
   libraryService: LibraryService,
+  authService: AuthService,
   lock?: AdvisoryLockClient,
 ) => {
   const app = new Hono<Bindings>();
 
-  app.use("*", authMiddleware);
+  app.use("*", createAuthMiddleware(authService));
 
   /**
    * GET /psn/games

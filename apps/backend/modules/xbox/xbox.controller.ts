@@ -6,8 +6,9 @@ import * as v from "valibot";
 
 import { XboxSyncSchema } from "@repo/shared";
 import type { LibraryService } from "../library/library.services";
+import type { AuthService } from "../auth/auth.services";
 
-import { authMiddleware } from "../../middleware/auth.middleware";
+import { createAuthMiddleware } from "../../middleware/auth.middleware";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 type Bindings = {
@@ -25,28 +26,32 @@ type Bindings = {
  * to {@link XboxService} and {@link LibraryService}, and formats the
  * JSON response. No business logic lives here.
  *
- * The user id comes from the authenticated session — authMiddleware
- * resolves the JWT and exposes it as `c.get("userId")`.
+ * The user id comes from the authenticated session — createAuthMiddleware
+ * resolves either a Bearer credential (API token or JWT) or the session
+ * cookie, and exposes the result as `c.get("userId")`.
  *
  * @param xboxService - Service layer for Xbox account, game, and
  *   achievement operations.
  * @param libraryService - Service layer for cross-platform cover enrichment.
+ * @param authService - Needed by createAuthMiddleware for its DB-backed
+ *   API-token verification path — not used for anything Xbox-specific.
  * @returns A configured `Hono` app instance with all Xbox routes mounted.
  *
  * @example
  * ```ts
- * const xbox = createXboxController(xboxService, libraryService);
+ * const xbox = createXboxController(xboxService, libraryService, authService);
  * app.route("/xbox", xbox);
  * ```
  */
 export const createXboxController = (
   xboxService: XboxService,
   libraryService: LibraryService,
+  authService: AuthService,
   lock?: AdvisoryLockClient,
 ) => {
   const app = new Hono<Bindings>();
 
-  app.use("*", authMiddleware);
+  app.use("*", createAuthMiddleware(authService));
 
   /**
    * GET /xbox/games
