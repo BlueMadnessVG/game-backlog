@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { assertNotProduction } from "./env-guard";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -9,6 +10,8 @@ if (!DATABASE_URL) {
 }
 
 async function resetDatabase() {
+  assertNotProduction();
+
   const sql = postgres(DATABASE_URL as string, { max: 1 });
 
   try {

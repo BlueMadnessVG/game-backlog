@@ -1,10 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { TOTP, Secret } from "otpauth";
 
 import {
   AuthService,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
+  InvalidTotpCodeError,
   OAuthCallbackError,
+  TotpNotEnrolledError,
 } from "../auth.services";
 import { oauthStateStore } from "../auth.state";
 import { verifyAuthToken } from "../../../lib/jwt.utils";
@@ -16,17 +19,34 @@ vi.mock("../../../lib/password.utils", () => ({
 
 import { hashPassword, verifyPassword } from "../../../lib/password.utils";
 
-const makeMockDb = () => ({
-  select: vi.fn().mockReturnThis(),
-  from: vi.fn().mockReturnThis(),
-  innerJoin: vi.fn().mockReturnThis(),
-  where: vi.fn().mockReturnThis(),
-  limit: vi.fn().mockResolvedValue([]),
-  insert: vi.fn().mockReturnThis(),
-  values: vi.fn().mockReturnThis(),
-  onConflictDoNothing: vi.fn().mockReturnThis(),
-  returning: vi.fn().mockResolvedValue([]),
-});
+const makeMockDb = () => {
+  let self: ReturnType<typeof makeMockDb> = undefined as never;
+  const db = {
+    // Runs the callback against the same mock, so a `.transaction()` call
+    // exercises the exact INSERT/UPDATE chain the real code uses.
+    transaction: vi.fn(async (cb: (tx: never) => Promise<unknown>) =>
+      cb(self as never),
+    ),
+    select: vi.fn().mockReturnThis(),
+    from: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue([]),
+    insert: vi.fn().mockReturnThis(),
+    values: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
+    set: vi.fn().mockReturnThis(),
+    onConflictDoNothing: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue([]),
+  };
+  self = db;
+  return db;
+};
+
+// `.values()` is called once per insert chain; mapping them avoids
+// noUncheckedIndexedAccess gripes about `mock.calls[0][0]`.
+const insertedValues = (db: ReturnType<typeof makeMockDb>) =>
+  db.values.mock.calls.map((call) => call[0]);
 
 const makeMockProvider = () => ({
   createAuthorizationUrl: vi.fn(),
@@ -39,6 +59,7 @@ const makeUser = (overrides = {}) => ({
   email: "test@example.com",
   passwordHash: null,
   avatarUrl: null,
+  totpSecret: null,
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
   ...overrides,
@@ -70,6 +91,10 @@ describe("AuthService", () => {
     vi.mocked(hashPassword).mockReset();
     vi.mocked(verifyPassword).mockReset();
     vi.mocked(hashPassword).mockResolvedValue("argon2-hash");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe("createAuthorizationUrl", () => {
@@ -298,6 +323,191 @@ describe("AuthService", () => {
       await expect(service.login(credentials)).rejects.toThrow(
         InvalidCredentialsError,
       );
+    });
+  });
+
+  describe("API token audit trail", () => {
+    it("writes a 'created' event in the same transaction as the token", async () => {
+      db.returning.mockResolvedValue([{ id: "token-uuid-1" }]);
+
+      const result = await service.createApiToken("user-uuid-1", {
+        name: "achievement-ai",
+        scope: "read:library",
+        audit: {
+          triggeredBy: "session",
+          ip: "203.0.113.5",
+          userAgent: "curl/8.0",
+        },
+      });
+
+      expect(result.token).toMatch(/^bkl_/);
+      expect(result.id).toBe("token-uuid-1");
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+
+      // call 0 = apiTokens insert, call 1 = apiTokenEvents insert, both
+      // running against the same tx.
+      expect(insertedValues(db)[0]).toMatchObject({
+        userId: "user-uuid-1",
+        name: "achievement-ai",
+        scope: "read:library",
+        tokenHash: expect.any(String),
+        tokenPrefix: expect.any(String),
+        expiresAt: null,
+      });
+      expect(insertedValues(db)[1]).toEqual({
+        tokenId: "token-uuid-1",
+        userId: "user-uuid-1",
+        action: "created",
+        metadata: {
+          triggeredBy: "session",
+          ip: "203.0.113.5",
+          userAgent: "curl/8.0",
+        },
+      });
+    });
+
+    it("defaults token scope to read:library", async () => {
+      db.returning.mockResolvedValue([{ id: "token-uuid-1" }]);
+
+      await service.createApiToken("user-uuid-1", {
+        name: "default-scope",
+        audit: { triggeredBy: "session", ip: "unknown", userAgent: null },
+      });
+
+      expect(insertedValues(db)[0]).toMatchObject({
+        scope: "read:library",
+        expiresAt: null,
+      });
+    });
+
+    it("records a 'revoked' event only when a token is actually revoked", async () => {
+      db.returning.mockResolvedValue([{ id: "token-uuid-1" }]);
+
+      const revoked = await service.revokeApiToken(
+        "user-uuid-1",
+        "token-uuid-1",
+        {
+          triggeredBy: "apiToken",
+          ip: "192.0.2.10",
+          userAgent: "achievement-ai/1.0",
+        },
+      );
+
+      expect(revoked).toBe(true);
+      expect(db.update).toHaveBeenCalledTimes(1);
+      expect(insertedValues(db)[0]).toEqual({
+        tokenId: "token-uuid-1",
+        userId: "user-uuid-1",
+        action: "revoked",
+        metadata: {
+          triggeredBy: "apiToken",
+          ip: "192.0.2.10",
+          userAgent: "achievement-ai/1.0",
+        },
+      });
+    });
+
+    it("writes NO event when the token id does not belong to the user", async () => {
+      db.returning.mockResolvedValue([]);
+
+      const revoked = await service.revokeApiToken(
+        "user-uuid-1",
+        "someone-elses-token",
+        { triggeredBy: "session", ip: "unknown", userAgent: null },
+      );
+
+      expect(revoked).toBe(false);
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("TOTP step-up", () => {
+    const enrolledUser = () =>
+      makeUser({ totpSecret: new Secret({ size: 20 }).base32 });
+
+    describe("enrollTotp", () => {
+      it("verifies the code BEFORE persisting, then stores the secret", async () => {
+        db.limit.mockResolvedValue([makeUser()]);
+        vi.spyOn(TOTP.prototype, "validate").mockReturnValue(1);
+
+        const result = await service.enrollTotp("user-uuid-1", "123456");
+
+        expect(result.secret).toMatch(/^[A-Z2-7]+={0,3}$/);
+        expect(result.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
+        expect(result.otpauthUrl).toContain("game-backlog");
+        expect(db.set).toHaveBeenCalledWith({
+          totpSecret: result.secret,
+        });
+      });
+
+      it("rejects a wrong code and does NOT persist the secret", async () => {
+        db.limit.mockResolvedValue([makeUser()]);
+        vi.spyOn(TOTP.prototype, "validate").mockReturnValue(null);
+
+        await expect(
+          service.enrollTotp("user-uuid-1", "000000"),
+        ).rejects.toThrow(InvalidTotpCodeError);
+        expect(db.update).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("stepUpTotp", () => {
+      it("signs a short-lived step-up token when the code matches", async () => {
+        const secret = new Secret({ size: 20 }).base32;
+        db.limit.mockResolvedValue([makeUser({ totpSecret: secret })]);
+
+        const code = new TOTP({ secret: Secret.fromBase32(secret) }).generate();
+        const before = Date.now();
+        const result = await service.stepUpTotp("user-uuid-1", code);
+
+        // 5-minute TTL: measured from `before` (captured before the call)
+        // it lands in [5m, 5m + 1s] — the service stamps Date.now() when
+        // signing, which is always >= `before` by a few ms.
+        const ttl = result.expiresAt.getTime() - before;
+        expect(ttl).toBeGreaterThanOrEqual(5 * 60_000);
+        expect(ttl).toBeLessThan(5 * 60_000 + 1_000);
+
+        const payload = await verifyAuthToken(result.token, {
+          allowPurpose: ["session", "step_up"],
+        });
+        expect(payload.sub).toBe("user-uuid-1");
+        expect(payload.provider).toBe("step_up");
+        expect(payload.purpose).toBe("step_up");
+      });
+
+      it("rejects a wrong code with InvalidTotpCodeError", async () => {
+        db.limit.mockResolvedValue([enrolledUser()]);
+
+        await expect(
+          service.stepUpTotp("user-uuid-1", "000000"),
+        ).rejects.toThrow(InvalidTotpCodeError);
+      });
+
+      it("rejects step-up for a user with no enrolled secret", async () => {
+        db.limit.mockResolvedValue([makeUser({ totpSecret: null })]);
+
+        await expect(
+          service.stepUpTotp("user-uuid-1", "123456"),
+        ).rejects.toThrow(TotpNotEnrolledError);
+      });
+    });
+
+    describe("hasTotpEnrolled", () => {
+      it("returns true when the user has a secret", async () => {
+        db.limit.mockResolvedValue([enrolledUser()]);
+
+        await expect(service.hasTotpEnrolled("user-uuid-1")).resolves.toBe(
+          true,
+        );
+      });
+
+      it("returns false when the user has no secret", async () => {
+        db.limit.mockResolvedValue([makeUser({ totpSecret: null })]);
+
+        await expect(service.hasTotpEnrolled("user-uuid-1")).resolves.toBe(
+          false,
+        );
+      });
     });
   });
 });

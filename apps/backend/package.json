@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "bun run script/seed-user.ts",
+    "db:token": "bun run script/create-api-token.ts",
     "db:reset": "bun run script/db-reset.ts && bun run db:push && bun run db:seed"
   },
   "devDependencies": {
@@ -33,6 +34,7 @@
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.9",
     "jose": "^6.2.2",
+    "otpauth": "^9.5.2",
     "pg": "^8.20.0",
     "postgres": "^3.4.9",
     "psn-api": "^2.18.0",

@@ -4,6 +4,7 @@ import {
   text,
   varchar,
   timestamp,
+  jsonb,
   index,
 } from "drizzle-orm/pg-core";
 import { users, timestamps } from "./core";
@@ -50,5 +51,52 @@ export const apiTokens = pgTable(
   (table) => ({
     userIdIdx: index("api_token_user_id_idx").on(table.userId),
     // No separate index on tokenHash — .unique() above already creates one.
+  }),
+);
+
+/**
+ * Append-only audit log for API-token lifecycle events. Written in the SAME
+ * transaction as the token create/revoke (auth.services.ts), so a token
+ * row can never exist — or be revoked — without a record of who did it,
+ * from where, and using which credential kind. Not consulted at runtime;
+ * it exists so a future "who minted/revoked my keys" UI or incident
+ * post-mortem has the raw events instead of guesses.
+ */
+export const apiTokenEvents = pgTable(
+  "api_token_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // Cascade: if a token row is ever hard-deleted, its events go too.
+    tokenId: uuid("token_id")
+      .references(() => apiTokens.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    // Twin of apiTokens.scope's varchar-not-enum choice: "created" /
+    // "revoked" for now, a cheap picklist expansion if a third action is
+    // ever actually wanted.
+    action: varchar("action", { length: 32 }).notNull(),
+    // Request context at the time of the event. jsonb so new fields (IP
+    // from a non-proxied deploy, a correlation id, …) don't need a
+    // migration — this table is append-only by design.
+    metadata: jsonb("metadata")
+      .$type<{
+        triggeredBy: "session" | "apiToken";
+        ip: string;
+        userAgent: string | null;
+      }>()
+      .notNull(),
+    // Deliberately NOT `timestamps`: audit rows are immutable, so an
+    // `updated_at` column would be noise.
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenIdIdx: index("api_token_events_token_id_idx").on(table.tokenId),
+    userIdIdx: index("api_token_events_user_id_idx").on(table.userId),
+    // The common query is "what happened to THIS token, in order".
+    tokenIdCreatedAtIdx: index(
+      "api_token_events_token_id_created_at_idx",
+    ).on(table.tokenId, table.createdAt),
   }),
 );

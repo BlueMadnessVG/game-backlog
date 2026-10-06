@@ -64,3 +64,25 @@ export const RegisterSchema = v.object({
 
 export type LoginInput = v.InferOutput<typeof LoginSchema>;
 export type RegisterInput = v.InferOutput<typeof RegisterSchema>;
+
+/**
+ * A 6-digit TOTP authenticator code. Shared by POST /auth/totp/enroll
+ * (proves the user scanned the issued secret before it's enabled) and
+ * POST /auth/step-up (proves possession to mint API tokens).
+ */
+export const TotpCodeSchema = v.pipe(
+  v.string(),
+  v.trim(),
+  v.regex(/^\d{6}$/, "Code must be exactly 6 digits"),
+);
+
+export const TotpEnrollSchema = v.object({
+  code: TotpCodeSchema,
+});
+
+export const TotpStepUpSchema = v.object({
+  code: TotpCodeSchema,
+});
+
+export type TotpEnrollInput = v.InferOutput<typeof TotpEnrollSchema>;
+export type TotpStepUpInput = v.InferOutput<typeof TotpStepUpSchema>;

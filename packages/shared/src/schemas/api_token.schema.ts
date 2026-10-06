@@ -1,12 +1,19 @@
 import * as v from "valibot";
 
 /**
- * Known API token scopes. Only one exists today — kept as a picklist
- * (matching PlatformSchema / GameStatusSchema's style) rather than a free
- * string, so a second scope later is a one-line addition here instead of
- * an unvalidated value nothing checks.
+ * Known API token scopes. Kept as a picklist (matching PlatformSchema /
+ * GameStatusSchema's style) rather than a free string, so a second scope is
+ * a one-line addition here instead of an unvalidated value nothing checks.
+ *
+ * - "read:library"  — GET/HEAD/OPTIONS on the library and platform data
+ *   routes. The safe-method enforcement lives in auth.middleware.ts, not
+ *   per-route, so a read token is denied by default on any future mutating
+ *   route without someone remembering to add a guard.
+ * - "write:library" — allows mutating actions. Issued deliberately to
+ *   consumers that legitimately POST/DELETE (see the seed's
+ *   script/create-api-token.ts); ask for it explicitly.
  */
-export const ApiTokenScopeSchema = v.picklist(["read:library"]);
+export const ApiTokenScopeSchema = v.picklist(["read:library", "write:library"]);
 
 export const CreateApiTokenSchema = v.object({
   name: v.pipe(

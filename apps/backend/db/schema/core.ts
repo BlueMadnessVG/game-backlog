@@ -41,6 +41,12 @@ export const users = pgTable("users", {
   username: text("username").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash"),
+  // Base32 TOTP secret, set via POST /auth/totp/enroll (auth.services.ts)
+  // when the user opts in to MFA. null = not enrolled. Once set, minting
+  // API tokens requires a `purpose: "step_up"` session (see stepUpTotp).
+  // Never exposed over the wire after enrollment — only a one-time
+  // secret + otpauth URL from the enroll response.
+  totpSecret: text("totp_secret"),
   // Defaulted, and NEVER set from request input — `register()`
   // (auth.services.ts) and the OAuth upsert both omit it, so every self-serve
   // signup lands on "user". Promotion is deliberately not reachable over HTTP;

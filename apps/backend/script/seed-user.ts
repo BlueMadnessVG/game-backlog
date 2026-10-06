@@ -38,6 +38,7 @@ import { signAuthToken } from "../lib/jwt.utils";
 import { hashPassword } from "../lib/password.utils";
 import { AuthService } from "../modules/auth/auth.services";
 import type { OAuthProviderClient } from "../providers/oauth.types";
+import { assertNotProduction } from "./env-guard";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -304,6 +305,9 @@ async function rotateApiToken(
     name: spec.name,
     scope: spec.scope,
     expiresAt,
+    // Script-originated, not an HTTP request — record it honestly in the
+    // audit trail (api_token_events) rather than fabricating an IP.
+    audit: { triggeredBy: "session", ip: "localhost", userAgent: "seed-user.ts" },
   });
 
   return {
@@ -341,6 +345,8 @@ function report(results: SeededUser[]): void {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  assertNotProduction();
+
   const args = parseArgs(Bun.argv.slice(2));
   const specs = args.manifest ? await loadManifest(args.manifest) : args.users;
 

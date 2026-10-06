@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
+import { TOTP, Secret } from "otpauth";
 
 import type { LoginInput, OAuthProvider, RegisterInput } from "@repo/shared";
 
-import { apiTokens, oauthAccounts, users } from "../../db/schema";
+import { apiTokenEvents, apiTokens, oauthAccounts, users } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { signAuthToken } from "../../lib/jwt.utils";
 import { hashPassword, verifyPassword } from "../../lib/password.utils";
@@ -49,6 +50,31 @@ export class InvalidCredentialsError extends Error {
 }
 
 /**
+ * Thrown when a TOTP step-up is attempted but the user has no enrolled
+ * secret (users.totpSecret is null). Maps to 400 — there is nothing to
+ * verify against, and minting doesn't require step-up for such users.
+ */
+export class TotpNotEnrolledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TotpNotEnrolledError";
+  }
+}
+
+/**
+ * Thrown when the presented TOTP code does not match the user's enrolled
+ * secret (or, for enrollment, the freshly generated one). Maps to 400.
+ * See TextSecure's guidance: no generic messages, no rate-limit hint churn —
+ * just "code did not verify".
+ */
+export class InvalidTotpCodeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidTotpCodeError";
+  }
+}
+
+/**
  * Normalizes the credential login method into the JWT `provider` claim. The
  * auth middleware only reads `sub`/`email`, so nothing downstream changes.
  */
@@ -73,6 +99,20 @@ export interface ApiTokenSummary {
   expiresAt: Date | null;
   revokedAt: Date | null;
   createdAt: Date;
+}
+
+/**
+ * Who/where triggered an API-token lifecycle event, stored in the
+ * append-only api_token_events table (db/schema/api-token.ts). Captured by
+ * the controller from request context — a service layer has no access to
+ * IP/User-Agent, so callers must pass it in rather than the service
+ * guessing.
+ */
+export interface ApiTokenAuditContext {
+  /** Which credential kind performed the action ("session" for a browser/user, "apiToken" for a machine self-revoking itself). */
+  triggeredBy: "session" | "apiToken";
+  ip: string;
+  userAgent: string | null;
 }
 
 /**
@@ -271,32 +311,55 @@ export class AuthService {
    * Creates a new opaque API token for `userId` (e.g. for the
    * achievement-ai assistant, or any other machine client).
    *
+   * The token row and its "created" audit event are written in the SAME
+   * transaction, so a minted token can never exist without a record of
+   * who minted it (see api_token_events in db/schema/api-token.ts).
+   *
+   * @param audit - Request context (credential kind, IP, User-Agent) the
+   *   controller captures and passes down; the service itself has no
+   *   access to the HTTP request.
    * @returns The plaintext token — returned exactly ONCE, here. Only its
    *   hash is ever persisted; there is no way to recover it later.
    */
   async createApiToken(
     userId: string,
-    opts: { name: string; scope?: string; expiresAt?: Date },
+    opts: {
+      name: string;
+      scope?: string;
+      expiresAt?: Date;
+      audit: ApiTokenAuditContext;
+    },
   ): Promise<{ id: string; token: string; tokenPrefix: string }> {
     const { token, tokenHash, tokenPrefix } = generateOpaqueToken();
 
-    const [row] = await this.db
-      .insert(apiTokens)
-      .values({
+    const created = await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(apiTokens)
+        .values({
+          userId,
+          name: opts.name,
+          tokenHash,
+          tokenPrefix,
+          scope: opts.scope ?? "read:library",
+          expiresAt: opts.expiresAt ?? null,
+        })
+        .returning({ id: apiTokens.id });
+
+      if (!row) {
+        throw new Error("Failed to create API token");
+      }
+
+      await tx.insert(apiTokenEvents).values({
+        tokenId: row.id,
         userId,
-        name: opts.name,
-        tokenHash,
-        tokenPrefix,
-        scope: opts.scope ?? "read:library",
-        expiresAt: opts.expiresAt ?? null,
-      })
-      .returning({ id: apiTokens.id });
+        action: "created",
+        metadata: opts.audit,
+      });
 
-    if (!row) {
-      throw new Error("Failed to create API token");
-    }
+      return row;
+    });
 
-    return { id: row.id, token, tokenPrefix };
+    return { id: created.id, token, tokenPrefix };
   }
 
   /**
@@ -306,16 +369,22 @@ export class AuthService {
    * middleware can treat both credential kinds the same way once it
    * knows which one it has.
    *
-   * @returns `{ userId }`, or `null` if the token is unknown, revoked, or
-   *   past its expiry.
+   * Returns the token's stored `scope` and `tokenId` in addition to
+   * `userId` so the middleware can (a) enforce scope on mutating methods
+   * and (b) identify the exact row for audit/revocation. Contract:
+   * `{ userId, scope, tokenId }`, or `null` if the token is unknown,
+   * revoked, or past its expiry.
    */
-  async verifyApiToken(token: string): Promise<{ userId: string } | null> {
+  async verifyApiToken(
+    token: string,
+  ): Promise<{ userId: string; scope: string; tokenId: string } | null> {
     const tokenHash = hashApiToken(token);
 
     const rows = await this.db
       .select({
         id: apiTokens.id,
         userId: apiTokens.userId,
+        scope: apiTokens.scope,
         expiresAt: apiTokens.expiresAt,
         revokedAt: apiTokens.revokedAt,
       })
@@ -339,7 +408,7 @@ export class AuthService {
         console.error("[AuthService] Failed to update token lastUsedAt:", err);
       });
 
-    return { userId: row.userId };
+    return { userId: row.userId, scope: row.scope, tokenId: row.id };
   }
 
   /** Lists a user's API tokens. Never includes the secret — only the prefix. */
@@ -363,12 +432,171 @@ export class AuthService {
    * Revokes a token (soft delete — see api-tokens.ts schema comment).
    * Scoped to `userId` so one user can never revoke another user's token
    * by guessing an id.
+   *
+   * The revoke and its "revoked" audit event share a transaction, and the
+   * event is written ONLY when a row was actually updated — revoking a
+   * non-existent/foreign id changes nothing and leaves no audit trail,
+   * so the table stays an accurate record.
+   *
+   * @param audit - Request context (credential kind, IP, User-Agent) the
+   *   controller captures and passes down.
+   * @returns Whether any token was revoked (false = unknown id, or a token
+   *   belonging to a different user).
    */
-  async revokeApiToken(userId: string, tokenId: string): Promise<void> {
+  async revokeApiToken(
+    userId: string,
+    tokenId: string,
+    audit: ApiTokenAuditContext,
+  ): Promise<boolean> {
+    let revoked = false;
+
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(apiTokens)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(apiTokens.id, tokenId), eq(apiTokens.userId, userId)))
+        .returning({ id: apiTokens.id });
+
+      if (!row) return;
+
+      revoked = true;
+      await tx.insert(apiTokenEvents).values({
+        tokenId,
+        userId,
+        action: "revoked",
+        metadata: audit,
+      });
+    });
+
+    return revoked;
+  }
+
+  // ---------------------------------------------------------------------
+  // TOTP step-up — optional per-user MFA protecting API-token minting.
+  // ---------------------------------------------------------------------
+
+  /** Shown in authenticator apps; keep stable even if the app is renamed. */
+  private static readonly TOTP_ISSUER = "game-backlog";
+  /** Step-up JWTs expire fast — they exist only to unlock one mint call. */
+  private static readonly STEP_UP_TTL_MS = 5 * 60 * 1000;
+  /** Allow one 30s window of clock/delay skew when verifying a code. */
+  private static readonly TOTP_WINDOW = 1;
+
+  /**
+   * Enrolls the user in TOTP MFA.
+   *
+   * Generates a fresh secret, verifies the presented code against it BEFORE
+   * persisting — enrollment proves the user actually scanned the secret into
+   * an authenticator, because a secret nobody saved would lock token minting
+   * behind an unwinnable step-up — and only then stores the base32 secret.
+   *
+   * Re-enrolling rotates the secret and invalidates any older authenticator
+   * entry; the returned otpauth URL must be scanned again.
+   *
+   * @returns The base32 secret and an `otpauth://` URL. The secret is
+   *   returned ONCE, like an API token's plaintext; never exposed again.
+   */
+  async enrollTotp(
+    userId: string,
+    code: string,
+  ): Promise<{ secret: string; otpauthUrl: string }> {
+    const [user] = await this.db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const totp = new TOTP({
+      issuer: AuthService.TOTP_ISSUER,
+      label: user.email,
+      algorithm: "SHA1",
+      digits: 6,
+      period: 30,
+      secret: new Secret({ size: 20 }),
+    });
+
+    if (!this.#validateTotpCode(totp, code)) {
+      throw new InvalidTotpCodeError("TOTP code did not verify");
+    }
+
+    const secret = totp.secret.base32;
     await this.db
-      .update(apiTokens)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(apiTokens.id, tokenId), eq(apiTokens.userId, userId)));
+      .update(users)
+      .set({ totpSecret: secret })
+      .where(eq(users.id, userId));
+
+    return { secret, otpauthUrl: totp.toString() };
+  }
+
+  /**
+   * Verifies a TOTP code against the user's enrolled secret and, on
+   * success, signs a SHORT-LIVED `purpose: "step_up"` session token.
+   *
+   * Only-if-enrolled: a user without a secret hits
+   * {@link TotpNotEnrolledError} and is NOT eligible for step-up — they
+   * mint API tokens on a plain session instead. The step-up token is
+   * accepted ONLY by POST /auth/api-tokens (auth.middleware with
+   * allowStepUp); everywhere else verifyAuthToken rejects its purpose
+   * claim, so a leaked 5-minute token can't escalate into a general
+   * session.
+   */
+  async stepUpTotp(
+    userId: string,
+    code: string,
+  ): Promise<{ token: string; expiresAt: Date }> {
+    const [user] = await this.db
+      .select({
+        id: users.id,
+        email: users.email,
+        totpSecret: users.totpSecret,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    if (!user.totpSecret) {
+      throw new TotpNotEnrolledError("TOTP is not enrolled for this user");
+    }
+
+    const totp = new TOTP({ secret: Secret.fromBase32(user.totpSecret) });
+    if (!this.#validateTotpCode(totp, code)) {
+      throw new InvalidTotpCodeError("TOTP code did not verify");
+    }
+
+    const expiresAt = new Date(Date.now() + AuthService.STEP_UP_TTL_MS);
+    const token = await signAuthToken(
+      {
+        sub: user.id,
+        email: user.email,
+        provider: "step_up",
+        purpose: "step_up",
+      },
+      expiresAt,
+    );
+
+    return { token, expiresAt };
+  }
+
+  /** Whether the user has an enrolled TOTP secret (null = not enrolled). */
+  async hasTotpEnrolled(userId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ totpSecret: users.totpSecret })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return !!row?.totpSecret;
+  }
+
+  #validateTotpCode(totp: TOTP, code: string): boolean {
+    return totp.validate({
+      token: code,
+      window: AuthService.TOTP_WINDOW,
+    }) !== null;
   }
 
   private async findAccountUser(profile: OAuthProfile) {
