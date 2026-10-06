@@ -4,6 +4,22 @@ export const OAuthProviderSchema = v.picklist(["google", "discord"]);
 
 export type OAuthProvider = v.InferOutput<typeof OAuthProviderSchema>;
 
+/**
+ * Account privilege level. Kept as a picklist (matching OAuthProviderSchema's
+ * style) rather than a free string so an invalid role can't reach the DB.
+ *
+ * Deliberately NOT part of RegisterSchema: `register()` and the OAuth upsert
+ * both leave `users.role` at its column default, so self-serve signup can
+ * never self-assign "admin". Promotion is only reachable via
+ * `script/seed-user.ts` (--admin / manifest role) or a direct DB write.
+ *
+ * A new level is a one-line addition here plus the pgEnum in
+ * db/schema/core.ts — see require-admin.middleware.ts for the gate.
+ */
+export const UserRoleSchema = v.picklist(["user", "admin"]);
+
+export type UserRole = v.InferOutput<typeof UserRoleSchema>;
+
 export const OAuthCallbackQuerySchema = v.object({
   code: v.string(),
   state: v.string(),

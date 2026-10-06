@@ -1,0 +1,22 @@
+{
+  "users": [
+    {
+      "username": "test_user",
+      "email": "test@example.com",
+      "password": "Test1234!do-not-use-in-prod",
+      "role": "admin",
+      "tokens": [
+        { "name": "seed-frontend", "scope": "read:library", "expiresInDays": 30 },
+        { "name": "seed-achievement-ai", "scope": "read:library", "expiresInDays": 90 }
+      ]
+    },
+    {
+      "username": "ci_bot",
+      "email": "ci@example.com",
+      "password": "ci-password-from-secret-store",
+      "tokens": [
+        { "name": "github-actions", "scope": "read:library", "expiresInDays": 7 }
+      ]
+    }
+  ]
+}

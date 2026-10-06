@@ -26,6 +26,8 @@ export const platformEnum = pgEnum("platform", [
   "manual",
 ]);
 
+export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+
 export const timestamps = {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
@@ -39,6 +41,11 @@ export const users = pgTable("users", {
   username: text("username").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash"),
+  // Defaulted, and NEVER set from request input — `register()`
+  // (auth.services.ts) and the OAuth upsert both omit it, so every self-serve
+  // signup lands on "user". Promotion is deliberately not reachable over HTTP;
+  // see script/seed-user.ts for the only supported path.
+  role: userRoleEnum("role").default("user").notNull(),
   ...timestamps,
 });
 
