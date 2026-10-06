@@ -15,13 +15,18 @@ import {
   InvalidCredentialsError,
   OAuthCallbackError,
 } from "./auth.services";
-import { createAuthMiddleware } from "../../middleware/auth.middleware";
+import {
+  createAuthMiddleware,
+  type CredentialType,
+} from "../../middleware/auth.middleware";
+import { createRequireSessionCredentialMiddleware } from "../../middleware/require-session-credential.middleware";
 import { setSessionCookie, clearSessionCookie } from "../../lib/session-cookie";
 
 type Bindings = {
   Variables: {
     userId: string;
     userEmail: string;
+    credentialType: CredentialType;
   };
 };
 
@@ -57,6 +62,9 @@ export const createAuthController = (authService: AuthService) => {
   const app = new Hono<Bindings>();
 
   const requireAuth = createAuthMiddleware(authService);
+  // Mounted only on POST /api-tokens: minting a long-lived credential is a
+  // human-only action. See require-session-credential.middleware.ts for why.
+  const requireSessionCredential = createRequireSessionCredentialMiddleware();
   const frontendUrl = () => process.env.FRONTEND_URL ?? FRONTEND_FALLBACK;
 
   const providerParam = (raw: string | undefined) => {
@@ -200,10 +208,11 @@ export const createAuthController = (authService: AuthService) => {
    *
    * Creates a new opaque API token for the authenticated user (e.g. for
    * the achievement-ai assistant, or any other machine client).
-   * UNCHANGED by the cookie change — accepts either credential kind via
-   * requireAuth, same as every other protected route here, but in
-   * practice is called with a Bearer session JWT or an existing API
-   * token, not a cookie.
+   *
+   * Session-only by design: `requireSessionCredential` rejects `bkl_...`
+   * callers with 403, so an API token can never mint another one. Without
+   * that gate a single leaked token could keep re-issuing itself forever,
+   * and revoking it would not evict the children it created.
    *
    * @body { name: string, scope?: string, expiresInDays?: number }
    * @returns 201 with `{ status, data: { id, token, tokenPrefix } }`. The
@@ -213,6 +222,7 @@ export const createAuthController = (authService: AuthService) => {
   app.post(
     "/api-tokens",
     requireAuth,
+    requireSessionCredential,
     vValidator("json", CreateApiTokenSchema),
     async (c) => {
       const userId = c.get("userId");

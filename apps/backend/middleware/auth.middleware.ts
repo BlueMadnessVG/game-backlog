@@ -7,10 +7,25 @@ import { isApiToken } from "../lib/api-token.utils";
 import { SESSION_COOKIE_NAME } from "../lib/session-cookie";
 import type { AuthService } from "../modules/auth/auth.services";
 
+/**
+ * Which kind of credential authenticated the request.
+ *
+ * `createAuthMiddleware` sets this on every successful auth path, and on no
+ * other path, so an unset value means authentication never ran. Downstream
+ * guards (see require-session-credential.middleware.ts) read it to tell a
+ * human session apart from a machine credential — `userId` is set
+ * identically for both, so `requireAuth` alone cannot make that distinction.
+ *
+ * - "session"  — a session JWT, i.e. a human login (cookie or Bearer JWT).
+ * - "apiToken" — an opaque `bkl_...` token, i.e. a machine/service client.
+ */
+export type CredentialType = "session" | "apiToken";
+
 type Env = {
   Variables: {
     userId: string;
     userEmail: string;
+    credentialType: CredentialType;
   };
 };
 
@@ -33,7 +48,8 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  *
  * Whichever source the token came from, verification is identical from
  * that point on — a session JWT is a session JWT regardless of how it
- * arrived.
+ * arrived. The one thing the source DOES determine is `credentialType`,
+ * which is recorded here for later guards to read (see CredentialType).
  *
  * CSRF check: when the credential came from the COOKIE (never for
  * Bearer-token requests, which a browser doesn't auto-attach the way it
@@ -81,6 +97,7 @@ export function createAuthMiddleware(authService: AuthService) {
       }
 
       c.set("userId", result.userId);
+      c.set("credentialType", "apiToken");
       await next();
       return;
     }
@@ -94,6 +111,7 @@ export function createAuthMiddleware(authService: AuthService) {
 
       c.set("userId", payload.sub);
       c.set("userEmail", payload.email);
+      c.set("credentialType", "session");
 
       await next();
     } catch (error) {
