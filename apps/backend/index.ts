@@ -105,11 +105,17 @@ app.get("/health", (c) => {
  */
 const apiV1 = new Hono();
 
-apiV1.route("/steam", createSteamController(steamService));
-apiV1.route("/xbox", createXboxController(xboxService, libraryService));
-apiV1.route("/psn", createPsnController(psnService, libraryService));
+apiV1.route("/steam", createSteamController(steamService, authService));
+apiV1.route(
+  "/xbox",
+  createXboxController(xboxService, libraryService, authService),
+);
+apiV1.route(
+  "/psn",
+  createPsnController(psnService, libraryService, authService),
+);
 
-apiV1.route("/library", createLibraryController(libraryService));
+apiV1.route("/library", createLibraryController(libraryService, authService));
 
 apiV1.route("/auth", createAuthController(authService));
 

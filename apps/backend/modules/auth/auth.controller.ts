@@ -249,75 +249,78 @@ export const createAuthController = (authService: AuthService) => {
     return c.json({ status: "SUCCESS", message: "Logged out" }, 200);
   });
 
-/**
-    * POST /auth/api-tokens
-    *
-    * Creates a new opaque API token for the authenticated user (e.g. for
-    * the achievement-ai assistant, or any other machine client).
-    *
-    * Session-only by design: `requireSessionCredential` rejects `bkl_...`
-    * callers with 403, so an API token can never mint another one. Without
-    * that gate a single leaked token could keep re-issuing itself forever,
-    * and revoking it would not evict the children it created.
-    *
-    * TOTP step-up (only-if-enrolled): a user WITH an enrolled TOTP secret
-    * must present a `purpose: "step_up"` JWT — obtained from
-    * POST /auth/step-up — to reach this handler; a plain session is
-    * rejected with 403 STEP_UP_REQUIRED. A user WITHOUT a secret skips
-    * step-up entirely (nothing to prove). The step-up token is a 5-minute
-    * credential accepted by `requireAuthForMint` only, so a regular
-    * session can never be minting-authority without the second factor.
-    *
-    * @body { name: string, scope?: string, expiresInDays?: number }
-    * @returns 201 with `{ status, data: { id, token, tokenPrefix } }`. The
-    *   plaintext `token` is returned in THIS response only — it is never
-    *   retrievable again after this.
-    */
-   app.post(
-     "/api-tokens",
-     requireAuthForMint,
-     requireSessionCredential,
-     vValidator("json", CreateApiTokenSchema),
-     async (c) => {
-       const userId = c.get("userId");
-       const { name, scope, expiresInDays } = c.req.valid("json");
+  /**
+   * POST /auth/api-tokens
+   *
+   * Creates a new opaque API token for the authenticated user (e.g. for
+   * the achievement-ai assistant, or any other machine client).
+   *
+   * Session-only by design: `requireSessionCredential` rejects `bkl_...`
+   * callers with 403, so an API token can never mint another one. Without
+   * that gate a single leaked token could keep re-issuing itself forever,
+   * and revoking it would not evict the children it created.
+   *
+   * TOTP step-up (only-if-enrolled): a user WITH an enrolled TOTP secret
+   * must present a `purpose: "step_up"` JWT — obtained from
+   * POST /auth/step-up — to reach this handler; a plain session is
+   * rejected with 403 STEP_UP_REQUIRED. A user WITHOUT a secret skips
+   * step-up entirely (nothing to prove). The step-up token is a 5-minute
+   * credential accepted by `requireAuthForMint` only, so a regular
+   * session can never be minting-authority without the second factor.
+   *
+   * @body { name: string, scope?: string, expiresInDays?: number }
+   * @returns 201 with `{ status, data: { id, token, tokenPrefix } }`. The
+   *   plaintext `token` is returned in THIS response only — it is never
+   *   retrievable again after this.
+   */
+  app.post(
+    "/api-tokens",
+    requireAuthForMint,
+    requireSessionCredential,
+    vValidator("json", CreateApiTokenSchema),
+    async (c) => {
+      const userId = c.get("userId");
+      const { name, scope, expiresInDays, expiresInMinutes } =
+        c.req.valid("json");
 
-       if (
-         (await authService.hasTotpEnrolled(userId)) &&
-         c.get("tokenPurpose") !== "step_up"
-       ) {
-         return c.json(
-           {
-             status: "ERROR",
-             message:
-               "STEP_UP_REQUIRED: This account has TOTP enabled. Call POST /auth/step-up with your authenticator code, then retry with that token in the Authorization header.",
-           },
-           403,
-         );
-       }
+      if (
+        (await authService.hasTotpEnrolled(userId)) &&
+        c.get("tokenPurpose") !== "step_up"
+      ) {
+        return c.json(
+          {
+            status: "ERROR",
+            message:
+              "STEP_UP_REQUIRED: This account has TOTP enabled. Call POST /auth/step-up with your authenticator code, then retry with that token in the Authorization header.",
+          },
+          403,
+        );
+      }
 
-       const expiresAt = expiresInDays
-         ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
-         : undefined;
+      const expiresAt = expiresInMinutes
+        ? new Date(Date.now() + expiresInMinutes * 60 * 1000)
+        : expiresInDays
+          ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+          : undefined;
 
-       try {
-         const result = await authService.createApiToken(userId, {
-           name,
-           scope,
-           expiresAt,
-           audit: clientAuditContext(c),
-         });
+      try {
+        const result = await authService.createApiToken(userId, {
+          name,
+          scope,
+          expiresAt,
+          audit: clientAuditContext(c),
+        });
 
-         return c.json({ status: "SUCCESS", data: result }, 201);
-       } catch (error) {
-         console.error(
-           `[AuthController] Failed to create API token for user ${userId}:`,
-           error,
-         );
-         throw error;
-       }
-     },
-   );
+        return c.json({ status: "SUCCESS", data: result }, 201);
+      } catch (error) {
+        console.error(
+          `[AuthController] Failed to create API token for user ${userId}:`,
+          error,
+        );
+        throw error;
+      }
+    },
+  );
 
   /**
    * GET /auth/api-tokens
@@ -374,95 +377,95 @@ export const createAuthController = (authService: AuthService) => {
     }
   });
 
-/**
-    * POST /auth/totp/enroll
-    *
-    * Opts the authenticated (session) user into TOTP MFA. Generates a fresh
-    * secret, verifies the presented authenticator code against it BEFORE
-    * persisting, then stores the secret. Must wrap the generated secret in
-    * an authenticator app within the code's 30-second window — that's
-    * exactly the proof enrollment exists to demand (a secret nobody saved
-    * would lock token minting behind an unwinnable step-up).
-    *
-    * Re-enrolling rotates the secret; the returned otpauth URL must be
-    * scanned again. The base32 `secret` is shown once, in this response
-    * — it is never retrievable again, matching how API-token plaintext is
-    * handled.
-    *
-    * @body { code: "012345" }
-    * @returns 201 with `{ status, data: { secret, otpauthUrl } }`.
-    */
-   app.post(
-     "/totp/enroll",
-     requireAuth,
-     vValidator("json", TotpEnrollSchema),
-     async (c) => {
-       const userId = c.get("userId");
-       const { code } = c.req.valid("json");
+  /**
+   * POST /auth/totp/enroll
+   *
+   * Opts the authenticated (session) user into TOTP MFA. Generates a fresh
+   * secret, verifies the presented authenticator code against it BEFORE
+   * persisting, then stores the secret. Must wrap the generated secret in
+   * an authenticator app within the code's 30-second window — that's
+   * exactly the proof enrollment exists to demand (a secret nobody saved
+   * would lock token minting behind an unwinnable step-up).
+   *
+   * Re-enrolling rotates the secret; the returned otpauth URL must be
+   * scanned again. The base32 `secret` is shown once, in this response
+   * — it is never retrievable again, matching how API-token plaintext is
+   * handled.
+   *
+   * @body { code: "012345" }
+   * @returns 201 with `{ status, data: { secret, otpauthUrl } }`.
+   */
+  app.post(
+    "/totp/enroll",
+    requireAuth,
+    vValidator("json", TotpEnrollSchema),
+    async (c) => {
+      const userId = c.get("userId");
+      const { code } = c.req.valid("json");
 
-       try {
-         const data = await authService.enrollTotp(userId, code);
-         return c.json({ status: "SUCCESS", data }, 201);
-       } catch (error) {
-         if (error instanceof InvalidTotpCodeError) {
-           return c.json({ status: "ERROR", message: error.message }, 400);
-         }
-         throw error;
-       }
-     },
-   );
+      try {
+        const data = await authService.enrollTotp(userId, code);
+        return c.json({ status: "SUCCESS", data }, 201);
+      } catch (error) {
+        if (error instanceof InvalidTotpCodeError) {
+          return c.json({ status: "ERROR", message: error.message }, 400);
+        }
+        throw error;
+      }
+    },
+  );
 
-   /**
-    * POST /auth/step-up
-    *
-    * Returns a SHORT-LIVED (5-minute) `purpose: "step_up"` session token
-    * in exchange for a valid TOTP code. This token is the second factor
-    * that unlocks POST /auth/api-tokens for a TOTP-enrolled account (the
-    * mint route's middleware only accepts step-up JWTs for that one path).
-    *
-    * The token comes back in the RESPONSE BODY, not a cookie: minting is a
-    * JSON-body client flow, and a step-up Set-Cookie would overwrite the
-    * normal session cookie. The frontend sends it as
-    * `Authorization: Bearer <token>` on the mint call. It expires in 5
-    * minutes and is useless as a general session — verifyAuthToken rejects
-    * non-"session" purposes everywhere else.
-    *
-    * Only-if-enrolled: a user without a TOTP secret gets 400 — there's
-    * nothing to verify, and they don't need step-up (they mint on a plain
-    * session).
-    *
-    * @body { code: "012345" }
-    * @returns 200 with `{ status, data: { token, expiresAt } }`.
-    */
-   app.post(
-     "/step-up",
-     requireAuth,
-     vValidator("json", TotpStepUpSchema),
-     async (c) => {
-       const userId = c.get("userId");
-       const { code } = c.req.valid("json");
+  /**
+   * POST /auth/step-up
+   *
+   * Returns a SHORT-LIVED (5-minute) `purpose: "step_up"` session token
+   * in exchange for a valid TOTP code. This token is the second factor
+   * that unlocks POST /auth/api-tokens for a TOTP-enrolled account (the
+   * mint route's middleware only accepts step-up JWTs for that one path).
+   *
+   * The token comes back in the RESPONSE BODY, not a cookie: minting is a
+   * JSON-body client flow, and a step-up Set-Cookie would overwrite the
+   * normal session cookie. The frontend sends it as
+   * `Authorization: Bearer <token>` on the mint call. It expires in 5
+   * minutes and is useless as a general session — verifyAuthToken rejects
+   * non-"session" purposes everywhere else.
+   *
+   * Only-if-enrolled: a user without a TOTP secret gets 400 — there's
+   * nothing to verify, and they don't need step-up (they mint on a plain
+   * session).
+   *
+   * @body { code: "012345" }
+   * @returns 200 with `{ status, data: { token, expiresAt } }`.
+   */
+  app.post(
+    "/step-up",
+    requireAuth,
+    vValidator("json", TotpStepUpSchema),
+    async (c) => {
+      const userId = c.get("userId");
+      const { code } = c.req.valid("json");
 
-       try {
-         const data = await authService.stepUpTotp(userId, code);
-         return c.json({ status: "SUCCESS", data }, 200);
-       } catch (error) {
-         if (error instanceof InvalidTotpCodeError) {
-           return c.json({ status: "ERROR", message: error.message }, 400);
-         }
-         if (error instanceof TotpNotEnrolledError) {
-           return c.json({ status: "ERROR", message: error.message }, 400);
-         }
-         throw error;
-       }
-     },
-   );
+      try {
+        const data = await authService.stepUpTotp(userId, code);
+        return c.json({ status: "SUCCESS", data }, 200);
+      } catch (error) {
+        if (error instanceof InvalidTotpCodeError) {
+          return c.json({ status: "ERROR", message: error.message }, 400);
+        }
+        if (error instanceof TotpNotEnrolledError) {
+          return c.json({ status: "ERROR", message: error.message }, 400);
+        }
+        throw error;
+      }
+    },
+  );
 
-   /**
-    * GET /auth/:provider
-    *
-    * Starts the OAuth flow by redirecting to the provider's authorize page.
-    */
-   app.get("/:provider", async (c) => {
+  /**
+   * GET /auth/:provider
+   *
+   * Starts the OAuth flow by redirecting to the provider's authorize page.
+   */
+  app.get("/:provider", async (c) => {
     const provider = providerParam(c.req.param("provider"));
     if (!provider) {
       return c.json({ status: "ERROR", message: "Unsupported provider" }, 400);

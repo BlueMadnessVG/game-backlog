@@ -20,6 +20,7 @@ import type {
 import { deriveGameStatus } from "./psn.utils";
 import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
+import { decrypt, encrypt } from "../../lib/Encryption.utils";
 
 const BATCH_SIZE = 5;
 const DELAY_MS = 500;
@@ -123,7 +124,13 @@ export class PsnService {
       .where(eq(psnAccounts.userId, localUserId))
       .limit(1);
 
-    return account ?? null;
+    if (!account) return null;
+
+    return {
+      ...account,
+      accessToken: decrypt(account.accessToken),
+      refreshToken: decrypt(account.refreshToken),
+    };
   }
 
   private hasFreshToken(account: PsnAccountTokenRow): boolean {
@@ -148,12 +155,15 @@ export class PsnService {
     await this.db
       .update(psnAccounts)
       .set({
-        accessToken: newTokens.accessToken,
-        refreshToken: newTokens.refreshToken,
+        accessToken: encrypt(newTokens.accessToken),
+        refreshToken: encrypt(newTokens.refreshToken),
         accessTokenExpiresAt: new Date(newTokens.accessTokenExpiresAt),
       })
       .where(eq(psnAccounts.userId, localUserId));
 
+    // Returns the PLAINTEXT token, not what was just written to the DB —
+    // the caller (getValidAccessToken) needs this to actually call the
+    // PSN API with.
     return newTokens.accessToken;
   }
 
@@ -286,6 +296,8 @@ export class PsnService {
    */
   async syncUserProfile(localUserId: string, npsso: string, onlineId: string) {
     const tokens = await this.provider.exchangeNpsso(npsso);
+    const encryptedAccessToken = encrypt(tokens.accessToken);
+    const encryptedRefreshToken = encrypt(tokens.refreshToken);
 
     const profile = await this.provider.getProfile(
       tokens.accessToken,
@@ -309,8 +321,8 @@ export class PsnService {
           accountId: profile.accountId,
           onlineId: profile.onlineId,
           avatarUrl: profile.avatarUrl,
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
+          accessToken: encryptedAccessToken,
+          refreshToken: encryptedRefreshToken,
           accessTokenExpiresAt: new Date(tokens.accessTokenExpiresAt),
           lastSync: new Date(),
         })
@@ -320,8 +332,8 @@ export class PsnService {
             accountId: profile.accountId,
             onlineId: profile.onlineId,
             avatarUrl: profile.avatarUrl,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
+            accessToken: encryptedAccessToken,
+            refreshToken: encryptedRefreshToken,
             accessTokenExpiresAt: new Date(tokens.accessTokenExpiresAt),
             lastSync: new Date(),
           },

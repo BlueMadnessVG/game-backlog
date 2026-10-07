@@ -1,19 +1,12 @@
 import * as v from "valibot";
 
 /**
- * Known API token scopes. Kept as a picklist (matching PlatformSchema /
- * GameStatusSchema's style) rather than a free string, so a second scope is
- * a one-line addition here instead of an unvalidated value nothing checks.
- *
- * - "read:library"  — GET/HEAD/OPTIONS on the library and platform data
- *   routes. The safe-method enforcement lives in auth.middleware.ts, not
- *   per-route, so a read token is denied by default on any future mutating
- *   route without someone remembering to add a guard.
- * - "write:library" — allows mutating actions. Issued deliberately to
- *   consumers that legitimately POST/DELETE (see the seed's
- *   script/create-api-token.ts); ask for it explicitly.
+ * Known API token scopes. Only one exists today — kept as a picklist
+ * (matching PlatformSchema / GameStatusSchema's style) rather than a free
+ * string, so a second scope later is a one-line addition here instead of
+ * an unvalidated value nothing checks.
  */
-export const ApiTokenScopeSchema = v.picklist(["read:library", "write:library"]);
+export const ApiTokenScopeSchema = v.picklist(["read:library"]);
 
 export const CreateApiTokenSchema = v.object({
   name: v.pipe(
@@ -23,7 +16,14 @@ export const CreateApiTokenSchema = v.object({
     v.maxLength(100),
   ),
   scope: v.optional(ApiTokenScopeSchema),
+  // Two granularities on purpose, for two different real use cases: a
+  // human minting a personal long-lived token wants to say "30 days";
+  // code minting a short-lived per-session token (e.g. achievement-ai)
+  // needs minutes/hours, which expiresInDays alone (minValue(1), whole
+  // days only) couldn't express at all. If both are somehow passed,
+  // expiresInMinutes wins — see createApiToken's call site.
   expiresInDays: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+  expiresInMinutes: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
 });
 
 /**
