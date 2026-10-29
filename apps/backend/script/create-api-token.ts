@@ -11,7 +11,7 @@
  * (defaults to the admin's own email). A leaked token is then still
  * powerless to mint more — API tokens may only read, and POST /api-tokens
  * requires a real session credential (see
- * require-session-credential.middleware.ts).
+ * credential-policy.middleware.ts).
  *
  * The mint runs as ONE transaction inside createApiToken (auth.services.ts):
  * the token row and its audit event (api_token_events) commit or roll back
@@ -162,7 +162,8 @@ async function main(): Promise<void> {
     // Script-originated, not an HTTP request — record it honestly rather
     // than fabricating an IP.
     audit: {
-      triggeredBy: "session",
+      triggeredBy: "adminScript",
+      actorUserId: admin.id,
       ip: "localhost",
       userAgent: "create-api-token.ts",
     },

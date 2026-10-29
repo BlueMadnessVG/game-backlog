@@ -3,6 +3,9 @@ import { createSteamController } from "../steam.controller";
 import { withAuth } from "../../../tests/auth.helpers";
 import type { AdvisoryLockClient } from "../../../lib/locks";
 
+// Session JWTs never reach AuthService; it only backs the `bkl_` API-token path.
+const makeMockAuthService = () => ({ verifyApiToken: vi.fn() });
+
 const makeMockLock: () => AdvisoryLockClient = () => ({
   tryAcquire: vi.fn(async () => true),
   release: vi.fn(async () => undefined),
@@ -43,7 +46,11 @@ describe("SteamController", () => {
 
   beforeEach(async () => {
     service = makeMockService();
-    app = await withAuth(createSteamController(service as never, makeMockLock()));
+    app = await withAuth(createSteamController(
+        service as never,
+        makeMockAuthService() as never,
+        makeMockLock(),
+      ));
   });
 
   // ── GET /games ────────────────────────────────────────────────────────────

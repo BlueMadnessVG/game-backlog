@@ -3,6 +3,9 @@ import { createXboxController } from "../xbox.controller";
 import { withAuth } from "../../../tests/auth.helpers";
 import type { AdvisoryLockClient } from "../../../lib/locks";
 
+// Session JWTs never reach AuthService; it only backs the `bkl_` API-token path.
+const makeMockAuthService = () => ({ verifyApiToken: vi.fn() });
+
 const makeMockLock: () => AdvisoryLockClient = () => ({
   tryAcquire: vi.fn(async () => true),
   release: vi.fn(async () => undefined),
@@ -46,7 +49,12 @@ describe("XboxController", () => {
     service = makeMockService();
     const libraryService = makeMockLibraryService();
     app = await withAuth(
-      createXboxController(service as never, libraryService as never, makeMockLock()),
+      createXboxController(
+        service as never,
+        libraryService as never,
+        makeMockAuthService() as never,
+        makeMockLock(),
+      ),
     );
   });
 

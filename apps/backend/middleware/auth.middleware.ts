@@ -13,7 +13,7 @@ import type { AuthService } from "../modules/auth/auth.services";
  *
  * `createAuthMiddleware` sets this on every successful auth path, and on no
  * other path, so an unset value means authentication never ran. Downstream
- * guards (see require-session-credential.middleware.ts) read it to tell a
+ * guards (see credential-policy.middleware.ts) read it to tell a
  * human session apart from a machine credential — `userId` is set
  * identically for both, so `requireAuth` alone cannot make that distinction.
  *
@@ -22,7 +22,7 @@ import type { AuthService } from "../modules/auth/auth.services";
  */
 export type CredentialType = "session" | "apiToken";
 
-type Env = {
+export type AuthEnv = {
   Variables: {
     userId: string;
     userEmail: string;
@@ -46,7 +46,7 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * list and revoke ITS OWN tokens — that's the rotation path for a leaked
  * key, and `revokeApiToken` is already scoped to the caller's userId
  * (auth.services.ts), so no cross-user action is possible here. POST is
- * blocked separately by require-session-credential.middleware.ts, so
+ * blocked separately by credential-policy.middleware.ts, so
  * exempting the whole `/auth/api-tokens` path is safe.
  */
 function isTokenSelfManagementPath(pathname: string): boolean {
@@ -67,7 +67,7 @@ function isTokenSelfManagementPath(pathname: string): boolean {
  * rot. `write:library` is the only scope that permits mutations; anything
  * else is read-only. Reads and token self-management never reach the check.
  */
-function enforceApiTokenScope(c: Context<Env>, scope: string): void {
+function enforceApiTokenScope(c: Context<AuthEnv>, scope: string): void {
   if (scope === "write:library") return;
   if (!MUTATING_METHODS.has(c.req.method)) return;
   if (isTokenSelfManagementPath(c.req.path)) return;
@@ -131,7 +131,7 @@ export function createAuthMiddleware(
   authService: AuthService,
   opts?: { allowStepUp?: boolean },
 ) {
-  return createMiddleware<Env>(async (c, next) => {
+  return createMiddleware<AuthEnv>(async (c, next) => {
     const authHeader = c.req.header("Authorization");
     const bearerToken = authHeader?.startsWith("Bearer ")
       ? authHeader.split(" ")[1]

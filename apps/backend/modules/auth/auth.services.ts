@@ -8,6 +8,7 @@ import type { DbClient } from "../../db";
 import { signAuthToken } from "../../lib/jwt.utils";
 import { hashPassword, verifyPassword } from "../../lib/password.utils";
 import { generateOpaqueToken, hashApiToken } from "../../lib/api-token.utils";
+import { decrypt, encrypt } from "../../lib/Encryption.utils";
 import type {
   OAuthProfile,
   OAuthProviderClient,
@@ -62,8 +63,19 @@ export class TotpNotEnrolledError extends Error {
 }
 
 /**
+ * Thrown when enrollment is confirmed but no pending secret exists — the
+ * user never called start (or it was already confirmed). Maps to 400.
+ */
+export class TotpEnrollmentNotStartedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TotpEnrollmentNotStartedError";
+  }
+}
+
+/**
  * Thrown when the presented TOTP code does not match the user's enrolled
- * secret (or, for enrollment, the freshly generated one). Maps to 400.
+ * secret (or, for enrollment, the pending one). Maps to 400.
  * See TextSecure's guidance: no generic messages, no rate-limit hint churn —
  * just "code did not verify".
  */
@@ -109,8 +121,14 @@ export interface ApiTokenSummary {
  * guessing.
  */
 export interface ApiTokenAuditContext {
-  /** Which credential kind performed the action ("session" for a browser/user, "apiToken" for a machine self-revoking itself). */
-  triggeredBy: "session" | "apiToken";
+  /**
+   * Which actor performed the action: "session" for a browser/user,
+   * "apiToken" for a machine self-revoking itself, "adminScript" for
+   * script/create-api-token.ts.
+   */
+  triggeredBy: "session" | "apiToken" | "adminScript";
+  /** The admin who ran the script; set only when triggeredBy is "adminScript". */
+  actorUserId?: string;
   ip: string;
   userAgent: string | null;
 }
@@ -483,22 +501,21 @@ export class AuthService {
   private static readonly TOTP_WINDOW = 1;
 
   /**
-   * Enrolls the user in TOTP MFA.
+   * Step 1 of TOTP enrollment: issues a fresh secret and stores it, encrypted,
+   * as the user's PENDING secret. Nothing is enabled yet — the user must scan
+   * the secret into an authenticator and prove it with
+   * {@link AuthService.confirmTotpEnrollment}, because a secret nobody saved
+   * would lock token minting behind an unwinnable step-up.
    *
-   * Generates a fresh secret, verifies the presented code against it BEFORE
-   * persisting — enrollment proves the user actually scanned the secret into
-   * an authenticator, because a secret nobody saved would lock token minting
-   * behind an unwinnable step-up — and only then stores the base32 secret.
+   * Calling this again replaces any earlier pending secret. It never touches
+   * an already-enrolled `totpSecret`, so abandoning a re-enrollment leaves the
+   * existing authenticator working.
    *
-   * Re-enrolling rotates the secret and invalidates any older authenticator
-   * entry; the returned otpauth URL must be scanned again.
-   *
-   * @returns The base32 secret and an `otpauth://` URL. The secret is
-   *   returned ONCE, like an API token's plaintext; never exposed again.
+   * @returns The base32 secret and an `otpauth://` URL. The plaintext is
+   *   returned ONCE, like an API token's; only its ciphertext is persisted.
    */
-  async enrollTotp(
+  async startTotpEnrollment(
     userId: string,
-    code: string,
   ): Promise<{ secret: string; otpauthUrl: string }> {
     const [user] = await this.db
       .select({ email: users.email })
@@ -518,17 +535,49 @@ export class AuthService {
       secret: new Secret({ size: 20 }),
     });
 
+    const secret = totp.secret.base32;
+    await this.db
+      .update(users)
+      .set({ totpPendingSecret: encrypt(secret) })
+      .where(eq(users.id, userId));
+
+    return { secret, otpauthUrl: totp.toString() };
+  }
+
+  /**
+   * Step 2 of TOTP enrollment: verifies `code` against the pending secret
+   * and, only if it matches, promotes that secret to `totpSecret` and clears
+   * the pending slot. A wrong code leaves the pending secret in place so the
+   * user can retry without rescanning.
+   *
+   * @throws {TotpEnrollmentNotStartedError} When there is no pending secret.
+   * @throws {InvalidTotpCodeError} When the code does not verify.
+   */
+  async confirmTotpEnrollment(userId: string, code: string): Promise<void> {
+    const [user] = await this.db
+      .select({ totpPendingSecret: users.totpPendingSecret })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    const pending = user.totpPendingSecret;
+    if (!pending) {
+      throw new TotpEnrollmentNotStartedError(
+        "No TOTP enrollment in progress; call POST /auth/totp/enroll/start first",
+      );
+    }
+
+    const totp = new TOTP({ secret: Secret.fromBase32(decrypt(pending)) });
     if (!this.#validateTotpCode(totp, code)) {
       throw new InvalidTotpCodeError("TOTP code did not verify");
     }
 
-    const secret = totp.secret.base32;
     await this.db
       .update(users)
-      .set({ totpSecret: secret })
+      .set({ totpSecret: pending, totpPendingSecret: null })
       .where(eq(users.id, userId));
-
-    return { secret, otpauthUrl: totp.toString() };
   }
 
   /**
@@ -563,7 +612,9 @@ export class AuthService {
       throw new TotpNotEnrolledError("TOTP is not enrolled for this user");
     }
 
-    const totp = new TOTP({ secret: Secret.fromBase32(user.totpSecret) });
+    const totp = new TOTP({
+      secret: Secret.fromBase32(decrypt(user.totpSecret)),
+    });
     if (!this.#validateTotpCode(totp, code)) {
       throw new InvalidTotpCodeError("TOTP code did not verify");
     }

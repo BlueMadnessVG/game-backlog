@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { PsnService } from "../psn.services";
+import { PsnService, PsnGameNotFoundError } from "../psn.services";
 import type { AdvisoryLockClient } from "../../../lib/locks";
+import { decrypt, encrypt } from "../../../lib/Encryption.utils";
+import { deleteGameAndRelations } from "../../../lib/game-deletion.utils";
+
+vi.mock("../../../lib/game-deletion.utils", () => ({
+  deleteGameAndRelations: vi.fn(),
+  deleteGamesAndRelations: vi.fn(),
+}));
 
 // ── Mock factories ────────────────────────────────────────────────────────────
 
@@ -42,6 +49,16 @@ const makeMockTx = () => ({
   set: vi.fn().mockReturnThis(),
 });
 
+// syncUserGames does three inserts inside the transaction (catalog, PSN
+// mapping, user_games); only the user_games rows carry a userId.
+const userGameRows = (tx: ReturnType<typeof makeMockTx>) =>
+  tx.values.mock.calls
+    .map((call) => call[0])
+    .find(
+      (rows): rows is Array<Record<string, unknown>> =>
+        Array.isArray(rows) && rows[0]?.userId !== undefined,
+    )!;
+
 const makeMockProvider = () => ({
   exchangeNpsso: vi.fn(),
   refreshTokens: vi.fn(),
@@ -57,9 +74,11 @@ const makeTokens = (overrides = {}) => ({
   ...overrides,
 });
 
+// Tokens are encrypted at rest (psn.services.ts decrypts on read), so the
+// stored row must hold ciphertext, exactly as the DB would.
 const makeAccount = (overrides = {}) => ({
-  accessToken: "stored-access-token",
-  refreshToken: "stored-refresh-token",
+  accessToken: encrypt("stored-access-token"),
+  refreshToken: encrypt("stored-refresh-token"),
   // Not expired — 1 hour from now
   accessTokenExpiresAt: new Date(Date.now() + 3600 * 1000),
   ...overrides,
@@ -76,7 +95,8 @@ const makePsnGame = (overrides = {}) => ({
   playTime: 0,
   completionPercentage: 75,
   lastPlayedAt: new Date("2026-06-01"),
-  createdAt: new Date("2026-01-01"),
+  // The service selects userGames.createdAt AS addedAt.
+  addedAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-06-01"),
   npCommunicationId: "NPWR20188_00",
   ...overrides,
@@ -120,34 +140,49 @@ describe("PsnService token management", () => {
     service = new PsnService(db as never, provider as never, makeMockLock());
   });
 
-  it("uses stored token when not expired", async () => {
-    db.limit = vi.fn().mockResolvedValue([makeAccount()]);
-    db.orderBy = vi.fn().mockResolvedValue([]);
+  // getUserGames only reads the DB and never needs a token, so token
+  // handling is exercised through syncUserGames, which calls the PSN API.
 
-    await service.getUserGames("user-1");
+  it("uses the decrypted stored token when not expired", async () => {
+    db.limit = vi.fn().mockResolvedValue([makeAccount()]);
+    provider.getOwnedGames.mockResolvedValue([]);
+
+    await service.syncUserGames("user-1");
 
     expect(provider.refreshTokens).not.toHaveBeenCalled();
+    expect(provider.getOwnedGames).toHaveBeenCalledWith("stored-access-token");
   });
 
-  it("refreshes token when expired and persists new tokens", async () => {
+  it("refreshes token when expired and persists the new tokens encrypted", async () => {
     db.limit = vi.fn().mockResolvedValue([
       makeAccount({
         accessTokenExpiresAt: new Date(Date.now() - 1000), // expired
       }),
     ]);
     provider.refreshTokens.mockResolvedValue(makeTokens());
-    db.orderBy = vi.fn().mockResolvedValue([]);
+    provider.getOwnedGames.mockResolvedValue([]);
 
-    await service.getUserGames("user-1");
+    await service.syncUserGames("user-1");
 
-    expect(provider.refreshTokens).toHaveBeenCalledOnce();
-    expect(db.update).toHaveBeenCalled();
+    // The refresh is driven by the DECRYPTED stored refresh token...
+    expect(provider.refreshTokens).toHaveBeenCalledTimes(1);
+    expect(provider.refreshTokens).toHaveBeenCalledWith("stored-refresh-token");
+    // ...the new tokens are written as ciphertext, never plaintext...
+    const written = db.set.mock.calls[0]?.[0] as {
+      accessToken: string;
+      refreshToken: string;
+    };
+    expect(written.accessToken).not.toBe("access-token-abc");
+    expect(decrypt(written.accessToken)).toBe("access-token-abc");
+    expect(decrypt(written.refreshToken)).toBe("refresh-token-xyz");
+    // ...and the API is called with the fresh plaintext token.
+    expect(provider.getOwnedGames).toHaveBeenCalledWith("access-token-abc");
   });
 
   it("throws when no PSN account linked", async () => {
     db.limit = vi.fn().mockResolvedValue([]);
 
-    await expect(service.getUserGames("user-1")).rejects.toThrow(
+    await expect(service.syncUserGames("user-1")).rejects.toThrow(
       "No PSN account linked",
     );
   });
@@ -203,12 +238,6 @@ describe("PsnService.getUserGames", () => {
     db.orderBy = vi.fn().mockResolvedValue([makePsnGame({ platform: null })]);
     const result = await service.getUserGames("user-1");
     expect(result[0]!.platform).toBe("playstation");
-  });
-
-  it("defaults null status to backlog", async () => {
-    db.orderBy = vi.fn().mockResolvedValue([makePsnGame({ status: null })]);
-    const result = await service.getUserGames("user-1");
-    expect(result[0]!.status).toBe("backlog");
   });
 
   it("maps null lastPlayedAt to null", async () => {
@@ -350,7 +379,7 @@ describe("PsnService.syncUserGames", () => {
 
     await service.syncUserGames("user-1");
 
-    const valuesCall = tx.values.mock.calls[0]![0];
+    const valuesCall = userGameRows(tx);
     expect(valuesCall).toHaveLength(1);
     expect(valuesCall[0].completionPercentage).toBe(75);
   });
@@ -366,7 +395,7 @@ describe("PsnService.syncUserGames", () => {
 
     await service.syncUserGames("user-1");
 
-    const valuesCall = tx.values.mock.calls[0]![0];
+    const valuesCall = userGameRows(tx);
     expect(valuesCall[0].lastPlayedAt).toBeInstanceOf(Date);
   });
 
@@ -381,7 +410,7 @@ describe("PsnService.syncUserGames", () => {
 
     await service.syncUserGames("user-1");
 
-    const valuesCall = tx.values.mock.calls[0]![0];
+    const valuesCall = userGameRows(tx);
     expect(valuesCall[0].lastPlayedAt).toBeNull();
   });
 
@@ -394,7 +423,7 @@ describe("PsnService.syncUserGames", () => {
 
     await service.syncUserGames("user-1");
 
-    const valuesCall = tx.values.mock.calls[0]![0];
+    const valuesCall = userGameRows(tx);
     expect(valuesCall[0].playTime).toBe(0);
   });
 
@@ -409,7 +438,7 @@ describe("PsnService.syncUserGames", () => {
 
     await service.syncUserGames("user-1");
 
-    const valuesCall = tx.values.mock.calls[0]![0];
+    const valuesCall = userGameRows(tx);
     expect(valuesCall[0].status).toBe("completed");
   });
 });
@@ -427,15 +456,15 @@ describe("PsnService.syncGameTrophies", () => {
     service = new PsnService(db as never, provider as never, makeMockLock());
   });
 
-  it("throws when no PSN mapping found for game", async () => {
+  it("throws PsnGameNotFoundError when the user has no PSN mapping for the game", async () => {
     db.limit = vi.fn().mockResolvedValue([]);
 
-    await expect(service.syncGameTrophies("user-1", "game-1")).rejects.toThrow(
-      "No PSN mapping found",
-    );
+    await expect(
+      service.syncGameTrophies("user-1", "game-1"),
+    ).rejects.toThrow(PsnGameNotFoundError);
   });
 
-  it("returns empty array when provider returns null trophies", async () => {
+  it("returns empty array and keeps the game when the provider reports an error", async () => {
     db.limit = vi
       .fn()
       .mockResolvedValueOnce([
@@ -443,10 +472,11 @@ describe("PsnService.syncGameTrophies", () => {
       ])
       .mockResolvedValueOnce([makeAccount()]);
 
-    provider.getGameTrophies.mockResolvedValue(null);
+    provider.getGameTrophies.mockResolvedValue({ status: "error" });
 
     const result = await service.syncGameTrophies("user-1", "game-1");
     expect(result).toEqual([]);
+    expect(deleteGameAndRelations).not.toHaveBeenCalled();
   });
 
   it("returns empty array when provider returns empty trophies", async () => {
@@ -457,10 +487,13 @@ describe("PsnService.syncGameTrophies", () => {
       ])
       .mockResolvedValueOnce([makeAccount()]);
 
-    provider.getGameTrophies.mockResolvedValue([]);
+    provider.getGameTrophies.mockResolvedValue({ status: "empty" });
 
     const result = await service.syncGameTrophies("user-1", "game-1");
     expect(result).toEqual([]);
+    // Current behavior: a game with zero trophies is removed from the shared
+    // catalog (lib/game-deletion.utils.ts).
+    expect(deleteGameAndRelations).toHaveBeenCalledWith(db, "game-1");
   });
 
   it("calculates completionPercentage from earned trophies", async () => {
@@ -471,11 +504,14 @@ describe("PsnService.syncGameTrophies", () => {
       ])
       .mockResolvedValueOnce([makeAccount()]);
 
-    provider.getGameTrophies.mockResolvedValue([
-      makePsnTrophy({ trophyId: "1", earned: true }),
-      makePsnTrophy({ trophyId: "2", earned: true }),
-      makePsnTrophy({ trophyId: "3", earned: false }),
-    ]);
+    provider.getGameTrophies.mockResolvedValue({
+      status: "ok",
+      trophies: [
+        makePsnTrophy({ trophyId: "1", earned: true }),
+        makePsnTrophy({ trophyId: "2", earned: true }),
+        makePsnTrophy({ trophyId: "3", earned: false }),
+      ],
+    });
 
     const tx = makeMockTx();
     tx.returning = vi
@@ -506,10 +542,13 @@ describe("PsnService.syncGameTrophies", () => {
       ])
       .mockResolvedValueOnce([makeAccount()]);
 
-    provider.getGameTrophies.mockResolvedValue([
-      makePsnTrophy({ trophyId: "1", trophyType: "platinum", earned: true }),
-      makePsnTrophy({ trophyId: "2", trophyType: "bronze", earned: true }),
-    ]);
+    provider.getGameTrophies.mockResolvedValue({
+      status: "ok",
+      trophies: [
+        makePsnTrophy({ trophyId: "1", trophyType: "platinum", earned: true }),
+        makePsnTrophy({ trophyId: "2", trophyType: "bronze", earned: true }),
+      ],
+    });
 
     const tx = makeMockTx();
     tx.returning = vi

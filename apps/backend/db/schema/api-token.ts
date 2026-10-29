@@ -82,7 +82,8 @@ export const apiTokenEvents = pgTable(
     // migration — this table is append-only by design.
     metadata: jsonb("metadata")
       .$type<{
-        triggeredBy: "session" | "apiToken";
+        triggeredBy: "session" | "apiToken" | "adminScript";
+        actorUserId?: string;
         ip: string;
         userAgent: string | null;
       }>()

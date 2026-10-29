@@ -7,10 +7,12 @@ import {
   InvalidCredentialsError,
   InvalidTotpCodeError,
   OAuthCallbackError,
+  TotpEnrollmentNotStartedError,
   TotpNotEnrolledError,
 } from "../auth.services";
 import { oauthStateStore } from "../auth.state";
 import { verifyAuthToken } from "../../../lib/jwt.utils";
+import { decrypt, encrypt } from "../../../lib/Encryption.utils";
 
 vi.mock("../../../lib/password.utils", () => ({
   hashPassword: vi.fn(),
@@ -423,30 +425,67 @@ describe("AuthService", () => {
 
   describe("TOTP step-up", () => {
     const enrolledUser = () =>
-      makeUser({ totpSecret: new Secret({ size: 20 }).base32 });
+      makeUser({ totpSecret: encrypt(new Secret({ size: 20 }).base32) });
 
-    describe("enrollTotp", () => {
-      it("verifies the code BEFORE persisting, then stores the secret", async () => {
+    describe("startTotpEnrollment", () => {
+      it("stores the secret encrypted as PENDING and never enables it", async () => {
         db.limit.mockResolvedValue([makeUser()]);
-        vi.spyOn(TOTP.prototype, "validate").mockReturnValue(1);
 
-        const result = await service.enrollTotp("user-uuid-1", "123456");
+        const result = await service.startTotpEnrollment("user-uuid-1");
 
         expect(result.secret).toMatch(/^[A-Z2-7]+={0,3}$/);
         expect(result.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
         expect(result.otpauthUrl).toContain("game-backlog");
+
+        expect(db.set).toHaveBeenCalledTimes(1);
+        const written = db.set.mock.calls[0]?.[0] as Record<string, string>;
+        expect(Object.keys(written)).toEqual(["totpPendingSecret"]);
+        expect(written.totpPendingSecret).not.toContain(result.secret);
+        expect(decrypt(written.totpPendingSecret as string)).toBe(
+          result.secret,
+        );
+      });
+    });
+
+    describe("confirmTotpEnrollment", () => {
+      it("enrolls with a REAL code from the secret start returned", async () => {
+        // Whole flow, no mocked validation: this is what proves a user can
+        // actually complete enrollment.
+        db.limit.mockResolvedValue([makeUser()]);
+        const started = await service.startTotpEnrollment("user-uuid-1");
+        const pending = (db.set.mock.calls[0]?.[0] as Record<string, string>)
+          .totpPendingSecret as string;
+
+        db.set.mockClear();
+        db.limit.mockResolvedValue([makeUser({ totpPendingSecret: pending })]);
+        const code = new TOTP({
+          secret: Secret.fromBase32(started.secret),
+        }).generate();
+
+        await service.confirmTotpEnrollment("user-uuid-1", code);
+
         expect(db.set).toHaveBeenCalledWith({
-          totpSecret: result.secret,
+          totpSecret: pending,
+          totpPendingSecret: null,
         });
       });
 
-      it("rejects a wrong code and does NOT persist the secret", async () => {
-        db.limit.mockResolvedValue([makeUser()]);
-        vi.spyOn(TOTP.prototype, "validate").mockReturnValue(null);
+      it("rejects a wrong code, keeps the pending secret, and enables nothing", async () => {
+        const pending = encrypt(new Secret({ size: 20 }).base32);
+        db.limit.mockResolvedValue([makeUser({ totpPendingSecret: pending })]);
 
         await expect(
-          service.enrollTotp("user-uuid-1", "000000"),
+          service.confirmTotpEnrollment("user-uuid-1", "000000"),
         ).rejects.toThrow(InvalidTotpCodeError);
+        expect(db.update).not.toHaveBeenCalled();
+      });
+
+      it("rejects confirm when start was never called", async () => {
+        db.limit.mockResolvedValue([makeUser({ totpPendingSecret: null })]);
+
+        await expect(
+          service.confirmTotpEnrollment("user-uuid-1", "123456"),
+        ).rejects.toThrow(TotpEnrollmentNotStartedError);
         expect(db.update).not.toHaveBeenCalled();
       });
     });
@@ -454,7 +493,9 @@ describe("AuthService", () => {
     describe("stepUpTotp", () => {
       it("signs a short-lived step-up token when the code matches", async () => {
         const secret = new Secret({ size: 20 }).base32;
-        db.limit.mockResolvedValue([makeUser({ totpSecret: secret })]);
+        db.limit.mockResolvedValue([
+          makeUser({ totpSecret: encrypt(secret) }),
+        ]);
 
         const code = new TOTP({ secret: Secret.fromBase32(secret) }).generate();
         const before = Date.now();

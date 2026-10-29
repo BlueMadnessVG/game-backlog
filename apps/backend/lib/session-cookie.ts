@@ -1,12 +1,23 @@
 import { setCookie, deleteCookie } from "hono/cookie";
 import type { Context } from "hono";
 
+import { SESSION_TTL_SECONDS } from "./jwt.utils";
+
 export const SESSION_COOKIE_NAME = "backlog_session";
 
-// Keep in sync with jwt.utils.ts's own default expiresIn ("7d") — a
-// cookie that outlives the JWT inside it just means the browser holds an
-// already-expired, useless cookie a bit longer than necessary.
-const SESSION_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+/**
+ * Attributes shared by set and clear. A browser only treats a Set-Cookie as
+ * replacing an existing cookie when name, domain and path match, and a
+ * cookie set with SameSite=None must carry Secure — so clearing with fewer
+ * attributes than setting can be dropped by the browser, leaving the user
+ * logged in after logout.
+ */
+const SESSION_COOKIE_ATTRIBUTES = {
+  httpOnly: true,
+  secure: true,
+  sameSite: "None",
+  path: "/",
+} as const;
 
 /**
  * Sets the browser session cookie holding a signed session JWT.
@@ -20,17 +31,17 @@ const SESSION_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
  * silently never be sent on the frontend's fetch() calls. `localhost` is
  * treated as a secure context by modern browsers even over plain HTTP,
  * so this still works in local dev without HTTPS.
+ *
+ * `maxAge` is the JWT's own lifetime (SESSION_TTL_SECONDS), so the cookie
+ * never outlives the token inside it.
  */
 export function setSessionCookie(c: Context, token: string): void {
   setCookie(c, SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "None",
-    path: "/",
-    maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
+    ...SESSION_COOKIE_ATTRIBUTES,
+    maxAge: SESSION_TTL_SECONDS,
   });
 }
 
 export function clearSessionCookie(c: Context): void {
-  deleteCookie(c, SESSION_COOKIE_NAME, { path: "/" });
+  deleteCookie(c, SESSION_COOKIE_NAME, SESSION_COOKIE_ATTRIBUTES);
 }

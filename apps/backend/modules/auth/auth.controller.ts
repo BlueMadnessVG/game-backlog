@@ -17,6 +17,7 @@ import {
   InvalidCredentialsError,
   InvalidTotpCodeError,
   OAuthCallbackError,
+  TotpEnrollmentNotStartedError,
   TotpNotEnrolledError,
   type ApiTokenAuditContext,
 } from "./auth.services";
@@ -24,7 +25,7 @@ import {
   createAuthMiddleware,
   type CredentialType,
 } from "../../middleware/auth.middleware";
-import { createRequireSessionCredentialMiddleware } from "../../middleware/require-session-credential.middleware";
+import { requireCredential } from "../../middleware/credential-policy.middleware";
 import { setSessionCookie, clearSessionCookie } from "../../lib/session-cookie";
 import type { TokenPurpose } from "../../lib/jwt.utils";
 
@@ -101,16 +102,19 @@ export const createAuthController = (authService: AuthService) => {
   const app = new Hono<Bindings>();
 
   const requireAuth = createAuthMiddleware(authService);
-  // Used ONLY on POST /api-tokens. Accepts a normal session OR a
-  // TOTP step-up (`purpose: "step_up"`) JWT; both are sessions, and the
-  // step-up proof is what unlocks minting for an enrolled user (see the
-  // enrollment check in that handler).
-  const requireAuthForMint = createAuthMiddleware(authService, {
-    allowStepUp: true,
+  // Creating or changing a credential (minting API tokens, enrolling or
+  // rotating TOTP) is human-only: a leaked `bkl_` token must not be able to
+  // renew itself or take over the second factor. An enrolled user must also
+  // present a step-up JWT. See credential-policy.middleware.ts.
+  const requireSessionWithStepUp = requireCredential(authService, {
+    credential: "session",
+    stepUp: "if-enrolled",
   });
-  // Mounted only on POST /api-tokens: minting a long-lived credential is a
-  // human-only action. See require-session-credential.middleware.ts for why.
-  const requireSessionCredential = createRequireSessionCredentialMiddleware();
+  // Session-only, no step-up: step-up is what POST /step-up hands out, so it
+  // can't be required to reach it.
+  const requireSession = requireCredential(authService, {
+    credential: "session",
+  });
   const frontendUrl = () => process.env.FRONTEND_URL ?? FRONTEND_FALLBACK;
 
   const providerParam = (raw: string | undefined) => {
@@ -255,18 +259,19 @@ export const createAuthController = (authService: AuthService) => {
    * Creates a new opaque API token for the authenticated user (e.g. for
    * the achievement-ai assistant, or any other machine client).
    *
-   * Session-only by design: `requireSessionCredential` rejects `bkl_...`
-   * callers with 403, so an API token can never mint another one. Without
-   * that gate a single leaked token could keep re-issuing itself forever,
-   * and revoking it would not evict the children it created.
+   * Session-only by design: the `requireSessionWithStepUp` policy rejects
+   * `bkl_...` callers with 403, so an API token can never mint another one.
+   * Without that gate a single leaked token could keep re-issuing itself
+   * forever, and revoking it would not evict the children it created.
    *
    * TOTP step-up (only-if-enrolled): a user WITH an enrolled TOTP secret
    * must present a `purpose: "step_up"` JWT — obtained from
    * POST /auth/step-up — to reach this handler; a plain session is
    * rejected with 403 STEP_UP_REQUIRED. A user WITHOUT a secret skips
    * step-up entirely (nothing to prove). The step-up token is a 5-minute
-   * credential accepted by `requireAuthForMint` only, so a regular
-   * session can never be minting-authority without the second factor.
+   * credential accepted only by routes with `stepUp: "if-enrolled"`, so a
+   * regular session can never be minting-authority without the second
+   * factor.
    *
    * @body { name: string, scope?: string, expiresInDays?: number }
    * @returns 201 with `{ status, data: { id, token, tokenPrefix } }`. The
@@ -275,27 +280,12 @@ export const createAuthController = (authService: AuthService) => {
    */
   app.post(
     "/api-tokens",
-    requireAuthForMint,
-    requireSessionCredential,
+    requireSessionWithStepUp,
     vValidator("json", CreateApiTokenSchema),
     async (c) => {
       const userId = c.get("userId");
       const { name, scope, expiresInDays, expiresInMinutes } =
         c.req.valid("json");
-
-      if (
-        (await authService.hasTotpEnrolled(userId)) &&
-        c.get("tokenPurpose") !== "step_up"
-      ) {
-        return c.json(
-          {
-            status: "ERROR",
-            message:
-              "STEP_UP_REQUIRED: This account has TOTP enabled. Call POST /auth/step-up with your authenticator code, then retry with that token in the Authorization header.",
-          },
-          403,
-        );
-      }
 
       const expiresAt = expiresInMinutes
         ? new Date(Date.now() + expiresInMinutes * 60 * 1000)
@@ -378,36 +368,55 @@ export const createAuthController = (authService: AuthService) => {
   });
 
   /**
-   * POST /auth/totp/enroll
+   * POST /auth/totp/enroll/start
    *
-   * Opts the authenticated (session) user into TOTP MFA. Generates a fresh
-   * secret, verifies the presented authenticator code against it BEFORE
-   * persisting, then stores the secret. Must wrap the generated secret in
-   * an authenticator app within the code's 30-second window — that's
-   * exactly the proof enrollment exists to demand (a secret nobody saved
-   * would lock token minting behind an unwinnable step-up).
+   * Step 1 of opting the authenticated (session) user into TOTP MFA.
+   * Issues a fresh secret and stores it as PENDING — nothing is enabled
+   * until POST /auth/totp/enroll/confirm proves the user scanned it into an
+   * authenticator (a secret nobody saved would lock token minting behind an
+   * unwinnable step-up).
    *
-   * Re-enrolling rotates the secret; the returned otpauth URL must be
-   * scanned again. The base32 `secret` is shown once, in this response
-   * — it is never retrievable again, matching how API-token plaintext is
-   * handled.
+   * Session-only, and step-up protected for an already-enrolled user, so a
+   * leaked API token or a plain stolen session cannot start a rotation. The
+   * existing secret stays active until the new one is confirmed.
    *
-   * @body { code: "012345" }
+   * The base32 `secret` is shown once, in this response — it is never
+   * retrievable again, matching how API-token plaintext is handled.
+   *
    * @returns 201 with `{ status, data: { secret, otpauthUrl } }`.
    */
+  app.post("/totp/enroll/start", requireSessionWithStepUp, async (c) => {
+    const data = await authService.startTotpEnrollment(c.get("userId"));
+    return c.json({ status: "SUCCESS", data }, 201);
+  });
+
+  /**
+   * POST /auth/totp/enroll/confirm
+   *
+   * Step 2: verifies the presented authenticator code against the pending
+   * secret from /enroll/start and, only then, enables it. A wrong code keeps
+   * the pending secret so the user can retry; 400 when no enrollment was
+   * started. Same credential policy as /enroll/start.
+   *
+   * @body { code: "012345" }
+   * @returns 200 with `{ status, message }`.
+   */
   app.post(
-    "/totp/enroll",
-    requireAuth,
+    "/totp/enroll/confirm",
+    requireSessionWithStepUp,
     vValidator("json", TotpEnrollSchema),
     async (c) => {
       const userId = c.get("userId");
       const { code } = c.req.valid("json");
 
       try {
-        const data = await authService.enrollTotp(userId, code);
-        return c.json({ status: "SUCCESS", data }, 201);
+        await authService.confirmTotpEnrollment(userId, code);
+        return c.json({ status: "SUCCESS", message: "TOTP enabled" }, 200);
       } catch (error) {
-        if (error instanceof InvalidTotpCodeError) {
+        if (
+          error instanceof InvalidTotpCodeError ||
+          error instanceof TotpEnrollmentNotStartedError
+        ) {
           return c.json({ status: "ERROR", message: error.message }, 400);
         }
         throw error;
@@ -420,8 +429,11 @@ export const createAuthController = (authService: AuthService) => {
    *
    * Returns a SHORT-LIVED (5-minute) `purpose: "step_up"` session token
    * in exchange for a valid TOTP code. This token is the second factor
-   * that unlocks POST /auth/api-tokens for a TOTP-enrolled account (the
-   * mint route's middleware only accepts step-up JWTs for that one path).
+   * that unlocks POST /auth/api-tokens and TOTP re-enrollment for a
+   * TOTP-enrolled account (only routes with `stepUp: "if-enrolled"` accept
+   * step-up JWTs).
+   *
+   * Session-only: an API token cannot request a step-up token.
    *
    * The token comes back in the RESPONSE BODY, not a cookie: minting is a
    * JSON-body client flow, and a step-up Set-Cookie would overwrite the
@@ -439,7 +451,7 @@ export const createAuthController = (authService: AuthService) => {
    */
   app.post(
     "/step-up",
-    requireAuth,
+    requireSession,
     vValidator("json", TotpStepUpSchema),
     async (c) => {
       const userId = c.get("userId");

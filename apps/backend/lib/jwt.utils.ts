@@ -15,6 +15,12 @@ if (JWT_SECRET_STRING.length < 32) {
 const encodedSecret = new TextEncoder().encode(JWT_SECRET_STRING);
 
 /**
+ * Lifetime of a normal session, shared by the JWT's `exp` claim and the
+ * session cookie's max-age (lib/session-cookie.ts) so the two can't drift.
+ */
+export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/**
  * What a session token is allowed to do. Normal logins sign with no
  * `purpose` (defaults to "session"). A TOTP step-up (auth.services.ts'
  * stepUpTotp) signs with "step_up": that token exists ONLY to unlock the
@@ -59,12 +65,13 @@ export class TokenPurposeMismatchError extends Error {
  *
  * @param payload - The claims to embed.
  * @param expiresIn - jose time-string (e.g. "7d", "1h") or a Date/number.
- *   Defaults to 7 days.
+ *   Defaults to {@link SESSION_TTL_SECONDS}. A bare number is an absolute
+ *   timestamp to jose, so the default is passed as a string.
  * @returns The signed JWT string.
  */
 export async function signAuthToken(
   payload: AuthTokenPayload,
-  expiresIn: string | number | Date = "7d",
+  expiresIn: string | number | Date = `${SESSION_TTL_SECONDS}s`,
 ): Promise<string> {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
