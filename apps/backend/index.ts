@@ -16,8 +16,7 @@ import {
 } from "./modules/platforms/platform-library";
 import { createPlatformController } from "./modules/platforms/platform.controller";
 import { XboxProvider } from "./providers/xbox.provider";
-import { XboxService } from "./modules/xbox/xbox.services";
-import { createXboxController } from "./modules/xbox/xbox.controller";
+import { XboxAdapter } from "./modules/platforms/xbox.adapter";
 import { errorHandler } from "./middleware/error.handler";
 import { PsnProvider } from "./providers/psn.provider";
 import { PsnService } from "./modules/psn/psn.services";
@@ -38,7 +37,7 @@ const steamProvider = new SteamProvider(process.env.STEAM_API_KEY!);
 const steamLibrary = new PlatformLibrary(db, new SteamAdapter(steamProvider));
 
 const xboxProvider = new XboxProvider(process.env.OPENXBL_API_KEY!);
-const xboxService = new XboxService(db, xboxProvider);
+const xboxLibrary = new PlatformLibrary(db, new XboxAdapter(xboxProvider));
 
 const psnProvider = new PsnProvider();
 const psnService = new PsnService(db, psnProvider);
@@ -48,8 +47,8 @@ const igdbProvider = new IgdbProvider(
   process.env.IGDB_CLIENT_SECRET!,
 );
 
-// TEMPORARY: Xbox and PSN still have their own modules. Each wrapper goes
-// away when that platform moves onto the platform engine.
+// TEMPORARY: PSN still has its own module. The wrapper goes away when it
+// moves onto the platform engine.
 const legacyPlatform = (
   read: (u: string, g: string, q?: AchievementQuery) => Promise<AchievementPage>,
   sync: (u: string, g: string) => Promise<unknown[]>,
@@ -60,10 +59,7 @@ const legacyPlatform = (
 
 const libraryService = new LibraryService(db, igdbProvider, {
   steam: steamLibrary,
-  xbox: legacyPlatform(
-    (u, g, q) => xboxService.getGameAchievements(u, g, q),
-    (u, g) => xboxService.syncGameAchievements(u, g),
-  ),
+  xbox: xboxLibrary,
   playstation: legacyPlatform(
     (u, g, q) => psnService.getGameTrophies(u, g, q),
     (u, g) => psnService.syncGameTrophies(u, g),
@@ -135,7 +131,11 @@ apiV1.route(
 );
 apiV1.route(
   "/xbox",
-  createXboxController(xboxService, libraryService, authService),
+  createPlatformController({
+    library: xboxLibrary,
+    libraryService,
+    authService,
+  }),
 );
 apiV1.route(
   "/psn",

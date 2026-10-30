@@ -6,8 +6,6 @@ import {
   psnGames,
   psnUserTrophies,
   userGames,
-  xboxGames,
-  xboxUserAchievements,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
@@ -106,14 +104,13 @@ export class LibraryService {
         updatedAt: userGames.updatedAt,
         // A game maps to exactly one platform table (each has gameId as its
         // primary key), so at most one of these is non-null.
-        // games.external_id is the platform's own id; Xbox and PSN still keep
-        // theirs in a mapping table until they move onto the platform engine.
-        externalId: sql<string>`coalesce(${games.externalId}, ${xboxGames.titleId}, ${psnGames.npCommunicationId}, '')`,
+        // games.external_id is the platform's own id; PSN still keeps
+        // theirs in a mapping table until it moves onto the platform engine.
+        externalId: sql<string>`coalesce(${games.externalId}, ${psnGames.npCommunicationId}, '')`,
         total: sql<number>`(count(*) over())::int`,
       })
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
-      .leftJoin(xboxGames, eq(xboxGames.gameId, games.id))
       .leftJoin(psnGames, eq(psnGames.gameId, games.id))
       .where(where)
       .orderBy(desc(userGames.updatedAt), asc(games.id))
@@ -246,7 +243,7 @@ export class LibraryService {
   private async getAchievementCountsByPlatform(
     userId: string,
   ): Promise<Record<PlatformKey, number>> {
-    const [unified, [xbox], [playstation]] = await Promise.all([
+    const [unified, [playstation]] = await Promise.all([
       this.db
         .select({ platform: games.platform, n: sql<number>`count(*)::int` })
         .from(userAchievements)
@@ -262,17 +259,8 @@ export class LibraryService {
           ),
         )
         .groupBy(games.platform),
-      // Xbox and PSN still keep theirs in their own tables until they move
-      // onto the platform engine.
-      this.db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(xboxUserAchievements)
-        .where(
-          and(
-            eq(xboxUserAchievements.userId, userId),
-            eq(xboxUserAchievements.achieved, true),
-          ),
-        ),
+      // PSN still keeps its trophies in their own table until it moves onto
+      // the platform engine.
       this.db
         .select({ n: sql<number>`count(*)::int` })
         .from(psnUserTrophies)
@@ -289,7 +277,7 @@ export class LibraryService {
 
     return {
       steam: unifiedFor("steam"),
-      xbox: unifiedFor("xbox") + (xbox?.n ?? 0),
+      xbox: unifiedFor("xbox"),
       playstation: unifiedFor("playstation") + (playstation?.n ?? 0),
     };
   }

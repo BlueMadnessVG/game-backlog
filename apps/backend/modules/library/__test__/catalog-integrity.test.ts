@@ -8,15 +8,13 @@ import {
   psnUserTrophies,
   userAchievements,
   userGames,
-  xboxGames,
-  xboxUserAchievements,
 } from "../../../db/schema";
 import type { DbClient } from "../../../db";
 import type { AdvisoryLockClient } from "../../../lib/locks";
 import { LibraryService } from "../library.services";
 import { PlatformLibrary } from "../../platforms/platform-library";
 import { SteamAdapter } from "../../platforms/steam.adapter";
-import { XboxService } from "../../xbox/xbox.services";
+import { XboxAdapter } from "../../platforms/xbox.adapter";
 import { PsnService } from "../../psn/psn.services";
 import { createTestDb, type TestDb } from "../../../tests/test-db";
 import {
@@ -101,12 +99,13 @@ const cases: PlatformCase[] = [
   {
     platform: "xbox",
     mappingRows: (db, gameId) =>
-      count(db, xboxGames, eq(xboxGames.gameId, gameId)),
+      count(db, games, and(eq(games.id, gameId), isNotNull(games.externalId))),
     countUnlocked: (db, userId) =>
-      count(db, xboxUserAchievements, eq(xboxUserAchievements.userId, userId)),
+      count(db, userAchievements, eq(userAchievements.userId, userId)),
     setup(db, lock) {
       const provider = { getPlayerAchievements: vi.fn() };
-      const service = new XboxService(db, provider as never, lock);
+      const service = new PlatformLibrary(db, new XboxAdapter(provider as never), lock);
+      const reads = new LibraryService(db, {} as never, {} as never);
       return {
         respond(outcome) {
           provider.getPlayerAchievements.mockResolvedValue(
@@ -121,9 +120,10 @@ const cases: PlatformCase[] = [
           );
         },
         lookups: () => provider.getPlayerAchievements.mock.calls.length,
-        syncGame: (u, g) => service.syncGameAchievements(u, g),
-        syncAll: (u, ids) => service.syncAllGameAchievements(u, ids),
-        listOwn: (u) => service.getUserGames(u),
+        syncGame: (u, g) => service.syncAchievements(u, g),
+        syncAll: (u, ids) => service.syncAllAchievements(u, ids),
+        listOwn: async (u) =>
+          (await reads.getUserGames(u, { platform: "xbox" })).games,
       };
     },
   },
@@ -378,19 +378,19 @@ describe("library sync: two owned games with the same title", () => {
       lastPlayedAt,
       completionPercentage: 20,
     });
-    const service = new XboxService(
+    const service = new PlatformLibrary(
       t.db,
-      {
+      new XboxAdapter({
         getOwnedGames: async () => [
           title("old-id", new Date("2025-01-01")),
           title("new-id", new Date("2026-01-01")),
         ],
         getPlaytimeMinutes: async () => new Map([["new-id", 45]]),
-      } as never,
+      } as never),
       noopLock,
     );
 
-    await service.syncUserGames(alice, "xuid");
+    await service.syncGames(alice);
 
     expect(await progressOf(alice)).toEqual([
       { title: "Forza Horizon 5", playTime: 45, completionPercentage: 20 },

@@ -12,9 +12,6 @@ import {
   userGames,
   users,
   xboxAccounts,
-  xboxAchievements,
-  xboxGames,
-  xboxUserAchievements,
 } from "../db/schema";
 import type { DbClient } from "../db";
 import { encrypt } from "../lib/Encryption.utils";
@@ -66,16 +63,14 @@ export async function seedCatalogGame(
     .values({
       title: opts.title,
       platform: opts.platform,
-      // Steam is on the platform engine: its id lives on the catalog row.
-      // Xbox and PSN still keep theirs in a mapping table.
-      externalId: opts.platform === "steam" ? externalId : null,
+      // Steam and Xbox are on the platform engine: their id lives on the
+      // catalog row. PSN still keeps its own in a mapping table.
+      externalId: opts.platform === "playstation" ? null : externalId,
     })
     .returning({ id: games.id });
   const gameId = game!.id;
 
-  if (opts.platform === "xbox") {
-    await db.insert(xboxGames).values({ gameId, titleId: externalId });
-  } else {
+  if (opts.platform === "playstation") {
     await db
       .insert(psnGames)
       .values({ gameId, npCommunicationId: externalId });
@@ -152,7 +147,7 @@ export async function seedAchievements(
     const achieved = i < opts.unlocked;
     const apiName = `ACH_${i}`;
 
-    if (platform === "steam") {
+    if (platform !== "playstation") {
       await db
         .insert(achievements)
         .values({ gameId, externalKey: apiName, name: `Ach ${i}` })
@@ -168,23 +163,6 @@ export async function seedAchievements(
         );
       await db
         .insert(userAchievements)
-        .values({ userId, achievementId: def!.id, achieved });
-    } else if (platform === "xbox") {
-      await db
-        .insert(xboxAchievements)
-        .values({ titleId: externalId, apiName, name: `Ach ${i}` })
-        .onConflictDoNothing();
-      const [def] = await db
-        .select({ id: xboxAchievements.id })
-        .from(xboxAchievements)
-        .where(
-          and(
-            eq(xboxAchievements.titleId, externalId),
-            eq(xboxAchievements.apiName, apiName),
-          ),
-        );
-      await db
-        .insert(xboxUserAchievements)
         .values({ userId, achievementId: def!.id, achieved });
     } else {
       await db

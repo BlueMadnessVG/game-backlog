@@ -73,39 +73,6 @@ CREATE TABLE "xbox_accounts" (
 	CONSTRAINT "xbox_accounts_xuid_unique" UNIQUE("xuid")
 );
 --> statement-breakpoint
-CREATE TABLE "xbox_achievements" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"title_id" varchar(255) NOT NULL,
-	"api_name" varchar(255) NOT NULL,
-	"name" text NOT NULL,
-	"description" text,
-	"is_secret" boolean DEFAULT false NOT NULL,
-	"icon_url" text,
-	"icon_unlocked_url" text,
-	"global_percentage" real,
-	"gamerscore" real DEFAULT 0,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "xbox_app_achievement_unique" UNIQUE("title_id","api_name")
-);
---> statement-breakpoint
-CREATE TABLE "xbox_games" (
-	"game_id" uuid PRIMARY KEY NOT NULL,
-	"title_id" varchar(255) NOT NULL,
-	CONSTRAINT "xbox_games_title_id_unique" UNIQUE("title_id")
-);
---> statement-breakpoint
-CREATE TABLE "xbox_user_achievements" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"user_id" uuid NOT NULL,
-	"achievement_id" uuid NOT NULL,
-	"achieved" boolean DEFAULT false NOT NULL,
-	"unlocked_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "xbox_user_achievement_unique" UNIQUE("user_id","achievement_id")
-);
---> statement-breakpoint
 CREATE TABLE "psn_accounts" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"account_id" varchar(255) NOT NULL,
@@ -206,9 +173,6 @@ ALTER TABLE "achievements" ADD CONSTRAINT "achievements_game_id_games_id_fk" FOR
 ALTER TABLE "user_achievements" ADD CONSTRAINT "user_achievements_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_achievements" ADD CONSTRAINT "user_achievements_achievement_id_achievements_id_fk" FOREIGN KEY ("achievement_id") REFERENCES "public"."achievements"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "xbox_accounts" ADD CONSTRAINT "xbox_accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "xbox_games" ADD CONSTRAINT "xbox_games_game_id_games_id_fk" FOREIGN KEY ("game_id") REFERENCES "public"."games"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "xbox_user_achievements" ADD CONSTRAINT "xbox_user_achievements_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "xbox_user_achievements" ADD CONSTRAINT "xbox_user_achievements_achievement_id_xbox_achievements_id_fk" FOREIGN KEY ("achievement_id") REFERENCES "public"."xbox_achievements"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "psn_accounts" ADD CONSTRAINT "psn_accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "psn_games" ADD CONSTRAINT "psn_games_game_id_games_id_fk" FOREIGN KEY ("game_id") REFERENCES "public"."games"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "psn_user_trophies" ADD CONSTRAINT "psn_user_trophies_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -227,9 +191,6 @@ CREATE INDEX "achievement_game_id_idx" ON "achievements" USING btree ("game_id")
 CREATE INDEX "user_achievement_user_id_idx" ON "user_achievements" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "user_achievement_achievement_id_idx" ON "user_achievements" USING btree ("achievement_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "xbox_xuid_idx" ON "xbox_accounts" USING btree ("xuid");--> statement-breakpoint
-CREATE INDEX "xbox_achievement_title_id_idx" ON "xbox_achievements" USING btree ("title_id");--> statement-breakpoint
-CREATE INDEX "xbox_user_achievement_user_id_idx" ON "xbox_user_achievements" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "xbox_user_achievement_achievement_id_idx" ON "xbox_user_achievements" USING btree ("achievement_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "psn_account_id_idx" ON "psn_accounts" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "psn_trophy_np_comm_id_idx" ON "psn_trophies" USING btree ("np_communication_id");--> statement-breakpoint
 CREATE INDEX "psn_user_trophy_user_id_idx" ON "psn_user_trophies" USING btree ("user_id");--> statement-breakpoint
