@@ -6,6 +6,8 @@ CREATE TABLE "games" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"title" text NOT NULL,
 	"platform" "platform" DEFAULT 'steam',
+	"external_id" varchar(255),
+	"metadata" jsonb,
 	"icon_url" text,
 	"cover_url" text,
 	"banner_url" text,
@@ -27,21 +29,6 @@ CREATE TABLE "users" (
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
-CREATE TABLE "achievements" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"steam_app_id" varchar(255) NOT NULL,
-	"api_name" varchar(255) NOT NULL,
-	"name" text NOT NULL,
-	"description" text,
-	"hidden" boolean DEFAULT false NOT NULL,
-	"icon_url" text,
-	"icon_gray_url" text,
-	"global_percentage" real,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "app_achievement_unique" UNIQUE("steam_app_id","api_name")
-);
---> statement-breakpoint
 CREATE TABLE "steam_accounts" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"steam_id" varchar(255) NOT NULL,
@@ -50,10 +37,21 @@ CREATE TABLE "steam_accounts" (
 	CONSTRAINT "steam_accounts_steam_id_unique" UNIQUE("steam_id")
 );
 --> statement-breakpoint
-CREATE TABLE "steam_games" (
-	"game_id" uuid PRIMARY KEY NOT NULL,
-	"steam_app_id" varchar(255) NOT NULL,
-	CONSTRAINT "steam_games_steam_app_id_unique" UNIQUE("steam_app_id")
+CREATE TABLE "achievements" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"game_id" uuid NOT NULL,
+	"external_key" varchar(255) NOT NULL,
+	"name" text NOT NULL,
+	"description" text,
+	"hidden" boolean DEFAULT false NOT NULL,
+	"icon_url" text,
+	"icon_gray_url" text,
+	"global_percentage" real,
+	"points" integer,
+	"tier" varchar(16),
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "achievement_game_key_unique" UNIQUE("game_id","external_key")
 );
 --> statement-breakpoint
 CREATE TABLE "user_achievements" (
@@ -204,7 +202,7 @@ CREATE TABLE "api_tokens" (
 );
 --> statement-breakpoint
 ALTER TABLE "steam_accounts" ADD CONSTRAINT "steam_accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "steam_games" ADD CONSTRAINT "steam_games_game_id_games_id_fk" FOREIGN KEY ("game_id") REFERENCES "public"."games"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "achievements" ADD CONSTRAINT "achievements_game_id_games_id_fk" FOREIGN KEY ("game_id") REFERENCES "public"."games"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_achievements" ADD CONSTRAINT "user_achievements_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_achievements" ADD CONSTRAINT "user_achievements_achievement_id_achievements_id_fk" FOREIGN KEY ("achievement_id") REFERENCES "public"."achievements"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "xbox_accounts" ADD CONSTRAINT "xbox_accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -222,9 +220,10 @@ ALTER TABLE "api_token_events" ADD CONSTRAINT "api_token_events_token_id_api_tok
 ALTER TABLE "api_token_events" ADD CONSTRAINT "api_token_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "api_tokens" ADD CONSTRAINT "api_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "title_idx" ON "games" USING btree ("title");--> statement-breakpoint
+CREATE UNIQUE INDEX "games_platform_external_id_idx" ON "games" USING btree ("platform","external_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "title_platform_unique_idx" ON "games" USING btree ("title","platform");--> statement-breakpoint
-CREATE INDEX "achievement_steam_app_id_idx" ON "achievements" USING btree ("steam_app_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "steam_id_idx" ON "steam_accounts" USING btree ("steam_id");--> statement-breakpoint
+CREATE INDEX "achievement_game_id_idx" ON "achievements" USING btree ("game_id");--> statement-breakpoint
 CREATE INDEX "user_achievement_user_id_idx" ON "user_achievements" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "user_achievement_achievement_id_idx" ON "user_achievements" USING btree ("achievement_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "xbox_xuid_idx" ON "xbox_accounts" USING btree ("xuid");--> statement-breakpoint

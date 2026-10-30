@@ -75,6 +75,8 @@ const makeTrophyTitle = (overrides = {}) => ({
   trophyTitlePlatform: "PS5",
   npServiceName: "trophy2",
   progress: 75,
+  // getOwnedGames drops titles with no defined trophies, so a fixture needs some.
+  definedTrophies: { bronze: 20, silver: 8, gold: 3, platinum: 1 },
   earnedTrophies: { bronze: 10, silver: 5, gold: 2, platinum: 0 },
   lastUpdatedDateTime: "2026-06-01T00:00:00Z",
   ...overrides,
@@ -286,6 +288,26 @@ describe("PsnProvider", () => {
       expect(result[0]!.platinumEarned).toBe(false);
     });
 
+    // Titles with no trophies can't be tracked, so they are left out of the
+    // library on purpose.
+    it("drops titles that define no trophies", async () => {
+      mockGetTitles.mockResolvedValue({
+        trophyTitles: [
+          makeTrophyTitle({ npCommunicationId: "WITH" }),
+          makeTrophyTitle({
+            npCommunicationId: "ZERO",
+            definedTrophies: { bronze: 0, silver: 0, gold: 0, platinum: 0 },
+          }),
+          makeTrophyTitle({ npCommunicationId: "NONE", definedTrophies: undefined }),
+        ],
+        totalItemCount: 3,
+      } as never);
+
+      const result = await provider.getOwnedGames("token");
+
+      expect(result.map((t) => t.npCommunicationId)).toEqual(["WITH"]);
+    });
+
     it("returns empty array when trophyTitles is empty", async () => {
       mockGetTitles.mockResolvedValue({
         trophyTitles: [],
@@ -318,6 +340,16 @@ describe("PsnProvider", () => {
   // ── getGameTrophies ───────────────────────────────────────────────────────
 
   describe("getGameTrophies", () => {
+    // The result is a { status } union; this narrows it to the ok case.
+    const okTrophies = (
+      r: Awaited<ReturnType<PsnProvider["getGameTrophies"]>>,
+    ) => {
+      if (r.status !== "ok") {
+        throw new Error(`expected status "ok", got "${r.status}"`);
+      }
+      return r.trophies;
+    };
+
     it("returns merged trophy metadata and earn state", async () => {
       mockGetTitleTrophies.mockResolvedValue({
         trophies: [makeTitleTrophy()],
@@ -334,15 +366,16 @@ describe("PsnProvider", () => {
         "trophy2",
       );
 
-      expect(result).toHaveLength(1);
-      expect(result![0]!.trophyId).toBe("1");
-      expect(result![0]!.name).toBe("First Win");
-      expect(result![0]!.earned).toBe(true);
-      expect(result![0]!.trophyEarnedRate).toBe(45.3);
-      expect(result![0]!.earnedDateTime).toBeInstanceOf(Date);
+      const trophies = okTrophies(result);
+      expect(trophies).toHaveLength(1);
+      expect(trophies[0]!.trophyId).toBe("1");
+      expect(trophies[0]!.name).toBe("First Win");
+      expect(trophies[0]!.earned).toBe(true);
+      expect(trophies[0]!.trophyEarnedRate).toBe(45.3);
+      expect(trophies[0]!.earnedDateTime).toBeInstanceOf(Date);
     });
 
-    it("returns null when trophies array is empty", async () => {
+    it("reports 'empty' when the title has no trophies", async () => {
       mockGetTitleTrophies.mockResolvedValue({
         trophies: [],
         totalItemCount: 0,
@@ -357,7 +390,7 @@ describe("PsnProvider", () => {
         "NPWR99999_00",
         "trophy2",
       );
-      expect(result).toBeNull();
+      expect(result).toEqual({ status: "empty" });
     });
 
     it("marks trophy as not earned when earned is false", async () => {
@@ -376,8 +409,9 @@ describe("PsnProvider", () => {
         "trophy2",
       );
 
-      expect(result![0]!.earned).toBe(false);
-      expect(result![0]!.earnedDateTime).toBeNull();
+      const trophies = okTrophies(result);
+      expect(trophies[0]!.earned).toBe(false);
+      expect(trophies[0]!.earnedDateTime).toBeNull();
     });
 
     it("handles null trophyEarnedRate", async () => {
@@ -395,7 +429,7 @@ describe("PsnProvider", () => {
         "NPWR20188_00",
         "trophy2",
       );
-      expect(result![0]!.trophyEarnedRate).toBeNull();
+      expect(okTrophies(result)[0]!.trophyEarnedRate).toBeNull();
     });
 
     it("passes npServiceName option for PS3/PS4 titles", async () => {
@@ -418,7 +452,7 @@ describe("PsnProvider", () => {
       );
     });
 
-    it("returns null on API failure without throwing", async () => {
+    it("reports 'error' on API failure instead of throwing", async () => {
       mockGetTitleTrophies.mockRejectedValue(new Error("Trophy API error"));
 
       const result = await provider.getGameTrophies(
@@ -426,7 +460,7 @@ describe("PsnProvider", () => {
         "NPWR20188_00",
         "trophy2",
       );
-      expect(result).toBeNull();
+      expect(result).toEqual({ status: "error" });
     });
 
     it("fetches both metadata and earn state in parallel", async () => {

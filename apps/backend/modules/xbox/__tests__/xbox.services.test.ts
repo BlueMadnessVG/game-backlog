@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { XboxService } from "../xbox.services";
+import { XboxGameNotFoundError, XboxService } from "../xbox.services";
 import type { AdvisoryLockClient } from "../../../lib/locks";
+import { setHasAchievements } from "../../../lib/game-catalog";
 
 // The catalog rules are covered against a real database in
 // library/__test__/catalog-integrity.test.ts; here the service just has to
@@ -55,6 +56,16 @@ const makeMockProvider = () => ({
   getPlayerAchievements: vi.fn(),
 });
 
+// syncUserGames does three inserts inside the transaction (catalog, Xbox
+// mapping, user_games); only the user_games rows carry a userId.
+const userGameRows = (tx: ReturnType<typeof makeMockTx>) =>
+  tx.values.mock.calls
+    .map((call) => call[0])
+    .find(
+      (rows): rows is Array<Record<string, unknown>> =>
+        Array.isArray(rows) && rows[0]?.userId !== undefined,
+    )!;
+
 const makeXboxGame = (overrides = {}) => ({
   id: "game-uuid-1",
   title: "Halo Infinite",
@@ -66,7 +77,8 @@ const makeXboxGame = (overrides = {}) => ({
   playTime: 120,
   completionPercentage: 50,
   lastPlayedAt: new Date("2026-06-01"),
-  createdAt: new Date("2026-01-01"),
+  // The service selects userGames.createdAt AS addedAt.
+  addedAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-06-01"),
   titleId: "titleId-123",
   ...overrides,
@@ -160,7 +172,7 @@ describe("XboxService.syncUserGames", () => {
     provider.getOwnedGames.mockResolvedValue([
       {
         titleId: "tid1",
-        name: "Halo",
+        name: "Halo Infinite", // must match makeXboxGame().title so the row maps back
         playtimeMinutes: 0,
         coverUrl: null,
         lastPlayedAt: null,
@@ -175,8 +187,8 @@ describe("XboxService.syncUserGames", () => {
 
     await service.syncUserGames("user-1", "xuid-1");
 
-    const valuesCall = tx!.values.mock.calls[0]![0];
-    expect(valuesCall[0].playTime).toBe(300);
+    const valuesCall = userGameRows(tx);
+    expect(valuesCall[0]!.playTime).toBe(300);
   });
 
   it("deduplicates titles with same name keeping most recent", async () => {
@@ -201,21 +213,23 @@ describe("XboxService.syncUserGames", () => {
     provider.getPlaytimeMinutes.mockResolvedValue(new Map());
 
     const tx = makeMockTx();
-    tx.returning = vi.fn().mockResolvedValue([makeXboxGame()]);
+    tx.returning = vi
+      .fn()
+      .mockResolvedValue([makeXboxGame({ title: "Minecraft" })]);
     db.transaction = vi.fn((cb) => cb(tx));
 
     await service.syncUserGames("user-1", "xuid-1");
 
-    const valuesCall = tx!.values.mock.calls[0]![0];
+    const valuesCall = userGameRows(tx);
     expect(valuesCall).toHaveLength(1);
-    expect(valuesCall[0].lastPlayedAt).toEqual(new Date("2026-01-01"));
+    expect(valuesCall[0]!.lastPlayedAt).toEqual(new Date("2026-01-01"));
   });
 
   it("uses 0 playtime when not in playtime map", async () => {
     provider.getOwnedGames.mockResolvedValue([
       {
         titleId: "tid1",
-        name: "Game",
+        name: "Halo Infinite", // must match makeXboxGame().title so the row maps back
         playtimeMinutes: 0,
         coverUrl: null,
         lastPlayedAt: null,
@@ -230,8 +244,8 @@ describe("XboxService.syncUserGames", () => {
 
     await service.syncUserGames("user-1", "xuid-1");
 
-    const valuesCall = tx!.values.mock.calls[0]![0];
-    expect(valuesCall[0].playTime).toBe(0);
+    const valuesCall = userGameRows(tx);
+    expect(valuesCall[0]!.playTime).toBe(0);
   });
 });
 
@@ -243,37 +257,45 @@ describe("XboxService.syncGameAchievements", () => {
   let service: XboxService;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     db = makeMockDb();
     provider = makeMockProvider();
     service = new XboxService(db as never, provider as never, makeMockLock());
   });
 
-  it("throws when no Xbox mapping found", async () => {
+  it("throws XboxGameNotFoundError when the user has no Xbox mapping for the game", async () => {
     db.limit = vi.fn().mockResolvedValue([]);
     await expect(
       service.syncGameAchievements("user-1", "game-1"),
-    ).rejects.toThrow("No Xbox mapping found");
+    ).rejects.toThrow(XboxGameNotFoundError);
   });
 
-  it("returns empty array when provider returns null", async () => {
+  it("changes nothing when the provider reports an error", async () => {
     db.limit = vi.fn().mockResolvedValue([{ titleId: "tid1", xuid: "xuid1" }]);
-    provider.getPlayerAchievements.mockResolvedValue(null);
+    provider.getPlayerAchievements.mockResolvedValue({ status: "error" });
 
     const result = await service.syncGameAchievements("user-1", "game-1");
+
     expect(result).toEqual([]);
+    expect(setHasAchievements).not.toHaveBeenCalled();
   });
 
-  it("returns empty array when provider returns empty achievements", async () => {
+  it("flags the game as having none, and deletes nothing, when the provider reports empty", async () => {
     db.limit = vi.fn().mockResolvedValue([{ titleId: "tid1", xuid: "xuid1" }]);
-    provider.getPlayerAchievements.mockResolvedValue([]);
+    provider.getPlayerAchievements.mockResolvedValue({ status: "empty" });
 
     const result = await service.syncGameAchievements("user-1", "game-1");
+
     expect(result).toEqual([]);
+    expect(setHasAchievements).toHaveBeenCalledWith(db, "game-1", false);
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 
   it("calculates completionPercentage correctly", async () => {
     db.limit = vi.fn().mockResolvedValue([{ titleId: "tid1", xuid: "xuid1" }]);
-    provider.getPlayerAchievements.mockResolvedValue([
+    provider.getPlayerAchievements.mockResolvedValue({
+      status: "ok",
+      achievements: [
       {
         apiName: "1",
         name: "Win",
@@ -307,7 +329,8 @@ describe("XboxService.syncGameAchievements", () => {
         gamerscore: 10,
         globalPercentage: null,
       },
-    ]);
+      ],
+    });
 
     const tx = makeMockTx();
     tx.returning = vi
@@ -330,6 +353,7 @@ describe("XboxService.syncGameAchievements", () => {
     );
     // 2 of 3 achieved = 66.666...
     expect(setCall?.[0].completionPercentage).toBeCloseTo(66.67, 1);
+    expect(setHasAchievements).toHaveBeenCalledWith(tx, "game-1", true);
   });
 });
 

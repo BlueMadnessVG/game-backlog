@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
-import { eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import {
   games,
   psnGames,
   psnUserTrophies,
-  steamGames,
   userAchievements,
   userGames,
   xboxGames,
@@ -15,7 +14,8 @@ import {
 import type { DbClient } from "../../../db";
 import type { AdvisoryLockClient } from "../../../lib/locks";
 import { LibraryService } from "../library.services";
-import { SteamService } from "../../steam/steam.services";
+import { PlatformLibrary } from "../../platforms/platform-library";
+import { SteamAdapter } from "../../platforms/steam.adapter";
 import { XboxService } from "../../xbox/xbox.services";
 import { PsnService } from "../../psn/psn.services";
 import { createTestDb, type TestDb } from "../../../tests/test-db";
@@ -47,7 +47,8 @@ type PlatformCase = {
     /** The platform module's own library list. */
     listOwn(userId: string): Promise<{ id: string }[]>;
   };
-  mappingTable: typeof steamGames | typeof xboxGames | typeof psnGames;
+  /** How many rows tie the game to its platform id (the catalog row itself, for Steam). */
+  mappingRows(db: DbClient, gameId: string): Promise<number>;
   countUnlocked(db: DbClient, userId: string): Promise<number>;
 };
 
@@ -62,7 +63,8 @@ const count = async (db: DbClient, table: PgTable, where?: SQL) => {
 const cases: PlatformCase[] = [
   {
     platform: "steam",
-    mappingTable: steamGames,
+    mappingRows: (db, gameId) =>
+      count(db, games, and(eq(games.id, gameId), isNotNull(games.externalId))),
     countUnlocked: (db, userId) =>
       count(db, userAchievements, eq(userAchievements.userId, userId)),
     setup(db, lock) {
@@ -70,7 +72,8 @@ const cases: PlatformCase[] = [
         getPlayerAchievements: vi.fn(),
         getGameSchema: vi.fn(),
       };
-      const service = new SteamService(db, provider as never, lock);
+      const service = new PlatformLibrary(db, new SteamAdapter(provider as never), lock);
+      const reads = new LibraryService(db, {} as never, {} as never);
       return {
         respond(outcome) {
           provider.getPlayerAchievements.mockResolvedValue([
@@ -88,15 +91,17 @@ const cases: PlatformCase[] = [
           );
         },
         lookups: () => provider.getGameSchema.mock.calls.length,
-        syncGame: (u, g) => service.syncGameAchievements(u, g),
-        syncAll: (u, ids) => service.syncAllGameAchievements(u, ids),
-        listOwn: (u) => service.getUserGames(u),
+        syncGame: (u, g) => service.syncAchievements(u, g),
+        syncAll: (u, ids) => service.syncAllAchievements(u, ids),
+        listOwn: async (u) =>
+          (await reads.getUserGames(u, { platform: "steam" })).games,
       };
     },
   },
   {
     platform: "xbox",
-    mappingTable: xboxGames,
+    mappingRows: (db, gameId) =>
+      count(db, xboxGames, eq(xboxGames.gameId, gameId)),
     countUnlocked: (db, userId) =>
       count(db, xboxUserAchievements, eq(xboxUserAchievements.userId, userId)),
     setup(db, lock) {
@@ -124,7 +129,8 @@ const cases: PlatformCase[] = [
   },
   {
     platform: "playstation",
-    mappingTable: psnGames,
+    mappingRows: (db, gameId) =>
+      count(db, psnGames, eq(psnGames.gameId, gameId)),
     countUnlocked: (db, userId) =>
       count(db, psnUserTrophies, eq(psnUserTrophies.userId, userId)),
     setup(db, lock) {
@@ -163,7 +169,7 @@ describe.each(cases)("catalog integrity: $platform", (c) => {
 
   beforeAll(async () => {
     t = await createTestDb();
-    library = new LibraryService(t.db, {} as never, {} as never, {} as never, {} as never);
+    library = new LibraryService(t.db, {} as never, {} as never);
   });
   afterAll(() => t.close());
   beforeEach(() => t.reset());
@@ -187,6 +193,7 @@ describe.each(cases)("catalog integrity: $platform", (c) => {
     await seedAchievements(t.db, {
       userId: bob,
       platform: c.platform,
+      gameId: game.gameId,
       externalId: game.externalId,
       unlocked: 2,
     });
@@ -210,7 +217,7 @@ describe.each(cases)("catalog integrity: $platform", (c) => {
 
     // The catalog row, its platform mapping and BOTH users' ownership survive...
     expect(await count(t.db, games, eq(games.id, gameId))).toBe(1);
-    expect(await count(t.db, c.mappingTable, eq(c.mappingTable.gameId, gameId))).toBe(1);
+    expect(await c.mappingRows(t.db, gameId)).toBe(1);
     expect(await count(t.db, userGames, eq(userGames.gameId, gameId))).toBe(2);
     // ...including Bob's progress and unlocked achievements.
     const bobsGame = (await t.db.select().from(userGames).where(eq(userGames.userId, bob)))[0]!;
@@ -276,5 +283,117 @@ describe.each(cases)("catalog integrity: $platform", (c) => {
     expect(platform.lookups()).toBe(1);
     expect(await flag(fresh.gameId)).toBe(true);
     expect(await flag(known.gameId)).toBe(false);
+  });
+});
+
+// Two owned games with the same title on one platform (PSN: the PS4 and PS5
+// versions of a game; Steam: two apps sharing a name). The catalog is keyed
+// by (title, platform), and Postgres rejects an upsert that hits the same key
+// twice in one statement — which used to fail the user's whole library sync.
+describe("library sync: two owned games with the same title", () => {
+  let t: TestDb;
+
+  beforeAll(async () => {
+    t = await createTestDb();
+  });
+  afterAll(() => t.close());
+  beforeEach(() => t.reset());
+
+  const progressOf = async (userId: string) =>
+    t.db
+      .select({
+        title: games.title,
+        playTime: userGames.playTime,
+        completionPercentage: userGames.completionPercentage,
+      })
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .where(eq(userGames.userId, userId));
+
+  it("steam: syncs, keeping the version with the most play time", async () => {
+    const alice = await seedUser(t.db, "alice");
+    const app = (steamAppId: string, playtimeMinutes: number) => ({
+      steamAppId,
+      name: "Doom",
+      playtimeMinutes,
+      iconUrl: null,
+      coverUrl: null,
+      lastPlayedAt: null,
+    });
+    const service = new PlatformLibrary(
+      t.db,
+      new SteamAdapter({
+        getOwnedGames: async () => [app("2280", 30), app("379720", 900)],
+      } as never),
+      noopLock,
+    );
+
+    await service.syncGames(alice);
+
+    expect(await progressOf(alice)).toEqual([
+      { title: "Doom", playTime: 900, completionPercentage: 0 },
+    ]);
+    const [kept] = await t.db.select().from(games);
+    expect(kept?.externalId).toBe("379720");
+  });
+
+  it("psn: syncs, keeping the version with the most progress", async () => {
+    const alice = await seedUser(t.db, "alice");
+    const version = (npCommunicationId: string, platform: string, completionPercentage: number) => ({
+      npCommunicationId,
+      name: "Ghost of Tsushima",
+      iconUrl: null,
+      trophyTitlePlatform: platform,
+      npServiceName: platform === "PS5" ? ("trophy2" as const) : ("trophy" as const),
+      completionPercentage,
+      platinumEarned: false,
+      lastUpdatedDateTime: null,
+    });
+    const service = new PsnService(
+      t.db,
+      {
+        getOwnedGames: async () => [
+          version("NPWR_PS4", "PS4", 15),
+          version("NPWR_PS5", "PS5", 60),
+        ],
+      } as never,
+      noopLock,
+    );
+
+    await service.syncUserGames(alice);
+
+    expect(await progressOf(alice)).toEqual([
+      { title: "Ghost of Tsushima", playTime: 0, completionPercentage: 60 },
+    ]);
+    const [mapping] = await t.db.select().from(psnGames);
+    expect(mapping?.npCommunicationId).toBe("NPWR_PS5");
+  });
+
+  it("xbox: syncs, keeping the most recently played version", async () => {
+    const alice = await seedUser(t.db, "alice");
+    const title = (titleId: string, lastPlayedAt: Date) => ({
+      titleId,
+      name: "Forza Horizon 5",
+      coverUrl: null,
+      lastPlayedAt,
+      completionPercentage: 20,
+    });
+    const service = new XboxService(
+      t.db,
+      {
+        getOwnedGames: async () => [
+          title("old-id", new Date("2025-01-01")),
+          title("new-id", new Date("2026-01-01")),
+        ],
+        getPlaytimeMinutes: async () => new Map([["new-id", 45]]),
+      } as never,
+      noopLock,
+    );
+
+    await service.syncUserGames(alice, "xuid");
+
+    expect(await progressOf(alice)).toEqual([
+      { title: "Forza Horizon 5", playTime: 45, completionPercentage: 20 },
+    ]);
   });
 });

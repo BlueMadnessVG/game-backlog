@@ -1,11 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { deriveGameStatus } from "../game.utils";
 
-const NOW = new Date();
+const NOW = new Date("2026-06-15T12:00:00.000Z");
 const daysAgo = (n: number) =>
   new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
 
 describe("deriveGameStatus", () => {
+  // deriveGameStatus reads the clock when it is called. Without a frozen
+  // clock, "exactly 30 days ago" is 30.000001 days by the time it runs, which
+  // is past the inclusive 30-day boundary.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   describe("completed", () => {
     it("return completed when completionPercentage is 100 with achievements", () => {
       expect(

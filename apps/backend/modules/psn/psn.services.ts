@@ -352,15 +352,18 @@ export class PsnService {
   }
 
   /**
-   * Fetches the user's full owned-games list from PSN, deduplicates by
-   * `npCommunicationId`, and upserts the shared game catalog, PSN
+   * Fetches the user's full owned-games list from PSN, collapses entries
+   * that share a title, and upserts the shared game catalog, PSN
    * identifiers, and per-user ownership rows inside a single transaction.
    *
    * @remarks
-   * Deduplication uses `npCommunicationId` rather than title, preventing
-   * two genuinely different games that share a name from collapsing. The
-   * catalog upsert itself still matches on `(title, platform)`, which is
-   * the same limitation present across all platform providers.
+   * The catalog is keyed on `(title, platform)`, and Postgres rejects an
+   * upsert that hits the same key twice in one statement — which would fail
+   * the user's whole sync. PSN lists the PS4 and PS5 versions of a game as
+   * separate titles with the same name, so entries are collapsed by title,
+   * keeping the version with the most trophy progress (ties: the most
+   * recently updated). Only that version's trophies are tracked until the
+   * catalog gets per-version identity.
    *
    * `playTime` is always set to `0` because the PSN API does not expose
    * raw playtime; only trophy-sync recency is available.
@@ -380,16 +383,20 @@ export class PsnService {
     const titleList = await this.provider.getOwnedGames(accessToken);
     if (!titleList.length) return [];
 
+    const updatedAt = (title: (typeof titleList)[number]) =>
+      title.lastUpdatedDateTime ? Date.parse(title.lastUpdatedDateTime) : 0;
+
     const deduplicated = Array.from(
       titleList
         .reduce((map, title) => {
-          const existing = map.get(title.npCommunicationId);
-          if (!existing) {
-            map.set(title.npCommunicationId, title);
-          } else if (
-            title.completionPercentage > existing.completionPercentage
+          const existing = map.get(title.name);
+          if (
+            !existing ||
+            title.completionPercentage > existing.completionPercentage ||
+            (title.completionPercentage === existing.completionPercentage &&
+              updatedAt(title) > updatedAt(existing))
           ) {
-            map.set(title.npCommunicationId, title);
+            map.set(title.name, title);
           }
           return map;
         }, new Map<string, (typeof titleList)[number]>())

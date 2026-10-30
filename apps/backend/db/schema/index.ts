@@ -1,5 +1,6 @@
 export * from "./core";
 export * from "./steam";
+export * from "./achievements";
 export * from "./xbox";
 export * from "./psn";
 export * from "./user-games";

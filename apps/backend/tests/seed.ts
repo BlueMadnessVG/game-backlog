@@ -8,7 +8,6 @@ import {
   psnTrophies,
   psnUserTrophies,
   steamAccounts,
-  steamGames,
   userAchievements,
   userGames,
   users,
@@ -64,13 +63,17 @@ export async function seedCatalogGame(
   const externalId = opts.externalId ?? `ext-${unique()}`;
   const [game] = await db
     .insert(games)
-    .values({ title: opts.title, platform: opts.platform })
+    .values({
+      title: opts.title,
+      platform: opts.platform,
+      // Steam is on the platform engine: its id lives on the catalog row.
+      // Xbox and PSN still keep theirs in a mapping table.
+      externalId: opts.platform === "steam" ? externalId : null,
+    })
     .returning({ id: games.id });
   const gameId = game!.id;
 
-  if (opts.platform === "steam") {
-    await db.insert(steamGames).values({ gameId, steamAppId: externalId });
-  } else if (opts.platform === "xbox") {
+  if (opts.platform === "xbox") {
     await db.insert(xboxGames).values({ gameId, titleId: externalId });
   } else {
     await db
@@ -136,12 +139,13 @@ export async function seedAchievements(
   opts: {
     userId: string;
     platform: Platform;
+    gameId: string;
     externalId: string;
     unlocked: number;
     locked?: number;
   },
 ): Promise<void> {
-  const { userId, platform, externalId } = opts;
+  const { userId, platform, gameId, externalId } = opts;
   const total = opts.unlocked + (opts.locked ?? 0);
 
   for (let i = 0; i < total; i++) {
@@ -151,15 +155,15 @@ export async function seedAchievements(
     if (platform === "steam") {
       await db
         .insert(achievements)
-        .values({ steamAppId: externalId, apiName, name: `Ach ${i}` })
+        .values({ gameId, externalKey: apiName, name: `Ach ${i}` })
         .onConflictDoNothing();
       const [def] = await db
         .select({ id: achievements.id })
         .from(achievements)
         .where(
           and(
-            eq(achievements.steamAppId, externalId),
-            eq(achievements.apiName, apiName),
+            eq(achievements.gameId, gameId),
+            eq(achievements.externalKey, apiName),
           ),
         );
       await db

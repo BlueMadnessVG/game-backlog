@@ -1,5 +1,5 @@
 {
-  "id": "4be477b4-baa4-49f9-832c-bbb2d72479a9",
+  "id": "949db6fe-9733-40c7-9e5a-f614118fbb36",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -28,6 +28,18 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'steam'"
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "icon_url": {
           "name": "icon_url",
@@ -80,6 +92,27 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "games_platform_external_id_idx": {
+          "name": "games_platform_external_id_idx",
+          "columns": [
+            {
+              "expression": "platform",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -193,114 +226,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.achievements": {
-      "name": "achievements",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "steam_app_id": {
-          "name": "steam_app_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "api_name": {
-          "name": "api_name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hidden": {
-          "name": "hidden",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "icon_url": {
-          "name": "icon_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "icon_gray_url": {
-          "name": "icon_gray_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "global_percentage": {
-          "name": "global_percentage",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "achievement_steam_app_id_idx": {
-          "name": "achievement_steam_app_id_idx",
-          "columns": [
-            {
-              "expression": "steam_app_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "app_achievement_unique": {
-          "name": "app_achievement_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "steam_app_id",
-            "api_name"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.steam_accounts": {
       "name": "steam_accounts",
       "schema": "",
@@ -377,28 +302,114 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.steam_games": {
-      "name": "steam_games",
+    "public.achievements": {
+      "name": "achievements",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "game_id": {
           "name": "game_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
-        "steam_app_id": {
-          "name": "steam_app_id",
+        "external_key": {
+          "name": "external_key",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hidden": {
+          "name": "hidden",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "icon_url": {
+          "name": "icon_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "icon_gray_url": {
+          "name": "icon_gray_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "global_percentage": {
+          "name": "global_percentage",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "points": {
+          "name": "points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tier": {
+          "name": "tier",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "achievement_game_id_idx": {
+          "name": "achievement_game_id_idx",
+          "columns": [
+            {
+              "expression": "game_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
-        "steam_games_game_id_games_id_fk": {
-          "name": "steam_games_game_id_games_id_fk",
-          "tableFrom": "steam_games",
+        "achievements_game_id_games_id_fk": {
+          "name": "achievements_game_id_games_id_fk",
+          "tableFrom": "achievements",
           "tableTo": "games",
           "columnsFrom": [
             "game_id"
@@ -412,11 +423,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "steam_games_steam_app_id_unique": {
-          "name": "steam_games_steam_app_id_unique",
+        "achievement_game_key_unique": {
+          "name": "achievement_game_key_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "steam_app_id"
+            "game_id",
+            "external_key"
           ]
         }
       },

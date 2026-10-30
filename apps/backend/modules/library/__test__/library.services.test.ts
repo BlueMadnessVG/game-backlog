@@ -17,19 +17,19 @@ import {
 describe("LibraryService", () => {
   let t: TestDb;
   let service: LibraryService;
-  const steamService = { getGameAchievements: vi.fn(), syncGameAchievements: vi.fn() };
-  const xboxService = { getGameAchievements: vi.fn(), syncGameAchievements: vi.fn() };
-  const psnService = { getGameTrophies: vi.fn(), syncGameTrophies: vi.fn() };
+  // What LibraryService dispatches to: one handler per platform.
+  const handler = () => ({ getAchievements: vi.fn(), syncAchievements: vi.fn() });
+  const steam = handler();
+  const xbox = handler();
+  const playstation = handler();
 
   beforeAll(async () => {
     t = await createTestDb();
-    service = new LibraryService(
-      t.db,
-      {} as never,
-      steamService as never,
-      xboxService as never,
-      psnService as never,
-    );
+    service = new LibraryService(t.db, {} as never, {
+      steam,
+      xbox,
+      playstation,
+    } as never);
   });
 
   afterAll(() => t.close());
@@ -292,17 +292,17 @@ describe("LibraryService", () => {
     it("counts only the user's unlocked achievements, on each platform", async () => {
       const alice = await seedUser(t.db, "alice");
       const bob = await seedUser(t.db, "bob");
-      const steam = await seedOwnedGame(t.db, alice, { title: "S", platform: "steam" });
-      const xbox = await seedOwnedGame(t.db, alice, { title: "X", platform: "xbox" });
-      const psn = await seedOwnedGame(t.db, alice, { title: "P", platform: "playstation" });
-      await seedAchievements(t.db, { userId: alice, platform: "steam", externalId: steam.externalId, unlocked: 3, locked: 2 });
-      await seedAchievements(t.db, { userId: alice, platform: "xbox", externalId: xbox.externalId, unlocked: 2, locked: 1 });
-      await seedAchievements(t.db, { userId: alice, platform: "playstation", externalId: psn.externalId, unlocked: 4 });
+      const steamGame = await seedOwnedGame(t.db, alice, { title: "S", platform: "steam" });
+      const xboxGame = await seedOwnedGame(t.db, alice, { title: "X", platform: "xbox" });
+      const psnGame = await seedOwnedGame(t.db, alice, { title: "P", platform: "playstation" });
+      await seedAchievements(t.db, { userId: alice, platform: "steam", ...steamGame, unlocked: 3, locked: 2 });
+      await seedAchievements(t.db, { userId: alice, platform: "xbox", ...xboxGame, unlocked: 2, locked: 1 });
+      await seedAchievements(t.db, { userId: alice, platform: "playstation", ...psnGame, unlocked: 4 });
 
       // Bob shares the same catalog games and unlocks more.
-      for (const [platform, game] of [["steam", steam], ["xbox", xbox], ["playstation", psn]] as const) {
+      for (const [platform, game] of [["steam", steamGame], ["xbox", xboxGame], ["playstation", psnGame]] as const) {
         await seedOwnership(t.db, bob, game.gameId);
-        await seedAchievements(t.db, { userId: bob, platform, externalId: game.externalId, unlocked: 5 });
+        await seedAchievements(t.db, { userId: bob, platform, ...game, unlocked: 5 });
       }
 
       const { breakdown, total } = await service.getStats(alice);
@@ -327,17 +327,17 @@ describe("LibraryService", () => {
   describe("achievement dispatch", () => {
     it("routes an owned game to its platform module", async () => {
       const u = await seedUser(t.db, "alice");
-      const steam = await seedOwnedGame(t.db, u, { title: "S", platform: "steam" });
-      const psn = await seedOwnedGame(t.db, u, { title: "P", platform: "playstation" });
-      steamService.getGameAchievements.mockResolvedValue({ data: [], total: 0, unlocked: 0 });
-      psnService.getGameTrophies.mockResolvedValue({ data: [], total: 0, unlocked: 0 });
+      const steamGame = await seedOwnedGame(t.db, u, { title: "S", platform: "steam" });
+      const psnGame = await seedOwnedGame(t.db, u, { title: "P", platform: "playstation" });
+      steam.getAchievements.mockResolvedValue({ data: [], total: 0, unlocked: 0 });
+      playstation.getAchievements.mockResolvedValue({ data: [], total: 0, unlocked: 0 });
 
-      await service.getGameAchievements(u, steam.gameId);
-      await service.getGameAchievements(u, psn.gameId, { limit: 5 });
+      await service.getGameAchievements(u, steamGame.gameId);
+      await service.getGameAchievements(u, psnGame.gameId, { limit: 5 });
 
-      expect(steamService.getGameAchievements).toHaveBeenCalledWith(u, steam.gameId, {});
-      expect(psnService.getGameTrophies).toHaveBeenCalledWith(u, psn.gameId, { limit: 5 });
-      expect(xboxService.getGameAchievements).not.toHaveBeenCalled();
+      expect(steam.getAchievements).toHaveBeenCalledWith(u, steamGame.gameId, {});
+      expect(playstation.getAchievements).toHaveBeenCalledWith(u, psnGame.gameId, { limit: 5 });
+      expect(xbox.getAchievements).not.toHaveBeenCalled();
     });
 
     it("treats a catalog game the user doesn't own as not found", async () => {
@@ -351,8 +351,8 @@ describe("LibraryService", () => {
       await expect(service.syncGameAchievements(bob, gameId)).rejects.toThrow(
         GameNotFoundError,
       );
-      expect(steamService.getGameAchievements).not.toHaveBeenCalled();
-      expect(steamService.syncGameAchievements).not.toHaveBeenCalled();
+      expect(steam.getAchievements).not.toHaveBeenCalled();
+      expect(steam.syncAchievements).not.toHaveBeenCalled();
     });
 
     it("treats an unknown game id as not found", async () => {

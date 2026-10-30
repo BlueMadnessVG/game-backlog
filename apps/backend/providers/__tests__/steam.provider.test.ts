@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SteamProvider } from "../steam.provider";
+import { ProviderUnavailableError } from "../../lib/provider-error.utils";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -57,17 +58,17 @@ describe("SteamProvider", () => {
       expect(result).toBeNull();
     });
 
-    it("throws on HTTP error", async () => {
+    it("throws ProviderUnavailableError on HTTP error", async () => {
       mockFetch.mockResolvedValue(makeResponse({}, 500));
       await expect(provider.getPlayerSummary("id")).rejects.toThrow(
-        "Steam API error",
+        ProviderUnavailableError,
       );
     });
 
-    it("throws on schema validation failure", async () => {
+    it("throws ProviderUnavailableError on schema validation failure", async () => {
       mockFetch.mockResolvedValue(makeResponse({ unexpected: "shape" }));
       await expect(provider.getPlayerSummary("id")).rejects.toThrow(
-        "Steam API returned an unexpected data format",
+        ProviderUnavailableError,
       );
     });
   });
@@ -87,6 +88,7 @@ describe("SteamProvider", () => {
                 playtime_forever: 200,
                 img_icon_url: "abc",
                 rtime_last_played: 1700000000,
+                has_community_visible_stats: true,
               },
             ],
           },
@@ -100,6 +102,26 @@ describe("SteamProvider", () => {
       expect(result[0]!.playtimeMinutes).toBe(200);
     });
 
+    // Games without community stats can't have achievements, so they are
+    // left out of the library on purpose.
+    it("drops games that have no community-visible stats", async () => {
+      mockFetch.mockResolvedValue(
+        makeResponse({
+          response: {
+            games: [
+              { appid: 1, name: "With", playtime_forever: 1, has_community_visible_stats: true },
+              { appid: 2, name: "Without", playtime_forever: 1, has_community_visible_stats: false },
+              { appid: 3, name: "Unspecified", playtime_forever: 1 },
+            ],
+          },
+        }),
+      );
+
+      const result = await provider.getOwnedGames("steam-id");
+
+      expect(result.map((g) => g.name)).toEqual(["With"]);
+    });
+
     it("returns empty array when games field is missing", async () => {
       mockFetch.mockResolvedValue(makeResponse({ response: {} }));
       const result = await provider.getOwnedGames("steam-id");
@@ -110,7 +132,14 @@ describe("SteamProvider", () => {
       mockFetch.mockResolvedValue(
         makeResponse({
           response: {
-            games: [{ appid: 1, name: "Game", playtime_forever: 0 }],
+            games: [
+              {
+                appid: 1,
+                name: "Game",
+                playtime_forever: 0,
+                has_community_visible_stats: true,
+              },
+            ],
           },
         }),
       );
@@ -118,10 +147,10 @@ describe("SteamProvider", () => {
       expect(result[0]!.iconUrl).toBeNull();
     });
 
-    it("throws on HTTP error", async () => {
+    it("throws ProviderUnavailableError on HTTP error", async () => {
       mockFetch.mockResolvedValue(makeResponse({}, 503));
       await expect(provider.getOwnedGames("id")).rejects.toThrow(
-        "Steam API error",
+        ProviderUnavailableError,
       );
     });
   });

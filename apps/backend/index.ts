@@ -7,8 +7,14 @@ import { corsMiddleware } from "./middleware/cors.middleware";
 
 import { db } from "./db";
 import { SteamProvider } from "./providers/steam.provider";
-import { SteamService } from "./modules/steam/steam.services";
-import { createSteamController } from "./modules/steam/steam.controller";
+import { SteamAdapter } from "./modules/platforms/steam.adapter";
+import {
+  PlatformLibrary,
+  type AchievementPage,
+  type AchievementQuery,
+  type PlatformAchievements,
+} from "./modules/platforms/platform-library";
+import { createPlatformController } from "./modules/platforms/platform.controller";
 import { XboxProvider } from "./providers/xbox.provider";
 import { XboxService } from "./modules/xbox/xbox.services";
 import { createXboxController } from "./modules/xbox/xbox.controller";
@@ -29,7 +35,7 @@ import { createAuthController } from "./modules/auth/auth.controller";
  * We initialize the entire tree here. This makes testing easy.
  */
 const steamProvider = new SteamProvider(process.env.STEAM_API_KEY!);
-const steamService = new SteamService(db, steamProvider);
+const steamLibrary = new PlatformLibrary(db, new SteamAdapter(steamProvider));
 
 const xboxProvider = new XboxProvider(process.env.OPENXBL_API_KEY!);
 const xboxService = new XboxService(db, xboxProvider);
@@ -42,13 +48,27 @@ const igdbProvider = new IgdbProvider(
   process.env.IGDB_CLIENT_SECRET!,
 );
 
-const libraryService = new LibraryService(
-  db,
-  igdbProvider,
-  steamService,
-  xboxService,
-  psnService,
-);
+// TEMPORARY: Xbox and PSN still have their own modules. Each wrapper goes
+// away when that platform moves onto the platform engine.
+const legacyPlatform = (
+  read: (u: string, g: string, q?: AchievementQuery) => Promise<AchievementPage>,
+  sync: (u: string, g: string) => Promise<unknown[]>,
+): PlatformAchievements => ({
+  getAchievements: read,
+  syncAchievements: async (u, g) => ({ synced: (await sync(u, g)).length }),
+});
+
+const libraryService = new LibraryService(db, igdbProvider, {
+  steam: steamLibrary,
+  xbox: legacyPlatform(
+    (u, g, q) => xboxService.getGameAchievements(u, g, q),
+    (u, g) => xboxService.syncGameAchievements(u, g),
+  ),
+  playstation: legacyPlatform(
+    (u, g, q) => psnService.getGameTrophies(u, g, q),
+    (u, g) => psnService.syncGameTrophies(u, g),
+  ),
+});
 
 const googleProvider = new GoogleOAuthProvider(
   process.env.GOOGLE_CLIENT_ID!,
@@ -105,7 +125,14 @@ app.get("/health", (c) => {
  */
 const apiV1 = new Hono();
 
-apiV1.route("/steam", createSteamController(steamService, authService));
+apiV1.route(
+  "/steam",
+  createPlatformController({
+    library: steamLibrary,
+    libraryService,
+    authService,
+  }),
+);
 apiV1.route(
   "/xbox",
   createXboxController(xboxService, libraryService, authService),

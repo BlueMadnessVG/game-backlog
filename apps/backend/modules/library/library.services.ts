@@ -1,50 +1,40 @@
 import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import {
+  achievements,
   games,
   userAchievements,
   psnGames,
   psnUserTrophies,
-  steamGames,
   userGames,
   xboxGames,
   xboxUserAchievements,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
-import type {
-  Achievement,
-  AchievementFilter,
-  AchievementSort,
-  Game,
-  PlatformStats,
-  Stats,
-} from "@repo/shared";
+import type { Game, PlatformStats, Stats } from "@repo/shared";
 import { IgdbProvider } from "../../providers/igdb.provider";
 import { isVisibleInLibrary } from "../../lib/game-catalog";
-import type { SteamService } from "../steam/steam.services";
-import type { PsnService } from "../psn/psn.services";
-import type { XboxService } from "../xbox/xbox.services";
+import { GameNotFoundError } from "../platforms/errors";
+import type { PlatformKey } from "../platforms/platform-adapter";
+import type {
+  AchievementPage,
+  AchievementQuery,
+  PlatformAchievements,
+} from "../platforms/platform-library";
+
+export { GameNotFoundError };
 
 const IGDB_BATCH_SIZE = 4;
 const IGDB_DELAY_MS = 1100;
 
-export class GameNotFoundError extends Error {
-  constructor(gameId: string) {
-    super(`Game not found: ${gameId}`);
-    this.name = "GameNotFoundError";
-  }
-}
-
 export type GameLibraryFilter = {
   id?: string;
   title?: string;
-  platform?: "steam" | "xbox" | "playstation";
+  platform?: PlatformKey;
   status?: "backlog" | "in-progress" | "completed" | "retired";
 };
 
 export type LibraryPage = { limit: number; offset: number };
-
-type PlatformKey = "steam" | "xbox" | "playstation";
 
 const EMPTY_PLATFORM_STATS: PlatformStats = {
   games: 0,
@@ -71,9 +61,8 @@ export class LibraryService {
   constructor(
     private readonly db: DbClient,
     private readonly igdbProvider: IgdbProvider,
-    private readonly steamService: SteamService,
-    private readonly xboxService: XboxService,
-    private readonly psnService: PsnService,
+    /** Who serves achievements for each platform's games. */
+    private readonly platforms: Record<PlatformKey, PlatformAchievements>,
     private readonly lock?: AdvisoryLockClient,
   ) {}
 
@@ -117,12 +106,13 @@ export class LibraryService {
         updatedAt: userGames.updatedAt,
         // A game maps to exactly one platform table (each has gameId as its
         // primary key), so at most one of these is non-null.
-        externalId: sql<string>`coalesce(${steamGames.steamAppId}, ${xboxGames.titleId}, ${psnGames.npCommunicationId}, '')`,
+        // games.external_id is the platform's own id; Xbox and PSN still keep
+        // theirs in a mapping table until they move onto the platform engine.
+        externalId: sql<string>`coalesce(${games.externalId}, ${xboxGames.titleId}, ${psnGames.npCommunicationId}, '')`,
         total: sql<number>`(count(*) over())::int`,
       })
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
-      .leftJoin(steamGames, eq(steamGames.gameId, games.id))
       .leftJoin(xboxGames, eq(xboxGames.gameId, games.id))
       .leftJoin(psnGames, eq(psnGames.gameId, games.id))
       .where(where)
@@ -256,16 +246,24 @@ export class LibraryService {
   private async getAchievementCountsByPlatform(
     userId: string,
   ): Promise<Record<PlatformKey, number>> {
-    const [[steam], [xbox], [playstation]] = await Promise.all([
+    const [unified, [xbox], [playstation]] = await Promise.all([
       this.db
-        .select({ n: sql<number>`count(*)::int` })
+        .select({ platform: games.platform, n: sql<number>`count(*)::int` })
         .from(userAchievements)
+        .innerJoin(
+          achievements,
+          eq(achievements.id, userAchievements.achievementId),
+        )
+        .innerJoin(games, eq(games.id, achievements.gameId))
         .where(
           and(
             eq(userAchievements.userId, userId),
             eq(userAchievements.achieved, true),
           ),
-        ),
+        )
+        .groupBy(games.platform),
+      // Xbox and PSN still keep theirs in their own tables until they move
+      // onto the platform engine.
       this.db
         .select({ n: sql<number>`count(*)::int` })
         .from(xboxUserAchievements)
@@ -286,10 +284,13 @@ export class LibraryService {
         ),
     ]);
 
+    const unifiedFor = (key: PlatformKey) =>
+      unified.find((row) => row.platform === key)?.n ?? 0;
+
     return {
-      steam: steam?.n ?? 0,
-      xbox: xbox?.n ?? 0,
-      playstation: playstation?.n ?? 0,
+      steam: unifiedFor("steam"),
+      xbox: unifiedFor("xbox") + (xbox?.n ?? 0),
+      playstation: unifiedFor("playstation") + (playstation?.n ?? 0),
     };
   }
 
@@ -388,59 +389,35 @@ export class LibraryService {
     return (row?.platform as Game["platform"] | undefined) ?? null;
   }
 
-  async getGameAchievements(
+  /** The handler for a game in the user's library, or a 404 if it isn't in it. */
+  private async platformFor(
     userId: string,
     gameId: string,
-    options: {
-      filter?: AchievementFilter;
-      sort?: AchievementSort;
-      limit?: number;
-      offset?: number;
-    } = {},
-  ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
+  ): Promise<PlatformAchievements> {
     const platform = await this.getGamePlatform(userId, gameId);
     if (!platform) throw new GameNotFoundError(gameId);
 
-    switch (platform) {
-      case "steam":
-        return this.steamService.getGameAchievements(userId, gameId, options);
-      case "xbox":
-        return this.xboxService.getGameAchievements(userId, gameId, options);
-      case "playstation":
-        return this.psnService.getGameTrophies(userId, gameId, options);
-      default:
-        throw new Error(`Unsupported platform for achievements: ${platform}`);
+    const handler = this.platforms[platform as PlatformKey];
+    if (!handler) {
+      throw new Error(`Unsupported platform for achievements: ${platform}`);
     }
+    return handler;
+  }
+
+  async getGameAchievements(
+    userId: string,
+    gameId: string,
+    options: AchievementQuery = {},
+  ): Promise<AchievementPage> {
+    const handler = await this.platformFor(userId, gameId);
+    return handler.getAchievements(userId, gameId, options);
   }
 
   async syncGameAchievements(
     userId: string,
     gameId: string,
   ): Promise<{ synced: number }> {
-    const platform = await this.getGamePlatform(userId, gameId);
-    if (!platform) throw new GameNotFoundError(gameId);
-
-    switch (platform) {
-      case "steam": {
-        const result = await this.steamService.syncGameAchievements(
-          userId,
-          gameId,
-        );
-        return { synced: result.length };
-      }
-      case "xbox": {
-        const result = await this.xboxService.syncGameAchievements(
-          userId,
-          gameId,
-        );
-        return { synced: result.length };
-      }
-      case "playstation": {
-        const result = await this.psnService.syncGameTrophies(userId, gameId);
-        return { synced: result.length };
-      }
-      default:
-        throw new Error(`Unsupported platform for achievements: ${platform}`);
-    }
+    const handler = await this.platformFor(userId, gameId);
+    return handler.syncAchievements(userId, gameId);
   }
 }

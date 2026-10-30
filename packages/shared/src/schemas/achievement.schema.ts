@@ -39,7 +39,7 @@ export const AchievementSchema = v.object({
 
   // Player state
   achieved: v.boolean(),
-  unlockedAt: v.nullable(v.pipe(v.string(), v.isoDateTime())),
+  unlockedAt: v.nullable(v.pipe(v.string(), v.isoTimestamp())),
 
   // Global rarity — null if Steam doesn't provide it
   globalPercentage: v.nullable(
@@ -47,8 +47,8 @@ export const AchievementSchema = v.object({
   ),
 
   // Sync dates
-  addedAt: v.pipe(v.string(), v.isoDateTime()),
-  updatedAt: v.pipe(v.string(), v.isoDateTime()),
+  addedAt: v.pipe(v.string(), v.isoTimestamp()),
+  updatedAt: v.pipe(v.string(), v.isoTimestamp()),
 });
 
 /**

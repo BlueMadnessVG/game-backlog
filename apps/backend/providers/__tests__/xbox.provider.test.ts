@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { XboxProvider } from "../xbox.provider";
+import { ProviderUnavailableError } from "../../lib/provider-error.utils";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -76,10 +77,10 @@ describe("XboxProvider", () => {
       );
     });
 
-    it("throws on schema validation failure", async () => {
+    it("throws ProviderUnavailableError on schema validation failure", async () => {
       mockFetch.mockResolvedValue(makeResponse({ unexpected: "shape" }));
       await expect(provider.getPlayerProfile("id")).rejects.toThrow(
-        "OpenXBL API returned unexpected profile format",
+        ProviderUnavailableError,
       );
     });
   });
@@ -96,7 +97,7 @@ describe("XboxProvider", () => {
                 titleId: "tid-1",
                 name: "Halo Infinite",
                 displayImage: "https://example.com/halo.jpg",
-                achievement: { progressPercentage: 75 },
+                achievement: { totalAchievements: 40, progressPercentage: 75 },
                 titleHistory: { lastTimePlayed: "2026-06-01T00:00:00Z" },
               },
             ],
@@ -118,6 +119,27 @@ describe("XboxProvider", () => {
       expect(result).toEqual([]);
     });
 
+    // Titles with no achievements can't be tracked, so they are left out of
+    // the library on purpose.
+    it("drops titles that define no achievements", async () => {
+      mockFetch.mockResolvedValue(
+        makeResponse({
+          content: {
+            titles: [
+              { titleId: "with", name: "With", achievement: { totalAchievements: 12 } },
+              { titleId: "zero", name: "Zero", achievement: { totalAchievements: 0 } },
+              { titleId: "none", name: "None" },
+            ],
+          },
+          code: 200,
+        }),
+      );
+
+      const result = await provider.getOwnedGames("xuid");
+
+      expect(result.map((t) => t.titleId)).toEqual(["with"]);
+    });
+
     it("handles null lastTimePlayed gracefully", async () => {
       mockFetch.mockResolvedValue(
         makeResponse({
@@ -126,6 +148,7 @@ describe("XboxProvider", () => {
               {
                 titleId: "tid-1",
                 name: "Game",
+                achievement: { totalAchievements: 1 },
                 titleHistory: { lastTimePlayed: "" },
               },
             ],
@@ -203,6 +226,16 @@ describe("XboxProvider", () => {
   // ── getPlayerAchievements ─────────────────────────────────────────────────
 
   describe("getPlayerAchievements", () => {
+    // The result is a { status } union; this narrows it to the ok case.
+    const okAchievements = (
+      r: Awaited<ReturnType<XboxProvider["getPlayerAchievements"]>>,
+    ) => {
+      if (r.status !== "ok") {
+        throw new Error(`expected status "ok", got "${r.status}"`);
+      }
+      return r.achievements;
+    };
+
     it("returns normalized achievements", async () => {
       mockFetch.mockResolvedValue(
         makeResponse({
@@ -231,20 +264,47 @@ describe("XboxProvider", () => {
         }),
       );
 
-      const result = await provider.getPlayerAchievements("xuid", "tid-1");
-      expect(result).toHaveLength(1);
-      expect(result![0]!.achieved).toBe(true);
-      expect(result![0]!.gamerscore).toBe(10);
-      expect(result![0]!.iconUrl).toBe("https://example.com/icon.png");
-      expect(result![0]!.globalPercentage).toBe(45.5);
+      const achievements = okAchievements(
+        await provider.getPlayerAchievements("xuid", "tid-1"),
+      );
+      expect(achievements).toHaveLength(1);
+      expect(achievements[0]!.achieved).toBe(true);
+      expect(achievements[0]!.gamerscore).toBe(10);
+      expect(achievements[0]!.iconUrl).toBe("https://example.com/icon.png");
+      expect(achievements[0]!.globalPercentage).toBe(45.5);
     });
 
-    it("returns null for empty achievements array", async () => {
+    it("reports 'empty' when the title genuinely has no achievements", async () => {
       mockFetch.mockResolvedValue(
         makeResponse({ content: { achievements: [] }, code: 200 }),
       );
       const result = await provider.getPlayerAchievements("xuid", "tid-1");
-      expect(result).toBeNull();
+      expect(result).toEqual({ status: "empty" });
+    });
+
+    // An empty list next to a non-zero record count means the response was
+    // truncated, not that the game has none — so it must not read as 'empty'.
+    it("reports 'error', not 'empty', when the list is empty but totalRecords > 0", async () => {
+      mockFetch.mockResolvedValue(
+        makeResponse({
+          content: { achievements: [], pagingInfo: { totalRecords: 37 } },
+          code: 200,
+        }),
+      );
+      const result = await provider.getPlayerAchievements("xuid", "tid-1");
+      expect(result).toEqual({ status: "error" });
+    });
+
+    it("reports 'error' when the request fails", async () => {
+      mockFetch.mockResolvedValue(makeResponse({}, 500));
+      const result = await provider.getPlayerAchievements("xuid", "tid-1");
+      expect(result).toEqual({ status: "error" });
+    });
+
+    it("reports 'error' when the payload doesn't match the schema", async () => {
+      mockFetch.mockResolvedValue(makeResponse({ unexpected: "shape" }));
+      const result = await provider.getPlayerAchievements("xuid", "tid-1");
+      expect(result).toEqual({ status: "error" });
     });
 
     it("marks achievement as not achieved when timeUnlocked is empty string", async () => {
@@ -266,9 +326,11 @@ describe("XboxProvider", () => {
         }),
       );
 
-      const result = await provider.getPlayerAchievements("xuid", "tid-1");
-      expect(result![0]!.achieved).toBe(false);
-      expect(result![0]!.unlockedAt).toBeNull();
+      const achievements = okAchievements(
+        await provider.getPlayerAchievements("xuid", "tid-1"),
+      );
+      expect(achievements[0]!.achieved).toBe(false);
+      expect(achievements[0]!.unlockedAt).toBeNull();
     });
 
     it("handles null mediaAsset without throwing", async () => {
@@ -288,8 +350,10 @@ describe("XboxProvider", () => {
         }),
       );
 
-      const result = await provider.getPlayerAchievements("xuid", "tid-1");
-      expect(result![0]!.iconUrl).toBeNull();
+      const achievements = okAchievements(
+        await provider.getPlayerAchievements("xuid", "tid-1"),
+      );
+      expect(achievements[0]!.iconUrl).toBeNull();
     });
   });
 });
