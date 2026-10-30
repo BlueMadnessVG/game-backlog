@@ -15,6 +15,8 @@ type Bindings = {
   };
 };
 
+const MAX_PAGE_SIZE = 100;
+
 const VALID_PLATFORMS = ["steam", "xbox", "playstation"] as const;
 const VALID_STATUSES = [
   "backlog",
@@ -120,8 +122,8 @@ export const createLibraryController = (
   app.get("/games", async (c) => {
     const userId = c.get("userId");
 
-    const limit = Number(c.req.query("limit")) || 50;
-    const offset = Number(c.req.query("offset")) || 0;
+    const limit = Math.min(Number(c.req.query("limit")) || 50, MAX_PAGE_SIZE);
+    const offset = Math.max(Number(c.req.query("offset")) || 0, 0);
 
     const { filter, error } = parseGameFilter({
       id: c.req.query("id"),
@@ -135,18 +137,17 @@ export const createLibraryController = (
     }
 
     try {
-      const library = await libraryService.getUserGames(userId, filter);
-      const paginatedLibrary = library.slice(offset, offset + limit);
+      const { games, total } = await libraryService.getUserGames(
+        userId,
+        filter,
+        { limit, offset },
+      );
 
       return c.json(
         {
           status: "SUCCESS",
-          meta: {
-            total: library.length,
-            limit,
-            offset,
-          },
-          data: paginatedLibrary,
+          meta: { total, limit, offset },
+          data: games,
         },
         200,
       );

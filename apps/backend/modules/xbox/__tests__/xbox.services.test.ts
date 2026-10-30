@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { XboxService } from "../xbox.services";
 import type { AdvisoryLockClient } from "../../../lib/locks";
 
+// The catalog rules are covered against a real database in
+// library/__test__/catalog-integrity.test.ts; here the service just has to
+// call them. isVisibleInLibrary stays real (it's a SQL fragment).
+vi.mock("../../../lib/game-catalog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../lib/game-catalog")>()),
+  setHasAchievements: vi.fn(),
+  withoutKnownNoAchievementGames: vi.fn(async (_db: unknown, ids: string[]) => ids),
+}));
+
 const makeMockLock: () => AdvisoryLockClient = () => ({
   tryAcquire: vi.fn(async () => true),
   release: vi.fn(async () => undefined),

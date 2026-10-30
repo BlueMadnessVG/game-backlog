@@ -18,7 +18,11 @@ import type {
   Game,
 } from "@repo/shared";
 import { deriveGameStatus } from "./steam.utils";
-import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
+import {
+  isVisibleInLibrary,
+  setHasAchievements,
+  withoutKnownNoAchievementGames,
+} from "../../lib/game-catalog";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 /**
@@ -138,7 +142,7 @@ export class SteamService {
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
       .innerJoin(steamGames, eq(steamGames.gameId, games.id))
-      .where(eq(userGames.userId, userId))
+      .where(and(eq(userGames.userId, userId), isVisibleInLibrary))
       .orderBy(desc(userGames.playTime));
 
     return rows.map((row) => this.mapRowToGame(row));
@@ -180,7 +184,13 @@ export class SteamService {
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
       .innerJoin(steamGames, eq(steamGames.gameId, games.id))
-      .where(and(eq(userGames.userId, userId), eq(userGames.gameId, gameId)))
+      .where(
+        and(
+          eq(userGames.userId, userId),
+          eq(userGames.gameId, gameId),
+          isVisibleInLibrary,
+        ),
+      )
       .limit(1);
 
     if (!row) return null;
@@ -355,6 +365,9 @@ export class SteamService {
    * millisecond pause. Individual failures are logged and skipped — the
    * remaining games continue syncing.
    *
+   * Games already known to have no achievements are skipped without calling
+   * Steam; syncing a single game explicitly always re-checks it.
+   *
    * @param localUserId - Internal user identifier.
    * @param gameIds - Array of game UUIDs to sync achievements for.
    *
@@ -374,8 +387,10 @@ export class SteamService {
         const BATCH_SIZE = 5;
         const DELAY_MS = 200;
 
-        for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
-          const batch = gameIds.slice(i, i + BATCH_SIZE);
+        const toSync = await withoutKnownNoAchievementGames(this.db, gameIds);
+
+        for (let i = 0; i < toSync.length; i += BATCH_SIZE) {
+          const batch = toSync.slice(i, i + BATCH_SIZE);
 
           await Promise.allSettled(
             batch.map((gameId) =>
@@ -388,7 +403,7 @@ export class SteamService {
             ),
           );
 
-          if (i + BATCH_SIZE < gameIds.length) {
+          if (i + BATCH_SIZE < toSync.length) {
             await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
           }
         }
@@ -406,9 +421,10 @@ export class SteamService {
    * the Steam API. If the user does not own the game, a
    * {@link SteamGameNotFoundError} is thrown.
    *
-   * When the Steam API reports zero achievement definitions for a game the
-   * game is removed from the shared catalog via
-   * {@link deleteGameAndRelations}.
+   * When Steam reports zero achievement definitions for a game, the shared
+   * catalog row is flagged `hasAchievements = false` (hiding it from library
+   * reads) — never deleted, because other users may own it. A failed request
+   * is not "zero definitions": it changes nothing.
    *
    * After syncing, the user's `completionPercentage` and derived `status`
    * are recalculated and persisted.
@@ -447,22 +463,28 @@ export class SteamService {
       throw new SteamGameNotFoundError(gameId, localUserId);
     }
 
-    const [playerAchievements, schemaMap] = await Promise.all([
+    const [playerAchievements, schemaResult] = await Promise.all([
       this.provider.getPlayerAchievements(row.steamId, row.steamAppId),
       this.provider.getGameSchema(row.steamAppId),
     ]);
 
-    if (schemaMap.size === 0) {
+    if (schemaResult.status === "error") return [];
+
+    if (schemaResult.status === "empty") {
       console.debug(
-        `[SteamService] Game ${gameId} (appId ${row.steamAppId}) has no achievement definitions — removing from library`,
+        `[SteamService] Game ${gameId} (appId ${row.steamAppId}) has no achievement definitions — hiding from library`,
       );
-      await deleteGameAndRelations(this.db, gameId);
+      await setHasAchievements(this.db, gameId, false);
       return [];
     }
+
+    const schemaMap = schemaResult.schema;
 
     if (!playerAchievements) return [];
 
     return await this.db.transaction(async (tx) => {
+      await setHasAchievements(tx, gameId, true);
+
       const achievementValues = playerAchievements.map((a) => {
         const meta = schemaMap.get(a.apiName);
         return {

@@ -2,9 +2,8 @@ import {
   pgTable,
   uuid,
   text,
-  integer,
+  boolean,
   timestamp,
-  real,
   pgEnum,
   index,
   uniqueIndex,
@@ -66,13 +65,18 @@ export const games = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     title: text("title").notNull(),
     platform: platformEnum("platform").default("steam"),
-    status: statusEnum("status").default("backlog"),
     iconUrl: text("icon_url"),
     coverUrl: text("cover_url"),
     bannerUrl: text("banner_url"),
-    playTime: integer("play_time").default(0),
-    completionPercentage: real("completion_percentage").default(0),
-    lastPlayedAt: timestamp("last_played_at"),
+    // Whether the platform lists any achievements/trophies for this game.
+    // A fact about the GAME, so it lives on the shared catalog row:
+    //   null  = not checked yet (shown)
+    //   true  = has achievements (shown)
+    //   false = the platform says it has none (hidden from library reads)
+    // Set by the achievement sync (lib/game-catalog.ts); never by deleting
+    // the row. Per-user progress (status, play time, completion, last
+    // played) lives on user_games, not here.
+    hasAchievements: boolean("has_achievements"),
     ...timestamps,
   },
   (table) => ({

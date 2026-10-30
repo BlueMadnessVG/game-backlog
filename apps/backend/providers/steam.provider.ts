@@ -13,6 +13,20 @@ import {
   ProviderUnavailableError,
 } from "../lib/provider-error.utils";
 
+export type SteamAchievementMeta = {
+  displayName: string;
+  description: string | null;
+  hidden: boolean;
+  iconUrl: string;
+  iconGrayUrl: string;
+  globalPercentage: number | null;
+};
+
+export type GameSchemaResult =
+  | { status: "ok"; schema: Map<string, SteamAchievementMeta> }
+  | { status: "empty" }
+  | { status: "error" };
+
 /**
  * Low-level wrapper around the Steam Web API, handling authentication,
  * player lookups, game-library fetches, achievement retrieval, and schema
@@ -368,24 +382,32 @@ export class SteamProvider {
    * - **Global percentages** (`/GetGlobalAchievementPercentagesForApp/v2/`)
    *   — unauthenticated, returns per-achievement unlock rates.
    *
-   * Both use {@link SteamProvider.safeFetchJson} so a failure in either
-   * is non-fatal; the missing data is simply omitted from the result.
+   * Both use {@link SteamProvider.safeFetchJson}. A failure of the global
+   * percentages is non-fatal (the percentages are simply omitted); a failure
+   * of the schema is reported as `error`, because it must never be mistaken
+   * for "this game has no achievements".
    *
    * @param appId - The Steam application ID to resolve.
-   * @returns A `Map` from API name to an object containing `displayName`,
-   *   `description`, `hidden`, `iconUrl`, `iconGrayUrl`, and
-   *   `globalPercentage`. An empty map is returned when no definitions are
-   *   found.
+   * @returns
+   *   - `{ status: "ok", schema }` — a `Map` from API name to `displayName`,
+   *     `description`, `hidden`, `iconUrl`, `iconGrayUrl` and
+   *     `globalPercentage`.
+   *   - `{ status: "empty" }` — Steam answered and the game defines no
+   *     achievements.
+   *   - `{ status: "error" }` — the request failed or the payload was
+   *     unreadable; nothing is known about the game.
    *
    * @example
    * ```ts
-   * const schema = await steam.getGameSchema("730");
-   * schema.forEach((meta, apiName) => {
-   *   console.log(`${apiName}: ${meta.displayName} (${meta.globalPercentage}%)`);
-   * });
+   * const result = await steam.getGameSchema("730");
+   * if (result.status === "ok") {
+   *   result.schema.forEach((meta, apiName) => {
+   *     console.log(`${apiName}: ${meta.displayName}`);
+   *   });
+   * }
    * ```
    */
-  async getGameSchema(appId: string) {
+  async getGameSchema(appId: string): Promise<GameSchemaResult> {
     const [schemaData, globalData] = await Promise.all([
       this.safeFetchJson(
         this.buildUrl("/ISteamUserStats/GetSchemaForGame/v2/", {
@@ -402,18 +424,30 @@ export class SteamProvider {
       ),
     ]);
 
+    // safeFetchJson returns null on ANY failure (network, 429, 5xx, auth), so
+    // null here means "we don't know", never "the game has none".
+    if (schemaData === null) return { status: "error" };
+
     const schemaResult = v.safeParse(
       SteamAchievementDefinitionsSchema,
       schemaData,
     );
-    const schemaDefs = schemaResult.success
-      ? (schemaResult.output.game.availableGameStats?.achievements ?? [])
-      : [];
+    if (!schemaResult.success) {
+      console.error(
+        `[SteamProvider][getGameSchema] Schema error for ${appId}:`,
+        v.flatten(schemaResult.issues),
+      );
+      return { status: "error" };
+    }
+
+    const schemaDefs =
+      schemaResult.output.game.availableGameStats?.achievements ?? [];
 
     if (schemaDefs.length === 0) {
       console.debug(
         `[SteamProvider] getGameSchema(${appId}) — no achievement definitions found`,
       );
+      return { status: "empty" };
     }
 
     const globalResult = v.safeParse(SteamGlobalAchievementSchema, globalData);
@@ -426,18 +460,21 @@ export class SteamProvider {
         : [],
     );
 
-    return new Map(
-      schemaDefs.map((def) => [
-        def.name,
-        {
-          displayName: def.displayName,
-          description: def.description ?? null,
-          hidden: def.hidden === 1,
-          iconUrl: def.icon,
-          iconGrayUrl: def.icongray,
-          globalPercentage: globalMap.get(def.name) ?? null,
-        },
-      ]),
-    );
+    return {
+      status: "ok",
+      schema: new Map(
+        schemaDefs.map((def) => [
+          def.name,
+          {
+            displayName: def.displayName,
+            description: def.description ?? null,
+            hidden: def.hidden === 1,
+            iconUrl: def.icon,
+            iconGrayUrl: def.icongray,
+            globalPercentage: globalMap.get(def.name) ?? null,
+          },
+        ]),
+      ),
+    };
   }
 }

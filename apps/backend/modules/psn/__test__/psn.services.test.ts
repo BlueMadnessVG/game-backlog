@@ -2,11 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PsnService, PsnGameNotFoundError } from "../psn.services";
 import type { AdvisoryLockClient } from "../../../lib/locks";
 import { decrypt, encrypt } from "../../../lib/Encryption.utils";
-import { deleteGameAndRelations } from "../../../lib/game-deletion.utils";
+import {
+  setHasAchievements,
+  withoutKnownNoAchievementGames,
+} from "../../../lib/game-catalog";
 
-vi.mock("../../../lib/game-deletion.utils", () => ({
-  deleteGameAndRelations: vi.fn(),
-  deleteGamesAndRelations: vi.fn(),
+// The catalog rules are covered against a real database in
+// library/__test__/catalog-integrity.test.ts; here we only check that the
+// service calls them. isVisibleInLibrary stays real (it's a SQL fragment).
+vi.mock("../../../lib/game-catalog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../lib/game-catalog")>()),
+  setHasAchievements: vi.fn(),
+  withoutKnownNoAchievementGames: vi.fn(async (_db: unknown, ids: string[]) => ids),
 }));
 
 // ── Mock factories ────────────────────────────────────────────────────────────
@@ -381,7 +388,7 @@ describe("PsnService.syncUserGames", () => {
 
     const valuesCall = userGameRows(tx);
     expect(valuesCall).toHaveLength(1);
-    expect(valuesCall[0].completionPercentage).toBe(75);
+    expect(valuesCall[0]!.completionPercentage).toBe(75);
   });
 
   it("converts lastUpdatedDateTime to Date for lastPlayedAt", async () => {
@@ -396,7 +403,7 @@ describe("PsnService.syncUserGames", () => {
     await service.syncUserGames("user-1");
 
     const valuesCall = userGameRows(tx);
-    expect(valuesCall[0].lastPlayedAt).toBeInstanceOf(Date);
+    expect(valuesCall[0]!.lastPlayedAt).toBeInstanceOf(Date);
   });
 
   it("sets lastPlayedAt to null when lastUpdatedDateTime is null", async () => {
@@ -411,7 +418,7 @@ describe("PsnService.syncUserGames", () => {
     await service.syncUserGames("user-1");
 
     const valuesCall = userGameRows(tx);
-    expect(valuesCall[0].lastPlayedAt).toBeNull();
+    expect(valuesCall[0]!.lastPlayedAt).toBeNull();
   });
 
   it("always sets playTime to 0 (PSN has no playtime API)", async () => {
@@ -424,7 +431,7 @@ describe("PsnService.syncUserGames", () => {
     await service.syncUserGames("user-1");
 
     const valuesCall = userGameRows(tx);
-    expect(valuesCall[0].playTime).toBe(0);
+    expect(valuesCall[0]!.playTime).toBe(0);
   });
 
   it("derives completed status from platinumEarned", async () => {
@@ -439,7 +446,7 @@ describe("PsnService.syncUserGames", () => {
     await service.syncUserGames("user-1");
 
     const valuesCall = userGameRows(tx);
-    expect(valuesCall[0].status).toBe("completed");
+    expect(valuesCall[0]!.status).toBe("completed");
   });
 });
 
@@ -451,6 +458,7 @@ describe("PsnService.syncGameTrophies", () => {
   let service: PsnService;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     db = makeMockDb();
     provider = makeMockProvider();
     service = new PsnService(db as never, provider as never, makeMockLock());
@@ -476,7 +484,7 @@ describe("PsnService.syncGameTrophies", () => {
 
     const result = await service.syncGameTrophies("user-1", "game-1");
     expect(result).toEqual([]);
-    expect(deleteGameAndRelations).not.toHaveBeenCalled();
+    expect(setHasAchievements).not.toHaveBeenCalled();
   });
 
   it("returns empty array when provider returns empty trophies", async () => {
@@ -491,9 +499,32 @@ describe("PsnService.syncGameTrophies", () => {
 
     const result = await service.syncGameTrophies("user-1", "game-1");
     expect(result).toEqual([]);
-    // Current behavior: a game with zero trophies is removed from the shared
-    // catalog (lib/game-deletion.utils.ts).
-    expect(deleteGameAndRelations).toHaveBeenCalledWith(db, "game-1");
+    // A game with zero trophies is flagged on the shared catalog, never deleted.
+    expect(setHasAchievements).toHaveBeenCalledWith(db, "game-1", false);
+  });
+
+  it("flags the game as having trophies when the sync succeeds", async () => {
+    db.limit = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { npCommunicationId: "NPWR20188_00", npServiceName: "trophy2" },
+      ])
+      .mockResolvedValueOnce([makeAccount()]);
+    provider.getGameTrophies.mockResolvedValue({
+      status: "ok",
+      trophies: [makePsnTrophy({ trophyId: "1" })],
+    });
+    const tx = makeMockTx();
+    tx.returning = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: "uuid-1", trophyId: "1" }])
+      .mockResolvedValue([]);
+    tx.limit = vi.fn().mockResolvedValue([{ playTime: 0, lastPlayedAt: null }]);
+    db.transaction = vi.fn((cb) => cb(tx));
+
+    await service.syncGameTrophies("user-1", "game-1");
+
+    expect(setHasAchievements).toHaveBeenCalledWith(tx, "game-1", true);
   });
 
   it("calculates completionPercentage from earned trophies", async () => {

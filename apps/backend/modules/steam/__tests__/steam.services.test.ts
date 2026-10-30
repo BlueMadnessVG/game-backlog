@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { SteamService } from "../steam.services";
+import { SteamGameNotFoundError, SteamService } from "../steam.services";
 import type { AdvisoryLockClient } from "../../../lib/locks";
+import { setHasAchievements } from "../../../lib/game-catalog";
+
+// The catalog rules are covered against a real database in
+// library/__test__/catalog-integrity.test.ts; here we only check that the
+// service calls them. isVisibleInLibrary stays real (it's a SQL fragment).
+vi.mock("../../../lib/game-catalog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../lib/game-catalog")>()),
+  setHasAchievements: vi.fn(),
+  withoutKnownNoAchievementGames: vi.fn(async (_db: unknown, ids: string[]) => ids),
+}));
 
 // ── Mock factories ────────────────────────────────────────────────────────────
 
@@ -284,16 +294,44 @@ describe("SteamService.syncGameAchievements", () => {
   let service: SteamService;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     db = makeMockDb();
     provider = makeMockProvider();
     service = new SteamService(db as never, provider as never, makeMockLock());
   });
 
-  it("throws when no Steam mapping found for game", async () => {
+  it("throws SteamGameNotFoundError when the user has no Steam mapping for the game", async () => {
     db.limit = vi.fn().mockResolvedValue([]);
     await expect(
       service.syncGameAchievements("user-1", "game-1"),
-    ).rejects.toThrow("No Steam mapping found");
+    ).rejects.toThrow(SteamGameNotFoundError);
+  });
+
+  it("flags the game as having none, and deletes nothing, when Steam reports no definitions", async () => {
+    db.limit = vi
+      .fn()
+      .mockResolvedValue([{ steamAppId: "123", steamId: "steam-1" }]);
+    provider.getPlayerAchievements.mockResolvedValue(null);
+    provider.getGameSchema.mockResolvedValue({ status: "empty" });
+
+    const result = await service.syncGameAchievements("user-1", "game-1");
+
+    expect(result).toEqual([]);
+    expect(setHasAchievements).toHaveBeenCalledWith(db, "game-1", false);
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("changes nothing when the schema lookup fails", async () => {
+    db.limit = vi
+      .fn()
+      .mockResolvedValue([{ steamAppId: "123", steamId: "steam-1" }]);
+    provider.getPlayerAchievements.mockResolvedValue(null);
+    provider.getGameSchema.mockResolvedValue({ status: "error" });
+
+    const result = await service.syncGameAchievements("user-1", "game-1");
+
+    expect(result).toEqual([]);
+    expect(setHasAchievements).not.toHaveBeenCalled();
   });
 
   it("returns empty array when provider returns null achievements", async () => {
@@ -301,7 +339,7 @@ describe("SteamService.syncGameAchievements", () => {
       .fn()
       .mockResolvedValue([{ steamAppId: "123", steamId: "steam-1" }]);
     provider.getPlayerAchievements.mockResolvedValue(null);
-    provider.getGameSchema.mockResolvedValue(new Map());
+    provider.getGameSchema.mockResolvedValue({ status: "ok", schema: new Map() });
 
     const result = await service.syncGameAchievements("user-1", "game-1");
     expect(result).toEqual([]);
@@ -329,7 +367,7 @@ describe("SteamService.syncGameAchievements", () => {
       },
     ];
     provider.getPlayerAchievements.mockResolvedValue(achievements);
-    provider.getGameSchema.mockResolvedValue(new Map());
+    provider.getGameSchema.mockResolvedValue({ status: "ok", schema: new Map() });
 
     const upserted = [
       { id: "ach-1", apiName: "ACH_1" },
@@ -361,7 +399,7 @@ describe("SteamService.syncGameAchievements", () => {
       .fn()
       .mockResolvedValue([{ steamAppId: "123", steamId: "steam-1" }]);
     provider.getPlayerAchievements.mockResolvedValue([]);
-    provider.getGameSchema.mockResolvedValue(new Map());
+    provider.getGameSchema.mockResolvedValue({ status: "ok", schema: new Map() });
 
     const tx = makeMockTx();
     tx.returning = vi.fn().mockResolvedValue([]);

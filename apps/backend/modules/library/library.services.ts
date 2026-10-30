@@ -1,17 +1,13 @@
-import { eq, and, ilike, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import {
   games,
   userAchievements,
-  achievements,
-  steamGames,
-  steamAccounts,
-  xboxGames,
-  xboxAccounts,
-  xboxUserAchievements,
-  xboxAchievements,
   psnGames,
-  psnAccounts,
   psnUserTrophies,
+  steamGames,
+  userGames,
+  xboxGames,
+  xboxUserAchievements,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
@@ -24,10 +20,7 @@ import type {
   Stats,
 } from "@repo/shared";
 import { IgdbProvider } from "../../providers/igdb.provider";
-import {
-  deleteGameAndRelations,
-  deleteGamesAndRelations,
-} from "../../lib/game-deletion.utils";
+import { isVisibleInLibrary } from "../../lib/game-catalog";
 import type { SteamService } from "../steam/steam.services";
 import type { PsnService } from "../psn/psn.services";
 import type { XboxService } from "../xbox/xbox.services";
@@ -49,6 +42,31 @@ export type GameLibraryFilter = {
   status?: "backlog" | "in-progress" | "completed" | "retired";
 };
 
+export type LibraryPage = { limit: number; offset: number };
+
+type PlatformKey = "steam" | "xbox" | "playstation";
+
+const EMPTY_PLATFORM_STATS: PlatformStats = {
+  games: 0,
+  completionPercentage: 0,
+  achievements: 0,
+  completedGames: 0,
+};
+
+/** Escapes LIKE wildcards so `?title=100%` matches a literal "100%". */
+const escapeLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+
+/**
+ * Read side of the user's library: the games a user owns, their stats, and
+ * the cross-platform dispatch for achievements.
+ *
+ * @remarks
+ * Every read starts from the user's own `user_games` rows. That is the one
+ * rule that keeps users apart: `games` and the platform mapping tables are a
+ * catalog shared by everyone, and the per-user fields (status, play time,
+ * completion, last played) live only on `user_games`. A query that reaches a
+ * game any other way returns other users' data.
+ */
 export class LibraryService {
   constructor(
     private readonly db: DbClient,
@@ -59,178 +77,107 @@ export class LibraryService {
     private readonly lock?: AdvisoryLockClient,
   ) {}
 
-  // ── Combined games list ──────────────────────────────────────────────────
+  // ── Games ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Returns one page of the user's library across all platforms, newest
+   * activity first, and the total number of games matching the filter.
+   *
+   * @param page - `limit`/`offset`, applied in SQL. Defaults to the first 50.
+   */
   async getUserGames(
     userId: string,
     filter: GameLibraryFilter = {},
-  ): Promise<Game[]> {
-    const platformsToQuery = filter.platform
-      ? [filter.platform]
-      : (["steam", "xbox", "playstation"] as const);
-
-    const [steamRows, xboxRows, psnRows] = await Promise.all([
-      platformsToQuery.includes("steam")
-        ? this.getSteamGames(userId, filter)
-        : Promise.resolve([]),
-      platformsToQuery.includes("xbox")
-        ? this.getXboxGames(userId, filter)
-        : Promise.resolve([]),
-      platformsToQuery.includes("playstation")
-        ? this.getPsnGames(userId, filter)
-        : Promise.resolve([]),
-    ]);
-
-    const combined = [...steamRows, ...xboxRows, ...psnRows];
-
-    combined.sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    page: LibraryPage = { limit: 50, offset: 0 },
+  ): Promise<{ games: Game[]; total: number }> {
+    const where = and(
+      eq(userGames.userId, userId),
+      isVisibleInLibrary,
+      filter.id ? eq(games.id, filter.id) : undefined,
+      filter.title
+        ? ilike(games.title, `%${escapeLike(filter.title)}%`)
+        : undefined,
+      filter.platform ? eq(games.platform, filter.platform) : undefined,
+      filter.status ? eq(userGames.status, filter.status) : undefined,
     );
 
-    return combined;
-  }
-
-  private buildFilterConditions(filter: GameLibraryFilter) {
-    const conditions = [];
-    if (filter.id) conditions.push(eq(games.id, filter.id));
-    if (filter.title) conditions.push(ilike(games.title, `%${filter.title}%`));
-    if (filter.status) conditions.push(eq(games.status, filter.status));
-    return conditions;
-  }
-
-  private async getSteamGames(
-    userId: string,
-    filter: GameLibraryFilter = {},
-  ): Promise<Game[]> {
     const rows = await this.db
       .select({
         id: games.id,
         title: games.title,
         platform: games.platform,
-        status: games.status,
         iconUrl: games.iconUrl,
         coverUrl: games.coverUrl,
         bannerUrl: games.bannerUrl,
-        playTime: games.playTime,
-        completionPercentage: games.completionPercentage,
-        lastPlayedAt: games.lastPlayedAt,
-        addedAt: games.createdAt,
-        updatedAt: games.updatedAt,
-        externalId: steamGames.steamAppId,
+        status: userGames.status,
+        playTime: userGames.playTime,
+        completionPercentage: userGames.completionPercentage,
+        lastPlayedAt: userGames.lastPlayedAt,
+        addedAt: userGames.createdAt,
+        updatedAt: userGames.updatedAt,
+        // A game maps to exactly one platform table (each has gameId as its
+        // primary key), so at most one of these is non-null.
+        externalId: sql<string>`coalesce(${steamGames.steamAppId}, ${xboxGames.titleId}, ${psnGames.npCommunicationId}, '')`,
+        total: sql<number>`(count(*) over())::int`,
       })
-      .from(games)
-      .innerJoin(steamGames, eq(games.id, steamGames.gameId))
-      .innerJoin(steamAccounts, eq(steamAccounts.userId, userId))
-      .where(
-        and(
-          eq(steamAccounts.userId, userId),
-          ...this.buildFilterConditions(filter),
-        ),
-      );
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .leftJoin(steamGames, eq(steamGames.gameId, games.id))
+      .leftJoin(xboxGames, eq(xboxGames.gameId, games.id))
+      .leftJoin(psnGames, eq(psnGames.gameId, games.id))
+      .where(where)
+      .orderBy(desc(userGames.updatedAt), asc(games.id))
+      .limit(page.limit)
+      .offset(page.offset);
 
-    return rows.map((row) => this.mapRowToGame(row, "steam"));
+    // An offset past the end returns no rows, so the window count is gone;
+    // count separately so `total` stays correct.
+    const total =
+      rows[0]?.total ??
+      (page.offset > 0 ? await this.countUserGames(where) : 0);
+
+    return { games: rows.map((row) => this.mapRowToGame(row)), total };
   }
 
-  private async getXboxGames(
-    userId: string,
-    filter: GameLibraryFilter = {},
-  ): Promise<Game[]> {
-    const rows = await this.db
-      .select({
-        id: games.id,
-        title: games.title,
-        platform: games.platform,
-        status: games.status,
-        iconUrl: games.iconUrl,
-        coverUrl: games.coverUrl,
-        bannerUrl: games.bannerUrl,
-        playTime: games.playTime,
-        completionPercentage: games.completionPercentage,
-        lastPlayedAt: games.lastPlayedAt,
-        addedAt: games.createdAt,
-        updatedAt: games.updatedAt,
-        externalId: xboxGames.titleId,
-      })
-      .from(games)
-      .innerJoin(xboxGames, eq(games.id, xboxGames.gameId))
-      .innerJoin(xboxAccounts, eq(xboxAccounts.userId, userId))
-      .where(
-        and(
-          eq(xboxAccounts.userId, userId),
-          ...this.buildFilterConditions(filter),
-        ),
-      );
-
-    return rows.map((row) => this.mapRowToGame(row, "xbox"));
-  }
-
-  private async getPsnGames(
-    userId: string,
-    filter: GameLibraryFilter = {},
-  ): Promise<Game[]> {
-    const rows = await this.db
-      .select({
-        id: games.id,
-        title: games.title,
-        platform: games.platform,
-        status: games.status,
-        iconUrl: games.iconUrl,
-        coverUrl: games.coverUrl,
-        bannerUrl: games.bannerUrl,
-        playTime: games.playTime,
-        completionPercentage: games.completionPercentage,
-        lastPlayedAt: games.lastPlayedAt,
-        addedAt: games.createdAt,
-        updatedAt: games.updatedAt,
-        externalId: psnGames.npCommunicationId,
-      })
-      .from(games)
-      .innerJoin(psnGames, eq(games.id, psnGames.gameId))
-      .innerJoin(psnAccounts, eq(psnAccounts.userId, userId))
-      .where(
-        and(
-          eq(psnAccounts.userId, userId),
-          ...this.buildFilterConditions(filter),
-        ),
-      );
-
-    return rows.map((row) => this.mapRowToGame(row, "playstation"));
+  private async countUserGames(where: ReturnType<typeof and>): Promise<number> {
+    const [row] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .where(where);
+    return row?.total ?? 0;
   }
 
   private normalizeUrl(url: string | null): string | null {
     return url && url.trim() !== "" ? url : null;
   }
 
-  private mapRowToGame(
-    row: {
-      id: string;
-      title: string;
-      platform: string | null;
-      status: string | null;
-      iconUrl: string | null;
-      coverUrl: string | null;
-      bannerUrl: string | null;
-      playTime: number | null;
-      completionPercentage: number | null;
-      lastPlayedAt: Date | null;
-      addedAt: Date;
-      updatedAt: Date;
-      externalId: string;
-    },
-    fallbackPlatform: "steam" | "xbox" | "playstation",
-  ): Game {
+  private mapRowToGame(row: {
+    id: string;
+    title: string;
+    platform: string | null;
+    status: string;
+    iconUrl: string | null;
+    coverUrl: string | null;
+    bannerUrl: string | null;
+    playTime: number;
+    completionPercentage: number;
+    lastPlayedAt: Date | null;
+    addedAt: Date;
+    updatedAt: Date;
+    externalId: string;
+  }): Game {
     return {
       id: row.id,
       externalId: row.externalId,
       title: row.title,
-      platform: (row.platform ?? fallbackPlatform) as Game["platform"],
-      status: (row.status ?? "backlog") as Game["status"],
+      platform: (row.platform ?? "steam") as Game["platform"],
+      status: row.status as Game["status"],
       iconUrl: this.normalizeUrl(row.iconUrl),
       coverUrl: this.normalizeUrl(row.coverUrl),
       bannerUrl: this.normalizeUrl(row.bannerUrl),
-      playTime: row.playTime ?? 0,
-      completionPercentage: row.completionPercentage ?? 0,
+      playTime: row.playTime,
+      completionPercentage: row.completionPercentage,
       lastPlayedAt: row.lastPlayedAt?.toISOString() ?? null,
       addedAt: row.addedAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -240,11 +187,18 @@ export class LibraryService {
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   async getStats(userId: string): Promise<Stats> {
-    const [steam, xbox, playstation] = await Promise.all([
-      this.getSteamStats(userId),
-      this.getXboxStats(userId),
-      this.getPlaystationStats(userId),
+    const [gameStats, achievementCounts] = await Promise.all([
+      this.getGameStatsByPlatform(userId),
+      this.getAchievementCountsByPlatform(userId),
     ]);
+
+    const platformStats = (key: PlatformKey): PlatformStats => ({
+      ...(gameStats.get(key) ?? EMPTY_PLATFORM_STATS),
+      achievements: achievementCounts[key],
+    });
+    const steam = platformStats("steam");
+    const xbox = platformStats("xbox");
+    const playstation = platformStats("playstation");
 
     const totalGames = steam.games + xbox.games + playstation.games;
 
@@ -269,137 +223,77 @@ export class LibraryService {
     return { total, breakdown: { steam, xbox, playstation } };
   }
 
-  private async getSteamStats(userId: string): Promise<PlatformStats> {
-    const [gameStats] = await this.db
+  /** Per-platform game counts, from the user's own progress rows. */
+  private async getGameStatsByPlatform(
+    userId: string,
+  ): Promise<Map<string, PlatformStats>> {
+    const rows = await this.db
       .select({
+        platform: games.platform,
         games: sql<number>`count(*)::int`,
-        completionPercentage: sql<number>`
-          round(coalesce(avg(${games.completionPercentage}), 0)::numeric, 1)::float
-        `,
-        completedGames: sql<number>`
-          sum(case when ${games.status} = 'completed' then 1 else 0 end)::int
-        `,
+        completionPercentage: sql<number>`round(coalesce(avg(${userGames.completionPercentage}), 0)::numeric, 1)::float`,
+        completedGames: sql<number>`(count(*) filter (where ${userGames.status} = 'completed'))::int`,
       })
-      .from(games)
-      .innerJoin(steamGames, eq(steamGames.gameId, games.id))
-      .innerJoin(steamAccounts, eq(steamAccounts.userId, userId))
-      .where(eq(steamAccounts.userId, userId));
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .where(and(eq(userGames.userId, userId), isVisibleInLibrary))
+      .groupBy(games.platform);
 
-    const [achStats] = await this.db
-      .select({
-        achievements: sql<number>`count(*)::int`,
-      })
-      .from(userAchievements)
-      .innerJoin(
-        achievements,
-        eq(achievements.id, userAchievements.achievementId),
-      )
-      .innerJoin(steamGames, eq(steamGames.steamAppId, achievements.steamAppId))
-      .innerJoin(steamAccounts, eq(steamAccounts.userId, userId))
-      .where(
-        and(
-          eq(userAchievements.userId, userId),
-          eq(userAchievements.achieved, true),
+    return new Map(
+      rows.map((row) => [
+        row.platform ?? "",
+        {
+          games: row.games,
+          completionPercentage: row.completionPercentage,
+          completedGames: row.completedGames,
+          achievements: 0,
+        },
+      ]),
+    );
+  }
+
+  /** Unlocked achievements / earned trophies the user holds, per platform. */
+  private async getAchievementCountsByPlatform(
+    userId: string,
+  ): Promise<Record<PlatformKey, number>> {
+    const [[steam], [xbox], [playstation]] = await Promise.all([
+      this.db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(userAchievements)
+        .where(
+          and(
+            eq(userAchievements.userId, userId),
+            eq(userAchievements.achieved, true),
+          ),
         ),
-      );
+      this.db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(xboxUserAchievements)
+        .where(
+          and(
+            eq(xboxUserAchievements.userId, userId),
+            eq(xboxUserAchievements.achieved, true),
+          ),
+        ),
+      this.db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(psnUserTrophies)
+        .where(
+          and(
+            eq(psnUserTrophies.userId, userId),
+            eq(psnUserTrophies.earned, true),
+          ),
+        ),
+    ]);
 
     return {
-      games: gameStats?.games ?? 0,
-      completionPercentage: gameStats?.completionPercentage ?? 0,
-      completedGames: gameStats?.completedGames ?? 0,
-      achievements: achStats?.achievements ?? 0,
+      steam: steam?.n ?? 0,
+      xbox: xbox?.n ?? 0,
+      playstation: playstation?.n ?? 0,
     };
   }
 
-  private async getXboxStats(userId: string): Promise<PlatformStats> {
-    const [gameStats] = await this.db
-      .select({
-        games: sql<number>`count(*)::int`,
-        completionPercentage: sql<number>`
-          round(coalesce(avg(${games.completionPercentage}), 0)::numeric, 1)::float
-        `,
-        completedGames: sql<number>`
-          sum(case when ${games.status} = 'completed' then 1 else 0 end)::int
-        `,
-      })
-      .from(games)
-      .innerJoin(xboxGames, eq(xboxGames.gameId, games.id))
-      .innerJoin(xboxAccounts, eq(xboxAccounts.userId, userId))
-      .where(eq(xboxAccounts.userId, userId));
-
-    const [achStats] = await this.db
-      .select({
-        achievements: sql<number>`count(*)::int`,
-      })
-      .from(xboxUserAchievements)
-      .innerJoin(
-        xboxAchievements,
-        eq(xboxAchievements.id, xboxUserAchievements.achievementId),
-      )
-      .innerJoin(xboxGames, eq(xboxGames.titleId, xboxAchievements.titleId))
-      .innerJoin(xboxAccounts, eq(xboxAccounts.userId, userId))
-      .where(
-        and(
-          eq(xboxUserAchievements.userId, userId),
-          eq(xboxUserAchievements.achieved, true),
-        ),
-      );
-
-    return {
-      games: gameStats?.games ?? 0,
-      completionPercentage: gameStats?.completionPercentage ?? 0,
-      completedGames: gameStats?.completedGames ?? 0,
-      achievements: achStats?.achievements ?? 0,
-    };
-  }
-
-  private async getPlaystationStats(userId: string): Promise<PlatformStats> {
-    const [gameStats] = await this.db
-      .select({
-        games: sql<number>`count(*)::int`,
-        completionPercentage: sql<number>`
-          round(coalesce(avg(${games.completionPercentage}), 0)::numeric, 1)::float
-        `,
-        completedGames: sql<number>`
-          sum(case when ${games.status} = 'completed' then 1 else 0 end)::int
-        `,
-      })
-      .from(games)
-      .innerJoin(psnGames, eq(psnGames.gameId, games.id))
-      .innerJoin(psnAccounts, eq(psnAccounts.userId, userId))
-      .where(eq(psnAccounts.userId, userId));
-
-    const [achStats] = await this.db
-      .select({
-        achievements: sql<number>`count(*)::int`,
-      })
-      .from(psnUserTrophies)
-      .innerJoin(
-        psnGames,
-        eq(
-          psnGames.npCommunicationId,
-          sql`(
-          select np_communication_id from psn_trophies
-          where psn_trophies.id = ${psnUserTrophies.trophyId}
-          limit 1
-        )`,
-        ),
-      )
-      .innerJoin(psnAccounts, eq(psnAccounts.userId, userId))
-      .where(
-        and(
-          eq(psnUserTrophies.userId, userId),
-          eq(psnUserTrophies.earned, true),
-        ),
-      );
-
-    return {
-      games: gameStats?.games ?? 0,
-      completionPercentage: gameStats?.completionPercentage ?? 0,
-      completedGames: gameStats?.completedGames ?? 0,
-      achievements: achStats?.achievements ?? 0,
-    };
-  }
+  // ── Covers ────────────────────────────────────────────────────────────────
 
   async enrichGameCovers(userId: string): Promise<{
     enriched: number;
@@ -409,12 +303,18 @@ export class LibraryService {
     return withLock(
       `job:covers:${userId}`,
       async () => {
-        const [xboxRows, psnRows] = await Promise.all([
-          this.getXboxGames(userId),
-          this.getPsnGames(userId),
-        ]);
-
-        const allRows = [...xboxRows, ...psnRows];
+        // Steam supplies its own covers; Xbox and PSN don't, hence IGDB.
+        const allRows = await this.db
+          .select({ id: games.id, title: games.title, coverUrl: games.coverUrl })
+          .from(userGames)
+          .innerJoin(games, eq(games.id, userGames.gameId))
+          .where(
+            and(
+              eq(userGames.userId, userId),
+              isVisibleInLibrary,
+              inArray(games.platform, ["xbox", "playstation"]),
+            ),
+          );
 
         const alreadyEnrichedRows = allRows.filter((g) =>
           g.coverUrl?.includes("images.igdb.com"),
@@ -424,7 +324,7 @@ export class LibraryService {
           .map((g) => ({ id: g.id, title: g.title }));
 
         console.debug(
-          `[LibraryService] enrichGameCovers: xbox=${xboxRows.length} psn=${psnRows.length}, ` +
+          `[LibraryService] enrichGameCovers: games=${allRows.length}, ` +
             `already enriched=${alreadyEnrichedRows.length}, targeting=${targetGames.length}`,
         );
 
@@ -467,23 +367,22 @@ export class LibraryService {
     );
   }
 
-  async removeGame(gameId: string): Promise<void> {
-    await deleteGameAndRelations(this.db, gameId);
-  }
-
-  async removeGames(gameIds: string[]): Promise<number> {
-    return deleteGamesAndRelations(this.db, gameIds);
-  }
-
   // ── Achievements (cross-platform dispatch) ────────────────────────────────
 
+  /**
+   * The platform of a game IN THE USER'S LIBRARY, or null. A game that exists
+   * in the catalog but isn't theirs is "not found" to them — it must not be
+   * dispatched to a platform module, which would sync or read on their behalf.
+   */
   private async getGamePlatform(
+    userId: string,
     gameId: string,
   ): Promise<Game["platform"] | null> {
     const [row] = await this.db
       .select({ platform: games.platform })
-      .from(games)
-      .where(eq(games.id, gameId))
+      .from(userGames)
+      .innerJoin(games, eq(games.id, userGames.gameId))
+      .where(and(eq(userGames.userId, userId), eq(userGames.gameId, gameId)))
       .limit(1);
 
     return (row?.platform as Game["platform"] | undefined) ?? null;
@@ -499,7 +398,7 @@ export class LibraryService {
       offset?: number;
     } = {},
   ): Promise<{ data: Achievement[]; total: number; unlocked: number }> {
-    const platform = await this.getGamePlatform(gameId);
+    const platform = await this.getGamePlatform(userId, gameId);
     if (!platform) throw new GameNotFoundError(gameId);
 
     switch (platform) {
@@ -518,7 +417,7 @@ export class LibraryService {
     userId: string,
     gameId: string,
   ): Promise<{ synced: number }> {
-    const platform = await this.getGamePlatform(gameId);
+    const platform = await this.getGamePlatform(userId, gameId);
     if (!platform) throw new GameNotFoundError(gameId);
 
     switch (platform) {

@@ -4,8 +4,12 @@ import { withAuth } from "../../../tests/auth.helpers";
 
 // ── Mock factory ──────────────────────────────────────────────────────────────
 
+// Session JWTs never reach AuthService; it only backs the `bkl_` API-token path.
+const makeMockAuthService = () => ({ verifyApiToken: vi.fn() });
+
 const makeMockService = () => ({
   getStats: vi.fn(),
+  getUserGames: vi.fn(),
 });
 
 const makePlatformStats = (overrides = {}) => ({
@@ -34,7 +38,9 @@ describe("LibraryController GET /stats", () => {
 
   beforeEach(async () => {
     service = makeMockService();
-    app = await withAuth(createLibraryController(service as never));
+    app = await withAuth(
+      createLibraryController(service as never, makeMockAuthService() as never),
+    );
   });
 
   it("returns 200 with stats data", async () => {
@@ -159,5 +165,79 @@ describe("LibraryController GET /stats", () => {
     await app.request("/stats");
 
     expect(service.getStats).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── GET /games ────────────────────────────────────────────────────────────────
+
+describe("LibraryController GET /games", () => {
+  let service: ReturnType<typeof makeMockService>;
+  let app: ReturnType<typeof createLibraryController>;
+
+  beforeEach(async () => {
+    service = makeMockService();
+    service.getUserGames.mockResolvedValue({ games: [{ id: "g1" }], total: 42 });
+    app = await withAuth(
+      createLibraryController(service as never, makeMockAuthService() as never),
+    );
+  });
+
+  it("returns the page and the total from the service", async () => {
+    const res = await app.request("/games?limit=10&offset=20");
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data).toEqual([{ id: "g1" }]);
+    expect(body.meta).toEqual({ total: 42, limit: 10, offset: 20 });
+  });
+
+  it("scopes the query to the authenticated user and passes the page to SQL", async () => {
+    await app.request("/games?limit=10&offset=20");
+
+    expect(service.getUserGames).toHaveBeenCalledWith(
+      "test-user-1",
+      {},
+      { limit: 10, offset: 20 },
+    );
+  });
+
+  it("defaults to the first 50", async () => {
+    await app.request("/games");
+
+    expect(service.getUserGames).toHaveBeenCalledWith("test-user-1", {}, { limit: 50, offset: 0 });
+  });
+
+  it("caps limit at 100 and clamps a negative offset to 0", async () => {
+    const res = await app.request("/games?limit=100000&offset=-5");
+    const body = await res.json();
+
+    expect(body.meta).toMatchObject({ limit: 100, offset: 0 });
+    expect(service.getUserGames).toHaveBeenCalledWith("test-user-1", {}, { limit: 100, offset: 0 });
+  });
+
+  it("passes the filters through", async () => {
+    await app.request("/games?platform=xbox&status=completed&title=halo");
+
+    expect(service.getUserGames).toHaveBeenCalledWith(
+      "test-user-1",
+      { platform: "xbox", status: "completed", title: "halo" },
+      expect.any(Object),
+    );
+  });
+
+  it.each([
+    ["platform", "/games?platform=n64"],
+    ["status", "/games?status=abandoned"],
+  ])("returns 400 for an invalid %s without querying", async (_name, url) => {
+    const res = await app.request(url);
+
+    expect(res.status).toBe(400);
+    expect(service.getUserGames).not.toHaveBeenCalled();
+  });
+
+  it("requires authentication", async () => {
+    const anon = createLibraryController(service as never, makeMockAuthService() as never);
+
+    expect((await anon.request("/games")).status).toBe(401);
   });
 });

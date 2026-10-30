@@ -18,7 +18,11 @@ import type {
   Game,
 } from "@repo/shared";
 import { deriveGameStatus } from "./xbox.utils";
-import { deleteGameAndRelations } from "../../lib/game-deletion.utils";
+import {
+  isVisibleInLibrary,
+  setHasAchievements,
+  withoutKnownNoAchievementGames,
+} from "../../lib/game-catalog";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 
 const BATCH_SIZE = 5;
@@ -141,7 +145,7 @@ export class XboxService {
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
       .innerJoin(xboxGames, eq(xboxGames.gameId, games.id))
-      .where(eq(userGames.userId, userId))
+      .where(and(eq(userGames.userId, userId), isVisibleInLibrary))
       .orderBy(desc(userGames.playTime));
 
     return rows.map((row) => this.mapRowToGame(row));
@@ -183,7 +187,13 @@ export class XboxService {
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
       .innerJoin(xboxGames, eq(xboxGames.gameId, games.id))
-      .where(and(eq(userGames.userId, userId), eq(userGames.gameId, gameId)))
+      .where(
+        and(
+          eq(userGames.userId, userId),
+          eq(userGames.gameId, gameId),
+          isVisibleInLibrary,
+        ),
+      )
       .limit(1);
 
     if (!row) return null;
@@ -389,6 +399,9 @@ export class XboxService {
    * {@link DELAY_MS} millisecond pause before the next batch. Individual
    * failures are logged and skipped — the remaining games continue syncing.
    *
+   * Games already known to have no achievements are skipped without calling
+   * Xbox; syncing a single game explicitly always re-checks it.
+   *
    * @param localUserId - Internal user identifier.
    * @param gameIds - Array of game UUIDs to sync achievements for.
    *
@@ -405,8 +418,10 @@ export class XboxService {
     return withLock(
       `job:ach:xbox:${localUserId}`,
       async () => {
-        for (let i = 0; i < gameIds.length; i += BATCH_SIZE) {
-          const batch = gameIds.slice(i, i + BATCH_SIZE);
+        const toSync = await withoutKnownNoAchievementGames(this.db, gameIds);
+
+        for (let i = 0; i < toSync.length; i += BATCH_SIZE) {
+          const batch = toSync.slice(i, i + BATCH_SIZE);
 
           await Promise.allSettled(
             batch.map((gameId) =>
@@ -419,7 +434,7 @@ export class XboxService {
             ),
           );
 
-          if (i + BATCH_SIZE < gameIds.length) {
+          if (i + BATCH_SIZE < toSync.length) {
             await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
           }
         }
@@ -437,8 +452,10 @@ export class XboxService {
    * the Xbox API. If the user does not own the game, a
    * {@link XboxGameNotFoundError} is thrown.
    *
-   * When the Xbox API reports zero achievements for a game the game is
-   * removed from the shared catalog via {@link deleteGameAndRelations}.
+   * When Xbox reports zero achievements for a game, the shared catalog row
+   * is flagged `hasAchievements = false` (hiding it from library reads) —
+   * never deleted, because other users may own it. A failed request changes
+   * nothing.
    *
    * After syncing, the user's `completionPercentage` and derived `status`
    * are recalculated and persisted.
@@ -488,15 +505,17 @@ export class XboxService {
 
     if (result.status === "empty") {
       console.debug(
-        `[XboxService] Game ${gameId} (title ${row.titleId}) has zero achievements — removing from library`,
+        `[XboxService] Game ${gameId} (title ${row.titleId}) has zero achievements — hiding from library`,
       );
-      await deleteGameAndRelations(this.db, gameId);
+      await setHasAchievements(this.db, gameId, false);
       return [];
     }
 
     const playerAchievements = result.achievements;
 
     return await this.db.transaction(async (tx) => {
+      await setHasAchievements(tx, gameId, true);
+
       const achievementValues = playerAchievements.map((a) => ({
         titleId: row.titleId,
         apiName: a.apiName,

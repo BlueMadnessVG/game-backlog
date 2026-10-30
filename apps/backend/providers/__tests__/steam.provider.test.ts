@@ -176,4 +176,103 @@ describe("SteamProvider", () => {
       expect(result).toBeNull();
     });
   });
+
+  // ── getGameSchema ─────────────────────────────────────────────────────────
+
+  describe("getGameSchema", () => {
+    const definition = (name: string) => ({
+      name,
+      displayName: `Display ${name}`,
+      hidden: 0,
+      description: `About ${name}`,
+      icon: `https://img/${name}.jpg`,
+      icongray: `https://img/${name}_gray.jpg`,
+    });
+
+    const schemaBody = (names: string[]) => ({
+      game: { availableGameStats: { achievements: names.map(definition) } },
+    });
+
+    const globalBody = (entries: Record<string, number>) => ({
+      achievementpercentages: {
+        achievements: Object.entries(entries).map(([name, percent]) => ({
+          name,
+          percent,
+        })),
+      },
+    });
+
+    /** Answers the two parallel requests getGameSchema makes, by URL. */
+    const respondWith = (
+      schema: () => unknown,
+      global: () => unknown = () => makeResponse(globalBody({})),
+    ) => {
+      mockFetch.mockImplementation(async (url: string) =>
+        url.includes("GetSchemaForGame") ? schema() : global(),
+      );
+    };
+
+    it("returns the definitions merged with global percentages", async () => {
+      respondWith(
+        () => makeResponse(schemaBody(["ACH_A", "ACH_B"])),
+        () => makeResponse(globalBody({ ACH_A: 12.5 })),
+      );
+
+      const result = await provider.getGameSchema("730");
+
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") return;
+      expect(result.schema.size).toBe(2);
+      expect(result.schema.get("ACH_A")).toMatchObject({
+        displayName: "Display ACH_A",
+        hidden: false,
+        globalPercentage: 12.5,
+      });
+      expect(result.schema.get("ACH_B")?.globalPercentage).toBeNull();
+    });
+
+    it("still returns the definitions when only the percentages fail", async () => {
+      respondWith(
+        () => makeResponse(schemaBody(["ACH_A"])),
+        () => makeResponse({}, 500),
+      );
+
+      const result = await provider.getGameSchema("730");
+
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") return;
+      expect(result.schema.get("ACH_A")?.globalPercentage).toBeNull();
+    });
+
+    it.each([
+      ["no stats section", { game: {} }],
+      ["an empty list", { game: { availableGameStats: { achievements: [] } } }],
+      ["stats without achievements", { game: { availableGameStats: {} } }],
+    ])("reports 'empty' when Steam answers with %s", async (_name, body) => {
+      respondWith(() => makeResponse(body));
+
+      expect(await provider.getGameSchema("1")).toEqual({ status: "empty" });
+    });
+
+    // The bug this distinction fixes: a failed request used to look exactly
+    // like "no achievements", and that made the sync delete the game.
+    it.each([
+      ["HTTP 500", () => makeResponse({}, 500)],
+      ["HTTP 429 (rate limited)", () => makeResponse({}, 429)],
+      ["HTTP 403", () => makeResponse({}, 403)],
+      ["a payload that doesn't match the schema", () => makeResponse({ nope: 1 })],
+    ])("reports 'error', not 'empty', on %s", async (_name, response) => {
+      respondWith(response);
+
+      expect(await provider.getGameSchema("1")).toEqual({ status: "error" });
+    });
+
+    it("reports 'error' when the request itself fails (network)", async () => {
+      respondWith(() => {
+        throw new Error("ECONNRESET");
+      });
+
+      expect(await provider.getGameSchema("1")).toEqual({ status: "error" });
+    });
+  });
 });

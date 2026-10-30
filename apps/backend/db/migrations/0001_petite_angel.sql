@@ -1,1 +1,0 @@
-ALTER TABLE "games" ADD CONSTRAINT "games_title_unique" UNIQUE("title");
