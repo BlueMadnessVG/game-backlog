@@ -4,9 +4,6 @@ import {
   achievements,
   games,
   psnAccounts,
-  psnGames,
-  psnTrophies,
-  psnUserTrophies,
   steamAccounts,
   userAchievements,
   userGames,
@@ -41,7 +38,7 @@ export async function seedUser(db: DbClient, name: string): Promise<string> {
   await db.insert(psnAccounts).values({
     userId,
     accountId: `psn-${unique()}`,
-    // psn.services decrypts tokens on read, so they must be real ciphertext.
+    // PsnAdapter decrypts tokens on read, so they must be real ciphertext.
     accessToken: encrypt("seed-access-token"),
     refreshToken: encrypt("seed-refresh-token"),
     accessTokenExpiresAt: new Date(Date.now() + 3_600_000),
@@ -63,19 +60,11 @@ export async function seedCatalogGame(
     .values({
       title: opts.title,
       platform: opts.platform,
-      // Steam and Xbox are on the platform engine: their id lives on the
-      // catalog row. PSN still keeps its own in a mapping table.
-      externalId: opts.platform === "playstation" ? null : externalId,
+      // The platform's own id lives on the catalog row.
+      externalId,
     })
     .returning({ id: games.id });
-  const gameId = game!.id;
-
-  if (opts.platform === "playstation") {
-    await db
-      .insert(psnGames)
-      .values({ gameId, npCommunicationId: externalId });
-  }
-  return { gameId, externalId };
+  return { gameId: game!.id, externalId };
 }
 
 /** Puts a catalog game in a user's library with that user's own progress. */
@@ -133,59 +122,33 @@ export async function seedAchievements(
   db: DbClient,
   opts: {
     userId: string;
-    platform: Platform;
     gameId: string;
-    externalId: string;
     unlocked: number;
     locked?: number;
   },
 ): Promise<void> {
-  const { userId, platform, gameId, externalId } = opts;
+  const { userId, gameId } = opts;
   const total = opts.unlocked + (opts.locked ?? 0);
 
   for (let i = 0; i < total; i++) {
     const achieved = i < opts.unlocked;
     const apiName = `ACH_${i}`;
 
-    if (platform !== "playstation") {
-      await db
-        .insert(achievements)
-        .values({ gameId, externalKey: apiName, name: `Ach ${i}` })
-        .onConflictDoNothing();
-      const [def] = await db
-        .select({ id: achievements.id })
-        .from(achievements)
-        .where(
-          and(
-            eq(achievements.gameId, gameId),
-            eq(achievements.externalKey, apiName),
-          ),
-        );
-      await db
-        .insert(userAchievements)
-        .values({ userId, achievementId: def!.id, achieved });
-    } else {
-      await db
-        .insert(psnTrophies)
-        .values({
-          npCommunicationId: externalId,
-          trophyId: String(i),
-          name: `Trophy ${i}`,
-          trophyType: "bronze",
-        })
-        .onConflictDoNothing();
-      const [def] = await db
-        .select({ id: psnTrophies.id })
-        .from(psnTrophies)
-        .where(
-          and(
-            eq(psnTrophies.npCommunicationId, externalId),
-            eq(psnTrophies.trophyId, String(i)),
-          ),
-        );
-      await db
-        .insert(psnUserTrophies)
-        .values({ userId, trophyId: def!.id, earned: achieved });
-    }
+    await db
+      .insert(achievements)
+      .values({ gameId, externalKey: apiName, name: `Ach ${i}` })
+      .onConflictDoNothing();
+    const [def] = await db
+      .select({ id: achievements.id })
+      .from(achievements)
+      .where(
+        and(
+          eq(achievements.gameId, gameId),
+          eq(achievements.externalKey, apiName),
+        ),
+      );
+    await db
+      .insert(userAchievements)
+      .values({ userId, achievementId: def!.id, achieved });
   }
 }

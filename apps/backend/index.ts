@@ -8,19 +8,13 @@ import { corsMiddleware } from "./middleware/cors.middleware";
 import { db } from "./db";
 import { SteamProvider } from "./providers/steam.provider";
 import { SteamAdapter } from "./modules/platforms/steam.adapter";
-import {
-  PlatformLibrary,
-  type AchievementPage,
-  type AchievementQuery,
-  type PlatformAchievements,
-} from "./modules/platforms/platform-library";
+import { PlatformLibrary } from "./modules/platforms/platform-library";
 import { createPlatformController } from "./modules/platforms/platform.controller";
 import { XboxProvider } from "./providers/xbox.provider";
 import { XboxAdapter } from "./modules/platforms/xbox.adapter";
 import { errorHandler } from "./middleware/error.handler";
 import { PsnProvider } from "./providers/psn.provider";
-import { PsnService } from "./modules/psn/psn.services";
-import { createPsnController } from "./modules/psn/psn.controller";
+import { PsnAdapter } from "./modules/platforms/psn.adapter";
 import { LibraryService } from "./modules/library/library.services";
 import { createLibraryController } from "./modules/library/library.controller";
 import { IgdbProvider } from "./providers/igdb.provider";
@@ -40,30 +34,17 @@ const xboxProvider = new XboxProvider(process.env.OPENXBL_API_KEY!);
 const xboxLibrary = new PlatformLibrary(db, new XboxAdapter(xboxProvider));
 
 const psnProvider = new PsnProvider();
-const psnService = new PsnService(db, psnProvider);
+const psnLibrary = new PlatformLibrary(db, new PsnAdapter(psnProvider));
 
 const igdbProvider = new IgdbProvider(
   process.env.IGDB_CLIENT_ID!,
   process.env.IGDB_CLIENT_SECRET!,
 );
 
-// TEMPORARY: PSN still has its own module. The wrapper goes away when it
-// moves onto the platform engine.
-const legacyPlatform = (
-  read: (u: string, g: string, q?: AchievementQuery) => Promise<AchievementPage>,
-  sync: (u: string, g: string) => Promise<unknown[]>,
-): PlatformAchievements => ({
-  getAchievements: read,
-  syncAchievements: async (u, g) => ({ synced: (await sync(u, g)).length }),
-});
-
 const libraryService = new LibraryService(db, igdbProvider, {
   steam: steamLibrary,
   xbox: xboxLibrary,
-  playstation: legacyPlatform(
-    (u, g, q) => psnService.getGameTrophies(u, g, q),
-    (u, g) => psnService.syncGameTrophies(u, g),
-  ),
+  playstation: psnLibrary,
 });
 
 const googleProvider = new GoogleOAuthProvider(
@@ -139,7 +120,11 @@ apiV1.route(
 );
 apiV1.route(
   "/psn",
-  createPsnController(psnService, libraryService, authService),
+  createPlatformController({
+    library: psnLibrary,
+    libraryService,
+    authService,
+  }),
 );
 
 apiV1.route("/library", createLibraryController(libraryService, authService));

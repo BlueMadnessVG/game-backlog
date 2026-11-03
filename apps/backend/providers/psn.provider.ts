@@ -36,7 +36,7 @@ type GameTrophiesResult =
  *
  * All methods that accept an `accessToken` expect a valid, non-expired
  * PSN access token. Token management is handled by the caller
- * ({@link PsnService}).
+ * (see `PsnAdapter.loadAccount`).
  *
  * @example
  * ```ts
@@ -248,7 +248,7 @@ export class PsnProvider {
    * @remarks
    * The return type deliberately excludes `tokens` — this call has no
    * refresh token to hand back. Callers that need the full profile+tokens
-   * shape (e.g. {@link PsnService.syncUserProfile}) merge the real tokens
+   * shape (e.g. `PsnAdapter.link`) merge the real tokens
    * from {@link PsnProvider.exchangeNpsso} separately.
    *
    * @param accessToken - A valid PSN access token.

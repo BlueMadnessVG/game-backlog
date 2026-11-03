@@ -295,14 +295,14 @@ describe("LibraryService", () => {
       const steamGame = await seedOwnedGame(t.db, alice, { title: "S", platform: "steam" });
       const xboxGame = await seedOwnedGame(t.db, alice, { title: "X", platform: "xbox" });
       const psnGame = await seedOwnedGame(t.db, alice, { title: "P", platform: "playstation" });
-      await seedAchievements(t.db, { userId: alice, platform: "steam", ...steamGame, unlocked: 3, locked: 2 });
-      await seedAchievements(t.db, { userId: alice, platform: "xbox", ...xboxGame, unlocked: 2, locked: 1 });
-      await seedAchievements(t.db, { userId: alice, platform: "playstation", ...psnGame, unlocked: 4 });
+      await seedAchievements(t.db, { userId: alice, ...steamGame, unlocked: 3, locked: 2 });
+      await seedAchievements(t.db, { userId: alice, ...xboxGame, unlocked: 2, locked: 1 });
+      await seedAchievements(t.db, { userId: alice, ...psnGame, unlocked: 4 });
 
       // Bob shares the same catalog games and unlocks more.
-      for (const [platform, game] of [["steam", steamGame], ["xbox", xboxGame], ["playstation", psnGame]] as const) {
+      for (const game of [steamGame, xboxGame, psnGame]) {
         await seedOwnership(t.db, bob, game.gameId);
-        await seedAchievements(t.db, { userId: bob, platform, ...game, unlocked: 5 });
+        await seedAchievements(t.db, { userId: bob, ...game, unlocked: 5 });
       }
 
       const { breakdown, total } = await service.getStats(alice);

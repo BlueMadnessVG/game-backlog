@@ -3,8 +3,6 @@ import {
   achievements,
   games,
   userAchievements,
-  psnGames,
-  psnUserTrophies,
   userGames,
 } from "../../db/schema";
 import type { DbClient } from "../../db";
@@ -102,16 +100,12 @@ export class LibraryService {
         lastPlayedAt: userGames.lastPlayedAt,
         addedAt: userGames.createdAt,
         updatedAt: userGames.updatedAt,
-        // A game maps to exactly one platform table (each has gameId as its
-        // primary key), so at most one of these is non-null.
-        // games.external_id is the platform's own id; PSN still keeps
-        // theirs in a mapping table until it moves onto the platform engine.
-        externalId: sql<string>`coalesce(${games.externalId}, ${psnGames.npCommunicationId}, '')`,
+        // The platform's own id: Steam app id, Xbox title id, PSN npCommunicationId.
+        externalId: sql<string>`coalesce(${games.externalId}, '')`,
         total: sql<number>`(count(*) over())::int`,
       })
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
-      .leftJoin(psnGames, eq(psnGames.gameId, games.id))
       .where(where)
       .orderBy(desc(userGames.updatedAt), asc(games.id))
       .limit(page.limit)
@@ -243,42 +237,29 @@ export class LibraryService {
   private async getAchievementCountsByPlatform(
     userId: string,
   ): Promise<Record<PlatformKey, number>> {
-    const [unified, [playstation]] = await Promise.all([
-      this.db
-        .select({ platform: games.platform, n: sql<number>`count(*)::int` })
-        .from(userAchievements)
-        .innerJoin(
-          achievements,
-          eq(achievements.id, userAchievements.achievementId),
-        )
-        .innerJoin(games, eq(games.id, achievements.gameId))
-        .where(
-          and(
-            eq(userAchievements.userId, userId),
-            eq(userAchievements.achieved, true),
-          ),
-        )
-        .groupBy(games.platform),
-      // PSN still keeps its trophies in their own table until it moves onto
-      // the platform engine.
-      this.db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(psnUserTrophies)
-        .where(
-          and(
-            eq(psnUserTrophies.userId, userId),
-            eq(psnUserTrophies.earned, true),
-          ),
+    const rows = await this.db
+      .select({ platform: games.platform, n: sql<number>`count(*)::int` })
+      .from(userAchievements)
+      .innerJoin(
+        achievements,
+        eq(achievements.id, userAchievements.achievementId),
+      )
+      .innerJoin(games, eq(games.id, achievements.gameId))
+      .where(
+        and(
+          eq(userAchievements.userId, userId),
+          eq(userAchievements.achieved, true),
         ),
-    ]);
+      )
+      .groupBy(games.platform);
 
-    const unifiedFor = (key: PlatformKey) =>
-      unified.find((row) => row.platform === key)?.n ?? 0;
+    const countFor = (key: PlatformKey) =>
+      rows.find((row) => row.platform === key)?.n ?? 0;
 
     return {
-      steam: unifiedFor("steam"),
-      xbox: unifiedFor("xbox"),
-      playstation: unifiedFor("playstation") + (playstation?.n ?? 0),
+      steam: countFor("steam"),
+      xbox: countFor("xbox"),
+      playstation: countFor("playstation"),
     };
   }
 

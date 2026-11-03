@@ -4,8 +4,6 @@ import type { PgTable } from "drizzle-orm/pg-core";
 
 import {
   games,
-  psnGames,
-  psnUserTrophies,
   userAchievements,
   userGames,
 } from "../../../db/schema";
@@ -15,7 +13,7 @@ import { LibraryService } from "../library.services";
 import { PlatformLibrary } from "../../platforms/platform-library";
 import { SteamAdapter } from "../../platforms/steam.adapter";
 import { XboxAdapter } from "../../platforms/xbox.adapter";
-import { PsnService } from "../../psn/psn.services";
+import { PsnAdapter } from "../../platforms/psn.adapter";
 import { createTestDb, type TestDb } from "../../../tests/test-db";
 import {
   seedAchievements,
@@ -130,12 +128,13 @@ const cases: PlatformCase[] = [
   {
     platform: "playstation",
     mappingRows: (db, gameId) =>
-      count(db, psnGames, eq(psnGames.gameId, gameId)),
+      count(db, games, and(eq(games.id, gameId), isNotNull(games.externalId))),
     countUnlocked: (db, userId) =>
-      count(db, psnUserTrophies, eq(psnUserTrophies.userId, userId)),
+      count(db, userAchievements, eq(userAchievements.userId, userId)),
     setup(db, lock) {
       const provider = { getGameTrophies: vi.fn(), refreshTokens: vi.fn() };
-      const service = new PsnService(db, provider as never, lock);
+      const service = new PlatformLibrary(db, new PsnAdapter(provider as never, lock), lock);
+      const reads = new LibraryService(db, {} as never, {} as never);
       return {
         respond(outcome) {
           provider.getGameTrophies.mockResolvedValue(
@@ -150,9 +149,10 @@ const cases: PlatformCase[] = [
           );
         },
         lookups: () => provider.getGameTrophies.mock.calls.length,
-        syncGame: (u, g) => service.syncGameTrophies(u, g),
-        syncAll: (u, ids) => service.syncAllGameTrophies(u, ids),
-        listOwn: (u) => service.getUserGames(u),
+        syncGame: (u, g) => service.syncAchievements(u, g),
+        syncAll: (u, ids) => service.syncAllAchievements(u, ids),
+        listOwn: async (u) =>
+          (await reads.getUserGames(u, { platform: "playstation" })).games,
       };
     },
   },
@@ -192,9 +192,7 @@ describe.each(cases)("catalog integrity: $platform", (c) => {
     });
     await seedAchievements(t.db, {
       userId: bob,
-      platform: c.platform,
       gameId: game.gameId,
-      externalId: game.externalId,
       unlocked: 2,
     });
     return { alice, bob, ...game };
@@ -349,24 +347,27 @@ describe("library sync: two owned games with the same title", () => {
       platinumEarned: false,
       lastUpdatedDateTime: null,
     });
-    const service = new PsnService(
+    const service = new PlatformLibrary(
       t.db,
-      {
-        getOwnedGames: async () => [
-          version("NPWR_PS4", "PS4", 15),
-          version("NPWR_PS5", "PS5", 60),
-        ],
-      } as never,
+      new PsnAdapter(
+        {
+          getOwnedGames: async () => [
+            version("NPWR_PS4", "PS4", 15),
+            version("NPWR_PS5", "PS5", 60),
+          ],
+        } as never,
+        noopLock,
+      ),
       noopLock,
     );
 
-    await service.syncUserGames(alice);
+    await service.syncGames(alice);
 
     expect(await progressOf(alice)).toEqual([
       { title: "Ghost of Tsushima", playTime: 0, completionPercentage: 60 },
     ]);
-    const [mapping] = await t.db.select().from(psnGames);
-    expect(mapping?.npCommunicationId).toBe("NPWR_PS5");
+    const [kept] = await t.db.select().from(games);
+    expect(kept?.externalId).toBe("NPWR_PS5");
   });
 
   it("xbox: syncs, keeping the most recently played version", async () => {
