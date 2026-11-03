@@ -6,7 +6,7 @@ CREATE TABLE "games" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"title" text NOT NULL,
 	"platform" "platform" DEFAULT 'steam',
-	"external_id" varchar(255),
+	"external_id" varchar(255) NOT NULL,
 	"metadata" jsonb,
 	"icon_url" text,
 	"cover_url" text,
@@ -148,7 +148,6 @@ ALTER TABLE "api_token_events" ADD CONSTRAINT "api_token_events_user_id_users_id
 ALTER TABLE "api_tokens" ADD CONSTRAINT "api_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "title_idx" ON "games" USING btree ("title");--> statement-breakpoint
 CREATE UNIQUE INDEX "games_platform_external_id_idx" ON "games" USING btree ("platform","external_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "title_platform_unique_idx" ON "games" USING btree ("title","platform");--> statement-breakpoint
 CREATE UNIQUE INDEX "steam_id_idx" ON "steam_accounts" USING btree ("steam_id");--> statement-breakpoint
 CREATE INDEX "achievement_game_id_idx" ON "achievements" USING btree ("game_id");--> statement-breakpoint
 CREATE INDEX "user_achievement_user_id_idx" ON "user_achievements" USING btree ("user_id");--> statement-breakpoint

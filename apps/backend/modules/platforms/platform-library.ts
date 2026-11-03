@@ -20,7 +20,6 @@ import {
 } from "../../lib/game-catalog";
 import { GameNotFoundError } from "./errors";
 import type {
-  NormalizedAchievement,
   OwnedGame,
   PlatformAdapter,
   PlatformKey,
@@ -127,10 +126,12 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
     const owned = await this.adapter.fetchOwnedGames(account);
     if (!owned.length) return [];
 
-    // TRANSITIONAL (removed once the catalog drops its (title, platform)
-    // unique index): that index still rejects two catalog rows with one title,
-    // and an upsert that hits a key twice fails the whole statement.
-    const toSync = collapseByTitle(owned);
+    // Games are identified by their external id, NOT their title, so games
+    // that share a title (PS4 and PS5 versions, a remaster and its original)
+    // are all kept. But one INSERT ... ON CONFLICT must not hit a key twice
+    // or Postgres fails the whole statement, so a platform that lists the
+    // same game twice is reduced to one entry per external id.
+    const toSync = dedupeByExternalId(owned);
 
     return this.db.transaction(async (tx) => {
       const catalogRows = await tx
@@ -530,24 +531,26 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
   }
 }
 
-/** Keeps one entry per title: the one with the most play time / progress. */
-function collapseByTitle(owned: OwnedGame[]): OwnedGame[] {
+/**
+ * Keeps one entry per external id: the one with the most play time / progress
+ * (ties: the most recently played). Entries with different ids are never
+ * merged, whatever their titles.
+ */
+function dedupeByExternalId(owned: OwnedGame[]): OwnedGame[] {
   const rank = (g: OwnedGame) =>
     (g.playTimeMinutes ?? 0) * 1_000_000 + (g.completionPercentage ?? 0);
   const recency = (g: OwnedGame) => g.lastPlayedAt?.getTime() ?? 0;
 
-  const byTitle = new Map<string, OwnedGame>();
+  const byId = new Map<string, OwnedGame>();
   for (const game of owned) {
-    const kept = byTitle.get(game.title);
+    const kept = byId.get(game.externalId);
     if (
       !kept ||
       rank(game) > rank(kept) ||
       (rank(game) === rank(kept) && recency(game) > recency(kept))
     ) {
-      byTitle.set(game.title, game);
+      byId.set(game.externalId, game);
     }
   }
-  return [...byTitle.values()];
+  return [...byId.values()];
 }
-
-export type { NormalizedAchievement };

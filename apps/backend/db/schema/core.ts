@@ -68,10 +68,10 @@ export const games = pgTable(
     title: text("title").notNull(),
     platform: platformEnum("platform").default("steam"),
     // The platform's own id for the game: Steam app id, Xbox title id, PSN
-    // npCommunicationId. With `platform` it is the game's identity, so the PS4
-    // and PS5 versions of a title are two games. Nullable only while Xbox and
-    // PSN are being moved onto the platform engine.
-    externalId: varchar("external_id", { length: 255 }),
+    // npCommunicationId. With `platform` it is the game's identity (unique
+    // below), NOT the title: the PS4 and PS5 versions of a title, or a
+    // remaster next to its original, are separate games.
+    externalId: varchar("external_id", { length: 255 }).notNull(),
     // Platform-specific facts the engine passes back to the adapter when it
     // fetches achievements (PSN: npServiceName, trophyTitlePlatform).
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
@@ -94,10 +94,6 @@ export const games = pgTable(
     platformExternalIdUnique: uniqueIndex("games_platform_external_id_idx").on(
       table.platform,
       table.externalId,
-    ),
-    titlePlatformUnique: uniqueIndex("title_platform_unique_idx").on(
-      table.title,
-      table.platform,
     ),
   }),
 );

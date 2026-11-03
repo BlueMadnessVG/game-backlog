@@ -226,9 +226,8 @@ describe("PlatformLibrary", () => {
       });
     });
 
-    it("collapses entries that share a title, keeping the one with the most progress", async () => {
-      // TRANSITIONAL: the catalog still rejects two rows with one title.
-      // Replaced by "two games" when the (title, platform) unique goes.
+    it("treats the same title with different external ids as two games", async () => {
+      // A remaster next to its original, or the PS4 and PS5 versions of a game.
       const alice = await seedUser(t.db, "alice");
 
       const gameIds = await syncLibrary(alice, [
@@ -236,8 +235,66 @@ describe("PlatformLibrary", () => {
         owned({ externalId: "b", title: "Doom", playTimeMinutes: 900 }),
       ]);
 
-      expect(gameIds).toHaveLength(1);
-      expect((await t.db.select().from(games))[0]!.externalId).toBe("b");
+      expect(new Set(gameIds).size).toBe(2);
+      const rows = await t.db
+        .select({ externalId: games.externalId, playTime: userGames.playTime })
+        .from(userGames)
+        .innerJoin(games, eq(games.id, userGames.gameId))
+        .orderBy(games.externalId);
+      expect(rows).toEqual([
+        { externalId: "a", playTime: 30 },
+        { externalId: "b", playTime: 900 },
+      ]);
+    });
+
+    it("reduces a platform listing the SAME game twice to one entry, keeping the one with the most progress", async () => {
+      // The same external id twice in one response would make Postgres reject
+      // the whole upsert. Games with different ids are never merged.
+      const alice = await seedUser(t.db, "alice");
+
+      const gameIds = await syncLibrary(alice, [
+        owned({ externalId: "a", title: "Doom", playTimeMinutes: 30 }),
+        owned({ externalId: "a", title: "Doom", playTimeMinutes: 900 }),
+        owned({ externalId: "b", title: "Doom Eternal", playTimeMinutes: 5 }),
+      ]);
+
+      expect(gameIds).toHaveLength(2);
+      const rows = await t.db
+        .select({ externalId: games.externalId, playTime: userGames.playTime })
+        .from(userGames)
+        .innerJoin(games, eq(games.id, userGames.gameId))
+        .orderBy(games.externalId);
+      expect(rows).toEqual([
+        { externalId: "a", playTime: 900 },
+        { externalId: "b", playTime: 5 },
+      ]);
+    });
+
+    it("keeps the achievements of same-titled games separate", async () => {
+      const alice = await seedUser(t.db, "alice");
+      await syncLibrary(alice, [
+        owned({ externalId: "a", title: "Doom" }),
+        owned({ externalId: "b", title: "Doom" }),
+      ]);
+      const idOf = async (externalId: string) =>
+        (await t.db.select({ id: games.id }).from(games).where(eq(games.externalId, externalId)))[0]!.id;
+      adapter.fetchAchievements.mockImplementation(async (_account, game) =>
+        (game as { externalId: string }).externalId === "a"
+          ? ok(ach("A1", true))
+          : ok(ach("B1", false), ach("B2", false)),
+      );
+      const definitionsOf = async (gameId: string) =>
+        (await t.db.select().from(achievements).where(eq(achievements.gameId, gameId))).length;
+
+      await library.syncAchievements(alice, await idOf("a"));
+
+      expect(await definitionsOf(await idOf("a"))).toBe(1);
+      expect(await definitionsOf(await idOf("b"))).toBe(0);
+
+      await library.syncAchievements(alice, await idOf("b"));
+
+      expect(await definitionsOf(await idOf("a"))).toBe(1);
+      expect(await definitionsOf(await idOf("b"))).toBe(2);
     });
 
     it("writes nothing when the platform reports no games", async () => {

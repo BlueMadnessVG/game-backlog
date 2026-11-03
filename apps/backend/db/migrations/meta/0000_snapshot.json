@@ -1,5 +1,5 @@
 {
-  "id": "bdaeadf0-4865-4ee3-87db-d2b2197a4649",
+  "id": "6137694f-78fc-4c71-8909-73c6ab8396c6",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -33,7 +33,7 @@
           "name": "external_id",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "metadata": {
           "name": "metadata",
@@ -107,27 +107,6 @@
             },
             {
               "expression": "external_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "title_platform_unique_idx": {
-          "name": "title_platform_unique_idx",
-          "columns": [
-            {
-              "expression": "title",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "platform",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

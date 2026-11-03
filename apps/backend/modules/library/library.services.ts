@@ -101,7 +101,7 @@ export class LibraryService {
         addedAt: userGames.createdAt,
         updatedAt: userGames.updatedAt,
         // The platform's own id: Steam app id, Xbox title id, PSN npCommunicationId.
-        externalId: sql<string>`coalesce(${games.externalId}, '')`,
+        externalId: games.externalId,
         total: sql<number>`(count(*) over())::int`,
       })
       .from(userGames)

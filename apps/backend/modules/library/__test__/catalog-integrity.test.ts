@@ -284,10 +284,12 @@ describe.each(cases)("catalog integrity: $platform", (c) => {
   });
 });
 
-// Two owned games with the same title on one platform (PSN: the PS4 and PS5
-// versions of a game; Steam: two apps sharing a name). The catalog is keyed
-// by (title, platform), and Postgres rejects an upsert that hits the same key
-// twice in one statement — which used to fail the user's whole library sync.
+// A game is identified by its platform and the platform's own id, never by
+// its title. So two owned games that share a title (PSN: the PS4 and PS5
+// versions of a game; Steam: a remaster next to its original) are two games,
+// each with its own progress and achievements. Collapsing them by title is
+// what used to hide one of them, to dodge a Postgres error on the old
+// (title, platform) unique index.
 describe("library sync: two owned games with the same title", () => {
   let t: TestDb;
 
@@ -300,15 +302,17 @@ describe("library sync: two owned games with the same title", () => {
   const progressOf = async (userId: string) =>
     t.db
       .select({
+        externalId: games.externalId,
         title: games.title,
         playTime: userGames.playTime,
         completionPercentage: userGames.completionPercentage,
       })
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
-      .where(eq(userGames.userId, userId));
+      .where(eq(userGames.userId, userId))
+      .orderBy(games.externalId);
 
-  it("steam: syncs, keeping the version with the most play time", async () => {
+  it("steam: both apps are kept, each with its own play time", async () => {
     const alice = await seedUser(t.db, "alice");
     const app = (steamAppId: string, playtimeMinutes: number) => ({
       steamAppId,
@@ -329,13 +333,12 @@ describe("library sync: two owned games with the same title", () => {
     await service.syncGames(alice);
 
     expect(await progressOf(alice)).toEqual([
-      { title: "Doom", playTime: 900, completionPercentage: 0 },
+      { externalId: "2280", title: "Doom", playTime: 30, completionPercentage: 0 },
+      { externalId: "379720", title: "Doom", playTime: 900, completionPercentage: 0 },
     ]);
-    const [kept] = await t.db.select().from(games);
-    expect(kept?.externalId).toBe("379720");
   });
 
-  it("psn: syncs, keeping the version with the most progress", async () => {
+  it("psn: the PS4 and PS5 versions are two games with their own progress", async () => {
     const alice = await seedUser(t.db, "alice");
     const version = (npCommunicationId: string, platform: string, completionPercentage: number) => ({
       npCommunicationId,
@@ -364,13 +367,21 @@ describe("library sync: two owned games with the same title", () => {
     await service.syncGames(alice);
 
     expect(await progressOf(alice)).toEqual([
-      { title: "Ghost of Tsushima", playTime: 0, completionPercentage: 60 },
+      { externalId: "NPWR_PS4", title: "Ghost of Tsushima", playTime: 0, completionPercentage: 15 },
+      { externalId: "NPWR_PS5", title: "Ghost of Tsushima", playTime: 0, completionPercentage: 60 },
     ]);
-    const [kept] = await t.db.select().from(games);
-    expect(kept?.externalId).toBe("NPWR_PS5");
+    // Each version keeps the service name its trophies must be fetched with.
+    const catalog = await t.db
+      .select({ metadata: games.metadata })
+      .from(games)
+      .orderBy(games.externalId);
+    expect(catalog.map((g) => g.metadata)).toEqual([
+      { npServiceName: "trophy", trophyTitlePlatform: "PS4" },
+      { npServiceName: "trophy2", trophyTitlePlatform: "PS5" },
+    ]);
   });
 
-  it("xbox: syncs, keeping the most recently played version", async () => {
+  it("xbox: both title ids are kept, each with its own play time", async () => {
     const alice = await seedUser(t.db, "alice");
     const title = (titleId: string, lastPlayedAt: Date) => ({
       titleId,
@@ -394,7 +405,8 @@ describe("library sync: two owned games with the same title", () => {
     await service.syncGames(alice);
 
     expect(await progressOf(alice)).toEqual([
-      { title: "Forza Horizon 5", playTime: 45, completionPercentage: 20 },
+      { externalId: "new-id", title: "Forza Horizon 5", playTime: 45, completionPercentage: 20 },
+      { externalId: "old-id", title: "Forza Horizon 5", playTime: 0, completionPercentage: 20 },
     ]);
   });
 });
