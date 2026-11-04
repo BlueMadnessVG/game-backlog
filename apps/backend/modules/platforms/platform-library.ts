@@ -18,7 +18,7 @@ import {
   setHasAchievements,
   withoutKnownNoAchievementGames,
 } from "../../lib/game-catalog";
-import { GameNotFoundError } from "./errors";
+import { AccountNotLinkedError, GameNotFoundError } from "./errors";
 import type {
   OwnedGame,
   PlatformAdapter,
@@ -118,9 +118,7 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
   async syncGames(userId: string): Promise<{ gameId: string }[]> {
     const account = await this.adapter.loadAccount(this.db, userId);
     if (!account) {
-      throw new Error(
-        `No ${this.platform} account linked for user ${userId} — sync required`,
-      );
+      throw new AccountNotLinkedError(this.platform);
     }
 
     const owned = await this.adapter.fetchOwnedGames(account);

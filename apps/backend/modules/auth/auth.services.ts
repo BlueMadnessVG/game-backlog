@@ -14,76 +14,70 @@ import type {
   OAuthProviderClient,
 } from "../../providers/oauth.types";
 import { oauthStateStore } from "./auth.state";
+import { AppError } from "../../lib/errors";
 
 /**
  * Thrown when the OAuth callback state is missing, stale, or already used —
  * the sign-in attempt should be aborted and the user bounced back to the
- * frontend with an error fragment.
+ * frontend with an error fragment. (The callback route redirects instead of
+ * returning JSON, so it catches this itself.)
  */
-export class OAuthCallbackError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "OAuthCallbackError";
-  }
+export class OAuthCallbackError extends AppError {
+  readonly status = 400;
+  readonly code = "OAUTH_STATE_INVALID";
 }
 
 /**
  * Thrown when a registration tries to use an email that already belongs to an
- * existing account (password or OAuth). Maps to HTTP 409.
+ * existing account (password or OAuth).
  */
-export class EmailAlreadyRegisteredError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "EmailAlreadyRegisteredError";
+export class EmailAlreadyRegisteredError extends AppError {
+  readonly status = 409;
+  readonly code = "EMAIL_TAKEN";
+
+  override get publicMessage() {
+    return "This email is already registered. Sign in or use a different account.";
   }
 }
 
 /**
  * Thrown when the email/password pair does not match. Intentionally the same
  * error for "unknown email" and "wrong password" so sign-in attempts cannot
- * enumerate which emails have registered accounts. Maps to HTTP 401.
+ * enumerate which emails have registered accounts.
  */
-export class InvalidCredentialsError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InvalidCredentialsError";
-  }
+export class InvalidCredentialsError extends AppError {
+  readonly status = 401;
+  readonly code = "INVALID_CREDENTIALS";
 }
 
 /**
  * Thrown when a TOTP step-up is attempted but the user has no enrolled
- * secret (users.totpSecret is null). Maps to 400 — there is nothing to
- * verify against, and minting doesn't require step-up for such users.
+ * secret (users.totpSecret is null). There is nothing to verify against, and
+ * minting doesn't require step-up for such users.
  */
-export class TotpNotEnrolledError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "TotpNotEnrolledError";
-  }
+export class TotpNotEnrolledError extends AppError {
+  readonly status = 400;
+  readonly code = "TOTP_NOT_ENROLLED";
 }
 
 /**
  * Thrown when enrollment is confirmed but no pending secret exists — the
- * user never called start (or it was already confirmed). Maps to 400.
+ * user never called start (or it was already confirmed).
  */
-export class TotpEnrollmentNotStartedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "TotpEnrollmentNotStartedError";
-  }
+export class TotpEnrollmentNotStartedError extends AppError {
+  readonly status = 400;
+  readonly code = "TOTP_ENROLLMENT_NOT_STARTED";
 }
 
 /**
  * Thrown when the presented TOTP code does not match the user's enrolled
- * secret (or, for enrollment, the pending one). Maps to 400.
+ * secret (or, for enrollment, the pending one).
  * See TextSecure's guidance: no generic messages, no rate-limit hint churn —
  * just "code did not verify".
  */
-export class InvalidTotpCodeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InvalidTotpCodeError";
-  }
+export class InvalidTotpCodeError extends AppError {
+  readonly status = 400;
+  readonly code = "INVALID_TOTP_CODE";
 }
 
 /**

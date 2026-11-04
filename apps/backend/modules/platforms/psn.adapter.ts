@@ -5,7 +5,9 @@ import { psnAccounts, users } from "../../db/schema";
 import type { DbClient } from "../../db";
 import { decrypt, encrypt } from "../../lib/Encryption.utils";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
+import { ProviderAuthError } from "../../lib/provider-error.utils";
 import type { PsnProvider } from "../../providers/psn.provider";
+import { LinkFailedError, RelinkRequiredError } from "./errors";
 import type {
   AchievementsOutcome,
   OwnedGame,
@@ -52,13 +54,13 @@ export class PsnAdapter implements PlatformAdapter<PsnAccount, PsnLinkBody> {
   ) {}
 
   async link(db: DbClient, userId: string, body: PsnLinkBody) {
-    const tokens = await this.provider.exchangeNpsso(body.npsso);
+    const tokens = await this.exchangeNpsso(body.npsso);
     const profile = await this.provider.getProfile(
       tokens.accessToken,
       body.onlineId,
     );
     if (!profile) {
-      throw new Error(
+      throw new LinkFailedError(
         `Could not find PSN profile for online ID: ${body.onlineId}`,
       );
     }
@@ -172,6 +174,24 @@ export class PsnAdapter implements PlatformAdapter<PsnAccount, PsnLinkBody> {
     };
   }
 
+  /**
+   * The NPSSO is what the user pasted in, so PSN refusing it is a problem
+   * with their input (422), not with our credentials or their session.
+   */
+  private async exchangeNpsso(npsso: string) {
+    try {
+      return await this.provider.exchangeNpsso(npsso);
+    } catch (error) {
+      if (error instanceof ProviderAuthError) {
+        throw new LinkFailedError(
+          "PSN rejected that NPSSO token. Get a fresh one and try again.",
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+  }
+
   private async readTokens(
     db: DbClient,
     userId: string,
@@ -199,7 +219,17 @@ export class PsnAdapter implements PlatformAdapter<PsnAccount, PsnLinkBody> {
     userId: string,
     refreshToken: string,
   ): Promise<string> {
-    const next = await this.provider.refreshTokens(refreshToken);
+    let next;
+    try {
+      next = await this.provider.refreshTokens(refreshToken);
+    } catch (error) {
+      // PSN no longer accepts the stored refresh token: only linking again
+      // fixes that. The stored tokens are left as they are.
+      if (error instanceof ProviderAuthError) {
+        throw new RelinkRequiredError("playstation", { cause: error });
+      }
+      throw error;
+    }
 
     await db
       .update(psnAccounts)

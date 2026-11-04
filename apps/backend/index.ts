@@ -12,7 +12,7 @@ import { PlatformLibrary } from "./modules/platforms/platform-library";
 import { createPlatformController } from "./modules/platforms/platform.controller";
 import { XboxProvider } from "./providers/xbox.provider";
 import { XboxAdapter } from "./modules/platforms/xbox.adapter";
-import { errorHandler } from "./middleware/error.handler";
+import { errorHandler, notFoundHandler } from "./middleware/error.handler";
 import { PsnProvider } from "./providers/psn.provider";
 import { PsnAdapter } from "./modules/platforms/psn.adapter";
 import { LibraryService } from "./modules/library/library.services";
@@ -137,15 +137,7 @@ app.route("/api/v1", apiV1);
  * 6. Error & Boundary Handling
  */
 app.onError(errorHandler);
-app.notFound((c) =>
-  c.json(
-    {
-      error: "TARGET_NOT_FOUND",
-      message: "Requested sector not found",
-    },
-    404,
-  ),
-);
+app.notFound(notFoundHandler);
 
 /**
  * 7. Bun-Native Execution

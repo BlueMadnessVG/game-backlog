@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { vValidator } from "@hono/valibot-validator";
 import {
   LoginSchema,
   OAuthCallbackQuerySchema,
@@ -13,12 +12,7 @@ import * as v from "valibot";
 
 import {
   AuthService,
-  EmailAlreadyRegisteredError,
-  InvalidCredentialsError,
-  InvalidTotpCodeError,
   OAuthCallbackError,
-  TotpEnrollmentNotStartedError,
-  TotpNotEnrolledError,
   type ApiTokenAuditContext,
 } from "./auth.services";
 import {
@@ -27,6 +21,8 @@ import {
 } from "../../middleware/auth.middleware";
 import { requireCredential } from "../../middleware/credential-policy.middleware";
 import { setSessionCookie, clearSessionCookie } from "../../lib/session-cookie";
+import { NotFoundError, ValidationError } from "../../lib/errors";
+import { validate } from "../../lib/validate";
 import type { TokenPurpose } from "../../lib/jwt.utils";
 
 type Bindings = {
@@ -130,9 +126,7 @@ export const createAuthController = (authService: AuthService) => {
   app.get("/me", requireAuth, async (c) => {
     const user = await authService.getUserById(c.get("userId"));
 
-    if (!user) {
-      return c.json({ status: "ERROR", message: "User not found" }, 404);
-    }
+    if (!user) throw new NotFoundError("USER_NOT_FOUND", "User not found");
 
     return c.json(
       {
@@ -174,34 +168,14 @@ export const createAuthController = (authService: AuthService) => {
    * Creates an email/password account, sets the session cookie, and
    * returns the user (no token in the body — see setSessionCookie).
    */
-  app.post("/register", vValidator("json", RegisterSchema), async (c) => {
-    try {
-      const { token, user, created } = await authService.register(
-        c.req.valid("json"),
-      );
+  app.post("/register", validate("json", RegisterSchema), async (c) => {
+    const { token, user, created } = await authService.register(
+      c.req.valid("json"),
+    );
 
-      setSessionCookie(c, token);
+    setSessionCookie(c, token);
 
-      return c.json(
-        {
-          status: "SUCCESS",
-          data: { user, created },
-        },
-        201,
-      );
-    } catch (error) {
-      if (error instanceof EmailAlreadyRegisteredError) {
-        return c.json(
-          {
-            status: "ERROR",
-            message:
-              "This email is already registered. Sign in or use a different account.",
-          },
-          409,
-        );
-      }
-      throw error;
-    }
+    return c.json({ status: "SUCCESS", data: { user, created } }, 201);
   });
 
   /**
@@ -210,33 +184,14 @@ export const createAuthController = (authService: AuthService) => {
    * Validates email/password, sets the session cookie, and returns the
    * user (no token in the body — see setSessionCookie).
    */
-  app.post("/login", vValidator("json", LoginSchema), async (c) => {
-    try {
-      const { token, user, created } = await authService.login(
-        c.req.valid("json"),
-      );
+  app.post("/login", validate("json", LoginSchema), async (c) => {
+    const { token, user, created } = await authService.login(
+      c.req.valid("json"),
+    );
 
-      setSessionCookie(c, token);
+    setSessionCookie(c, token);
 
-      return c.json(
-        {
-          status: "SUCCESS",
-          data: { user, created },
-        },
-        200,
-      );
-    } catch (error) {
-      if (error instanceof InvalidCredentialsError) {
-        return c.json(
-          {
-            status: "ERROR",
-            message: "Invalid email or password",
-          },
-          401,
-        );
-      }
-      throw error;
-    }
+    return c.json({ status: "SUCCESS", data: { user, created } }, 200);
   });
 
   /**
@@ -281,7 +236,7 @@ export const createAuthController = (authService: AuthService) => {
   app.post(
     "/api-tokens",
     requireSessionWithStepUp,
-    vValidator("json", CreateApiTokenSchema),
+    validate("json", CreateApiTokenSchema),
     async (c) => {
       const userId = c.get("userId");
       const { name, scope, expiresInDays, expiresInMinutes } =
@@ -293,22 +248,14 @@ export const createAuthController = (authService: AuthService) => {
           ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
           : undefined;
 
-      try {
-        const result = await authService.createApiToken(userId, {
-          name,
-          scope,
-          expiresAt,
-          audit: clientAuditContext(c),
-        });
+      const result = await authService.createApiToken(userId, {
+        name,
+        scope,
+        expiresAt,
+        audit: clientAuditContext(c),
+      });
 
-        return c.json({ status: "SUCCESS", data: result }, 201);
-      } catch (error) {
-        console.error(
-          `[AuthController] Failed to create API token for user ${userId}:`,
-          error,
-        );
-        throw error;
-      }
+      return c.json({ status: "SUCCESS", data: result }, 201);
     },
   );
 
@@ -321,16 +268,8 @@ export const createAuthController = (authService: AuthService) => {
   app.get("/api-tokens", requireAuth, async (c) => {
     const userId = c.get("userId");
 
-    try {
-      const tokens = await authService.listApiTokens(userId);
-      return c.json({ status: "SUCCESS", data: tokens }, 200);
-    } catch (error) {
-      console.error(
-        `[AuthController] Failed to list API tokens for user ${userId}:`,
-        error,
-      );
-      throw error;
-    }
+    const tokens = await authService.listApiTokens(userId);
+    return c.json({ status: "SUCCESS", data: tokens }, 200);
   });
 
   /**
@@ -348,23 +287,14 @@ export const createAuthController = (authService: AuthService) => {
     const userId = c.get("userId");
     const tokenId = c.req.param("id");
 
-    try {
-      const revoked = await authService.revokeApiToken(
-        userId,
-        tokenId,
-        clientAuditContext(c),
-      );
-      if (!revoked) {
-        return c.json({ status: "ERROR", message: "Token not found" }, 404);
-      }
-      return c.json({ status: "SUCCESS", message: "Token revoked" }, 200);
-    } catch (error) {
-      console.error(
-        `[AuthController] Failed to revoke API token ${tokenId}:`,
-        error,
-      );
-      throw error;
-    }
+    const revoked = await authService.revokeApiToken(
+      userId,
+      tokenId,
+      clientAuditContext(c),
+    );
+    if (!revoked) throw new NotFoundError("TOKEN_NOT_FOUND", "Token not found");
+
+    return c.json({ status: "SUCCESS", message: "Token revoked" }, 200);
   });
 
   /**
@@ -404,23 +334,13 @@ export const createAuthController = (authService: AuthService) => {
   app.post(
     "/totp/enroll/confirm",
     requireSessionWithStepUp,
-    vValidator("json", TotpEnrollSchema),
+    validate("json", TotpEnrollSchema),
     async (c) => {
       const userId = c.get("userId");
       const { code } = c.req.valid("json");
 
-      try {
-        await authService.confirmTotpEnrollment(userId, code);
-        return c.json({ status: "SUCCESS", message: "TOTP enabled" }, 200);
-      } catch (error) {
-        if (
-          error instanceof InvalidTotpCodeError ||
-          error instanceof TotpEnrollmentNotStartedError
-        ) {
-          return c.json({ status: "ERROR", message: error.message }, 400);
-        }
-        throw error;
-      }
+      await authService.confirmTotpEnrollment(userId, code);
+      return c.json({ status: "SUCCESS", message: "TOTP enabled" }, 200);
     },
   );
 
@@ -452,23 +372,13 @@ export const createAuthController = (authService: AuthService) => {
   app.post(
     "/step-up",
     requireSession,
-    vValidator("json", TotpStepUpSchema),
+    validate("json", TotpStepUpSchema),
     async (c) => {
       const userId = c.get("userId");
       const { code } = c.req.valid("json");
 
-      try {
-        const data = await authService.stepUpTotp(userId, code);
-        return c.json({ status: "SUCCESS", data }, 200);
-      } catch (error) {
-        if (error instanceof InvalidTotpCodeError) {
-          return c.json({ status: "ERROR", message: error.message }, 400);
-        }
-        if (error instanceof TotpNotEnrolledError) {
-          return c.json({ status: "ERROR", message: error.message }, 400);
-        }
-        throw error;
-      }
+      const data = await authService.stepUpTotp(userId, code);
+      return c.json({ status: "SUCCESS", data }, 200);
     },
   );
 
@@ -479,9 +389,7 @@ export const createAuthController = (authService: AuthService) => {
    */
   app.get("/:provider", async (c) => {
     const provider = providerParam(c.req.param("provider"));
-    if (!provider) {
-      return c.json({ status: "ERROR", message: "Unsupported provider" }, 400);
-    }
+    if (!provider) throw new ValidationError("Unsupported provider");
 
     const url = await authService.createAuthorizationUrl(provider);
     return c.redirect(url.toString(), 302);
@@ -500,7 +408,7 @@ export const createAuthController = (authService: AuthService) => {
    */
   app.get(
     "/:provider/callback",
-    vValidator("query", OAuthCallbackQuerySchema),
+    validate("query", OAuthCallbackQuerySchema),
     async (c) => {
       const provider = providerParam(c.req.param("provider"));
       if (!provider) {

@@ -5,6 +5,7 @@ import { steamAccounts, users } from "../../../db/schema";
 import { createTestDb, type TestDb } from "../../../tests/test-db";
 import { seedUser } from "../../../tests/seed";
 import { SteamAdapter } from "../steam.adapter";
+import { LinkFailedError } from "../errors";
 
 const profile = (steamId = "76561198012345678") => ({
   steamId,
@@ -102,9 +103,14 @@ describe("SteamAdapter", () => {
       await t.db.delete(steamAccounts);
       provider.getPlayerSummary.mockResolvedValue(null);
 
-      await expect(adapter.link(t.db, alice, { steamId: "76561198012345678" })).rejects.toThrow(
-        /Could not find Steam profile/,
-      );
+      const failure = await adapter
+        .link(t.db, alice, { steamId: "76561198012345678" })
+        .catch((e) => e);
+
+      // The user's own input was wrong: 422 LINK_FAILED, not a server error.
+      expect(failure).toBeInstanceOf(LinkFailedError);
+      expect(failure).toMatchObject({ status: 422, code: "LINK_FAILED" });
+      expect(failure.message).toMatch(/Could not find Steam profile/);
       expect(await t.db.select().from(steamAccounts)).toHaveLength(0);
     });
 

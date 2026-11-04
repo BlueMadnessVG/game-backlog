@@ -20,7 +20,7 @@ import {
 import type { AdvisoryLockClient } from "../../../lib/locks";
 import { createTestDb, type TestDb } from "../../../tests/test-db";
 import { seedUser } from "../../../tests/seed";
-import { GameNotFoundError } from "../errors";
+import { AccountNotLinkedError, GameNotFoundError } from "../errors";
 import { PlatformLibrary } from "../platform-library";
 import type {
   AchievementsOutcome,
@@ -308,9 +308,12 @@ describe("PlatformLibrary", () => {
       const alice = await seedUser(t.db, "alice");
       adapter.loadAccount.mockResolvedValue(null);
 
-      await expect(library.syncGames(alice)).rejects.toThrow(
-        /No steam account linked/,
-      );
+      const failure = await library.syncGames(alice).catch((e) => e);
+
+      // A typed error, so it reaches the client as 409 ACCOUNT_NOT_LINKED, not a 500.
+      expect(failure).toBeInstanceOf(AccountNotLinkedError);
+      expect(failure).toMatchObject({ status: 409, code: "ACCOUNT_NOT_LINKED" });
+      expect(failure.message).toMatch(/No steam account linked/);
       expect(adapter.fetchOwnedGames).not.toHaveBeenCalled();
     });
   });

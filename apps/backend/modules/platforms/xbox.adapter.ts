@@ -3,6 +3,7 @@ import { XboxSyncSchema } from "@repo/shared";
 
 import { users, xboxAccounts } from "../../db/schema";
 import type { DbClient } from "../../db";
+import { LinkFailedError } from "./errors";
 import type { XboxProvider } from "../../providers/xbox.provider";
 import type {
   AchievementsOutcome,
@@ -29,7 +30,9 @@ export class XboxAdapter implements PlatformAdapter<XboxAccount, XboxLinkBody> {
   async link(db: DbClient, userId: string, body: XboxLinkBody) {
     const profile = await this.provider.getPlayerProfile(body.xuid);
     if (!profile) {
-      throw new Error(`Could not find Xbox profile for XUID: ${body.xuid}`);
+      throw new LinkFailedError(
+        `Could not find Xbox profile for XUID: ${body.xuid}`,
+      );
     }
 
     await db.transaction(async (tx) => {

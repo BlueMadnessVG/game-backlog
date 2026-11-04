@@ -33,8 +33,10 @@ export type CredentialPolicy = {
  *
  * Authentication runs first with a no-op continuation, and the policy checks
  * run after it returns. Running them inside the continuation would route a
- * policy 403 through createAuthMiddleware's try/catch, which rewrites every
- * error thrown downstream of it into a 401.
+ * policy 403 through createAuthMiddleware's try/catch, which turns anything
+ * thrown by the function it is handed as `next` into a 401. (That only
+ * affects a continuation called directly like this one: Hono's own `next`
+ * never rethrows, because Hono sends handler errors straight to `onError`.)
  *
  * Fails closed: if authentication returns without populating `userId` and
  * `credentialType`, the request is rejected with 401.

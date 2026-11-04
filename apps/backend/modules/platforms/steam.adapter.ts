@@ -3,6 +3,7 @@ import { SteamSyncSchema } from "@repo/shared";
 
 import { steamAccounts, users } from "../../db/schema";
 import type { DbClient } from "../../db";
+import { LinkFailedError } from "./errors";
 import type { SteamProvider } from "../../providers/steam.provider";
 import type {
   AchievementsOutcome,
@@ -31,7 +32,9 @@ export class SteamAdapter
   async link(db: DbClient, userId: string, body: SteamLinkBody) {
     const profile = await this.provider.getPlayerSummary(body.steamId);
     if (!profile) {
-      throw new Error(`Could not find Steam profile for ID: ${body.steamId}`);
+      throw new LinkFailedError(
+        `Could not find Steam profile for ID: ${body.steamId}`,
+      );
     }
 
     await db.transaction(async (tx) => {

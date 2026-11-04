@@ -1,9 +1,6 @@
 import { Hono } from "hono";
-import {
-  GameNotFoundError,
-  LibraryService,
-  type GameLibraryFilter,
-} from "./library.services";
+import { LibraryService, type GameLibraryFilter } from "./library.services";
+import { ValidationError } from "../../lib/errors";
 
 import { createAuthMiddleware } from "../../middleware/auth.middleware";
 import type { AuthService } from "../auth/auth.services";
@@ -28,10 +25,13 @@ const VALID_STATUSES = [
 const VALID_ACHIEVEMENT_FILTERS = ["all", "unlocked", "locked"] as const;
 const VALID_ACHIEVEMENT_SORTS = ["unlock-date", "name", "rarity"] as const;
 
-function parseGameFilter(query: Record<string, string | undefined>): {
-  filter: GameLibraryFilter;
-  error?: string;
-} {
+/** A bad query-string value, reported against the field that carried it. */
+const invalid = (field: string, message: string) =>
+  new ValidationError(message, [{ path: field, message }]);
+
+function parseGameFilter(
+  query: Record<string, string | undefined>,
+): GameLibraryFilter {
   const filter: GameLibraryFilter = {};
 
   if (query.id) filter.id = query.id;
@@ -39,35 +39,32 @@ function parseGameFilter(query: Record<string, string | undefined>): {
 
   if (query.platform) {
     if (!VALID_PLATFORMS.includes(query.platform as any)) {
-      return {
-        filter,
-        error: `Invalid platform "${query.platform}". Must be one of: ${VALID_PLATFORMS.join(", ")}`,
-      };
+      throw invalid(
+        "platform",
+        `Invalid platform "${query.platform}". Must be one of: ${VALID_PLATFORMS.join(", ")}`,
+      );
     }
     filter.platform = query.platform as GameLibraryFilter["platform"];
   }
 
   if (query.status) {
     if (!VALID_STATUSES.includes(query.status as any)) {
-      return {
-        filter,
-        error: `Invalid status "${query.status}". Must be one of: ${VALID_STATUSES.join(", ")}`,
-      };
+      throw invalid(
+        "status",
+        `Invalid status "${query.status}". Must be one of: ${VALID_STATUSES.join(", ")}`,
+      );
     }
     filter.status = query.status as GameLibraryFilter["status"];
   }
 
-  return { filter };
+  return filter;
 }
 
 function parseAchievementOptions(query: Record<string, string | undefined>): {
-  options: {
-    filter?: (typeof VALID_ACHIEVEMENT_FILTERS)[number];
-    sort?: (typeof VALID_ACHIEVEMENT_SORTS)[number];
-    limit: number;
-    offset: number;
-  };
-  error?: string;
+  filter?: (typeof VALID_ACHIEVEMENT_FILTERS)[number];
+  sort?: (typeof VALID_ACHIEVEMENT_SORTS)[number];
+  limit: number;
+  offset: number;
 } {
   const options: {
     filter?: (typeof VALID_ACHIEVEMENT_FILTERS)[number];
@@ -81,25 +78,25 @@ function parseAchievementOptions(query: Record<string, string | undefined>): {
 
   if (query.filter) {
     if (!VALID_ACHIEVEMENT_FILTERS.includes(query.filter as any)) {
-      return {
-        options,
-        error: `Invalid filter "${query.filter}". Must be one of: ${VALID_ACHIEVEMENT_FILTERS.join(", ")}`,
-      };
+      throw invalid(
+        "filter",
+        `Invalid filter "${query.filter}". Must be one of: ${VALID_ACHIEVEMENT_FILTERS.join(", ")}`,
+      );
     }
     options.filter = query.filter as (typeof VALID_ACHIEVEMENT_FILTERS)[number];
   }
 
   if (query.sort) {
     if (!VALID_ACHIEVEMENT_SORTS.includes(query.sort as any)) {
-      return {
-        options,
-        error: `Invalid sort "${query.sort}". Must be one of: ${VALID_ACHIEVEMENT_SORTS.join(", ")}`,
-      };
+      throw invalid(
+        "sort",
+        `Invalid sort "${query.sort}". Must be one of: ${VALID_ACHIEVEMENT_SORTS.join(", ")}`,
+      );
     }
     options.sort = query.sort as (typeof VALID_ACHIEVEMENT_SORTS)[number];
   }
 
-  return { options };
+  return options;
 }
 
 export const createLibraryController = (
@@ -125,88 +122,60 @@ export const createLibraryController = (
     const limit = Math.min(Number(c.req.query("limit")) || 50, MAX_PAGE_SIZE);
     const offset = Math.max(Number(c.req.query("offset")) || 0, 0);
 
-    const { filter, error } = parseGameFilter({
+    const filter = parseGameFilter({
       id: c.req.query("id"),
       title: c.req.query("title"),
       platform: c.req.query("platform"),
       status: c.req.query("status"),
     });
 
-    if (error) {
-      return c.json({ status: "ERROR", message: error }, 400);
-    }
+    const { games, total } = await libraryService.getUserGames(userId, filter, {
+      limit,
+      offset,
+    });
 
-    try {
-      const { games, total } = await libraryService.getUserGames(
-        userId,
-        filter,
-        { limit, offset },
-      );
-
-      return c.json(
-        {
-          status: "SUCCESS",
-          meta: { total, limit, offset },
-          data: games,
-        },
-        200,
-      );
-    } catch (error) {
-      console.error(`[LibraryController] Failed to fetch games:`, error);
-      throw error;
-    }
+    return c.json(
+      {
+        status: "SUCCESS",
+        meta: { total, limit, offset },
+        data: games,
+      },
+      200,
+    );
   });
 
   // POST /library/enrich-covers
   app.post("/enrich-covers", async (c) => {
     const userId = c.get("userId");
 
-    try {
-      libraryService
-        .enrichGameCovers(userId)
-        .then((result) => {
-          console.log(
-            `[LibraryController] Cover enrichment complete: ${result.enriched} enriched, ${result.noMatch} skipped`,
-          );
-        })
-        .catch((err) => {
-          console.error("[LibraryController] Cover enrichment failed:", err);
-        });
+    // Background work: the response doesn't wait for it.
+    libraryService
+      .enrichGameCovers(userId)
+      .then((result) => {
+        console.log(
+          `[LibraryController] Cover enrichment complete: ${result.enriched} enriched, ${result.noMatch} skipped`,
+        );
+      })
+      .catch((err) => {
+        console.error("[LibraryController] Cover enrichment failed:", err);
+      });
 
-      return c.json(
-        {
-          status: "SUCCESS",
-          message: "Cover enrichment started in background.",
-        },
-        200,
-      );
-    } catch (error) {
-      console.error(
-        "[LibraryController] Failed to start cover enrichment:",
-        error,
-      );
-      throw error;
-    }
+    return c.json(
+      {
+        status: "SUCCESS",
+        message: "Cover enrichment started in background.",
+      },
+      200,
+    );
   });
 
   // GET /library/stats
   app.get("/stats", async (c) => {
     const userId = c.get("userId");
 
-    try {
-      const stats = await libraryService.getStats(userId);
+    const stats = await libraryService.getStats(userId);
 
-      return c.json(
-        {
-          status: "SUCCESS",
-          data: stats,
-        },
-        200,
-      );
-    } catch (error) {
-      console.error(`[LibraryController] Failed to fetch stats:`, error);
-      throw error;
-    }
+    return c.json({ status: "SUCCESS", data: stats }, 200);
   });
 
   // GET /library/games/:gameId/achievements
@@ -220,44 +189,32 @@ export const createLibraryController = (
     const userId = c.get("userId");
     const gameId = c.req.param("gameId");
 
-    const { options, error } = parseAchievementOptions({
+    const options = parseAchievementOptions({
       filter: c.req.query("filter"),
       sort: c.req.query("sort"),
       limit: c.req.query("limit"),
       offset: c.req.query("offset"),
     });
 
-    if (error) {
-      return c.json({ status: "ERROR", message: error }, 400);
-    }
+    const { data, total, unlocked } = await libraryService.getGameAchievements(
+      userId,
+      gameId,
+      options,
+    );
 
-    try {
-      const { data, total, unlocked } =
-        await libraryService.getGameAchievements(userId, gameId, options);
-
-      return c.json(
-        {
-          status: "SUCCESS",
-          meta: {
-            total,
-            limit: options.limit,
-            offset: options.offset,
-            unlocked,
-          },
-          data,
+    return c.json(
+      {
+        status: "SUCCESS",
+        meta: {
+          total,
+          limit: options.limit,
+          offset: options.offset,
+          unlocked,
         },
-        200,
-      );
-    } catch (err) {
-      if (err instanceof GameNotFoundError) {
-        return c.json({ status: "ERROR", message: err.message }, 404);
-      }
-      console.error(
-        `[LibraryController] Failed to fetch achievements for game ${gameId}:`,
-        err,
-      );
-      throw err;
-    }
+        data,
+      },
+      200,
+    );
   });
 
   // POST /library/games/:gameId/achievements/sync
@@ -267,27 +224,16 @@ export const createLibraryController = (
     const userId = c.get("userId");
     const gameId = c.req.param("gameId");
 
-    try {
-      const result = await libraryService.syncGameAchievements(userId, gameId);
+    const result = await libraryService.syncGameAchievements(userId, gameId);
 
-      return c.json(
-        {
-          status: "SUCCESS",
-          message: `Synced ${result.synced} achievement(s).`,
-          data: result,
-        },
-        200,
-      );
-    } catch (err) {
-      if (err instanceof GameNotFoundError) {
-        return c.json({ status: "ERROR", message: err.message }, 404);
-      }
-      console.error(
-        `[LibraryController] Failed to sync achievements for game ${gameId}:`,
-        err,
-      );
-      throw err;
-    }
+    return c.json(
+      {
+        status: "SUCCESS",
+        message: `Synced ${result.synced} achievement(s).`,
+        data: result,
+      },
+      200,
+    );
   });
 
   return app;

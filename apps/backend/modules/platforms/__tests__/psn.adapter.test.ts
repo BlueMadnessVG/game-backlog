@@ -8,6 +8,11 @@ import { decrypt, encrypt } from "../../../lib/Encryption.utils";
 import { createTestDb, type TestDb } from "../../../tests/test-db";
 import { seedUser } from "../../../tests/seed";
 import { PsnAdapter } from "../psn.adapter";
+import { LinkFailedError, RelinkRequiredError } from "../errors";
+import {
+  ProviderAuthError,
+  ProviderUnavailableError,
+} from "../../../lib/provider-error.utils";
 
 // seedUser links a PSN account whose tokens are encrypted "seed-access-token" /
 // "seed-refresh-token" and valid for an hour.
@@ -177,10 +182,43 @@ describe("PsnAdapter", () => {
         await t.db.delete(psnAccounts);
         provider.getProfile.mockResolvedValue(null);
 
-        await expect(
-          adapter.link(t.db, alice, { npsso: "n", onlineId: "Nobody" }),
-        ).rejects.toThrow(/Could not find PSN profile for online ID: Nobody/);
+        const failure = await adapter
+          .link(t.db, alice, { npsso: "n", onlineId: "Nobody" })
+          .catch((e) => e);
+
+        expect(failure).toBeInstanceOf(LinkFailedError);
+        expect(failure.message).toMatch(/Could not find PSN profile for online ID: Nobody/);
         expect(await t.db.select().from(psnAccounts)).toHaveLength(0);
+      });
+
+      // The NPSSO is what the user pasted in. PSN refusing it is their input
+      // (422), and must never surface as a 401, which logs them out.
+      it("reports a rejected NPSSO as LinkFailedError, keeping the cause", async () => {
+        const alice = await seedUser(t.db, "alice");
+        await t.db.delete(psnAccounts);
+        const rejected = new ProviderAuthError("PsnProvider", "NPSSO exchange failed");
+        provider.exchangeNpsso.mockRejectedValue(rejected);
+
+        const failure = await adapter
+          .link(t.db, alice, { npsso: "stale", onlineId: "Blue" })
+          .catch((e) => e);
+
+        expect(failure).toBeInstanceOf(LinkFailedError);
+        expect(failure).toMatchObject({ status: 422, code: "LINK_FAILED" });
+        expect(failure.cause).toBe(rejected);
+        expect(provider.getProfile).not.toHaveBeenCalled();
+        expect(await t.db.select().from(psnAccounts)).toHaveLength(0);
+      });
+
+      it("lets a PSN outage during the NPSSO exchange through as it is (a 502, not the user's fault)", async () => {
+        const alice = await seedUser(t.db, "alice");
+        await t.db.delete(psnAccounts);
+        const outage = new ProviderUnavailableError("PsnProvider", "HTTP 503");
+        provider.exchangeNpsso.mockRejectedValue(outage);
+
+        await expect(
+          adapter.link(t.db, alice, { npsso: "n", onlineId: "Blue" }),
+        ).rejects.toBe(outage);
       });
 
       it("stores nothing when the NPSSO exchange fails", async () => {
@@ -298,6 +336,33 @@ describe("PsnAdapter", () => {
         const stored = await accountOf(alice);
         expect(decrypt(stored.accessToken)).toBe("old-access");
         expect(decrypt(stored.refreshToken)).toBe("old-refresh");
+      });
+
+      // PSN no longer accepts the stored refresh token: only linking again
+      // helps. 409 RELINK_REQUIRED, never a 401 (which logs the user out).
+      it("asks the user to relink, and keeps the stored tokens, when PSN rejects the refresh token", async () => {
+        const alice = await seedUser(t.db, "alice");
+        await setStoredTokens(alice, { expiresInMs: -1000, access: "old-access", refresh: "old-refresh" });
+        const rejected = new ProviderAuthError("PsnProvider", "refresh token expired");
+        provider.refreshTokens.mockRejectedValue(rejected);
+
+        const failure = await adapter.loadAccount(t.db, alice).catch((e) => e);
+
+        expect(failure).toBeInstanceOf(RelinkRequiredError);
+        expect(failure).toMatchObject({ status: 409, code: "RELINK_REQUIRED" });
+        expect(failure.cause).toBe(rejected);
+        const stored = await accountOf(alice);
+        expect(decrypt(stored.accessToken)).toBe("old-access");
+        expect(decrypt(stored.refreshToken)).toBe("old-refresh");
+      });
+
+      it("lets a PSN outage during a refresh through as it is, without asking for a relink", async () => {
+        const alice = await seedUser(t.db, "alice");
+        await setStoredTokens(alice, { expiresInMs: -1000 });
+        const outage = new ProviderUnavailableError("PsnProvider", "HTTP 503");
+        provider.refreshTokens.mockRejectedValue(outage);
+
+        await expect(adapter.loadAccount(t.db, alice)).rejects.toBe(outage);
       });
     });
   });

@@ -111,7 +111,7 @@ describe("createPlatformController", () => {
       const res = await app.request("/games/nope");
 
       expect(res.status).toBe(404);
-      expect(await res.json()).toMatchObject({ status: "NOT_FOUND" });
+      expect(await res.json()).toMatchObject({ status: "ERROR", code: "GAME_NOT_FOUND" });
     });
   });
 
@@ -148,6 +148,7 @@ describe("createPlatformController", () => {
       const res = await sync({ steamId: "too-short" });
 
       expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ status: "ERROR", code: "VALIDATION_FAILED" });
       expect(library.link).not.toHaveBeenCalled();
     });
 
@@ -206,7 +207,7 @@ describe("createPlatformController", () => {
       const res = await app.request("/games/g1/sync-achievements", { method: "POST" });
 
       expect(res.status).toBe(404);
-      expect(await res.json()).toMatchObject({ status: "ERROR" });
+      expect(await res.json()).toMatchObject({ status: "ERROR", code: "GAME_NOT_FOUND" });
     });
   });
 

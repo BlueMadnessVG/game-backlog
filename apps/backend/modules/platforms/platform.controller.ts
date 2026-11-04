@@ -1,8 +1,9 @@
 import { Hono } from "hono";
-import { vValidator } from "@hono/valibot-validator";
 import * as v from "valibot";
 import { AchievementFilterSchema, AchievementSortSchema } from "@repo/shared";
 
+import { ValidationError } from "../../lib/errors";
+import { validate } from "../../lib/validate";
 import { createAuthMiddleware } from "../../middleware/auth.middleware";
 import type { AuthService } from "../auth/auth.services";
 import type { LibraryService } from "../library/library.services";
@@ -49,11 +50,6 @@ export const createPlatformController = ({
 
   app.use("*", createAuthMiddleware(authService));
 
-  const gameNotFound = (message: string) => ({
-    status: "ERROR" as const,
-    message,
-  });
-
   app.get("/games", async (c) => {
     const userId = c.get("userId");
     const limit = Math.min(Number(c.req.query("limit")) || 50, MAX_PAGE_SIZE);
@@ -81,20 +77,14 @@ export const createPlatformController = ({
       { limit: 1, offset: 0 },
     );
     const game = games[0];
-
-    if (!game) {
-      return c.json(
-        { status: "NOT_FOUND", message: `Game ${gameId} not found` },
-        404,
-      );
-    }
+    if (!game) throw new GameNotFoundError(gameId);
 
     return c.json({ status: "SUCCESS", data: game }, 200);
   });
 
   app.post(
     "/sync",
-    vValidator("json", library.adapter.linkSchema as never),
+    validate("json", library.adapter.linkSchema as never),
     async (c) => {
       const userId = c.get("userId");
       const body = c.req.valid("json" as never);
@@ -139,15 +129,8 @@ export const createPlatformController = ({
     const userId = c.get("userId");
     const gameId = c.req.param("gameId");
 
-    try {
-      await library.syncAchievements(userId, gameId);
-      return c.json({ status: "SUCCESS", message: "Achievements synced" }, 200);
-    } catch (error) {
-      if (error instanceof GameNotFoundError) {
-        return c.json(gameNotFound(error.message), 404);
-      }
-      throw error;
-    }
+    await library.syncAchievements(userId, gameId);
+    return c.json({ status: "SUCCESS", message: "Achievements synced" }, 200);
   });
 
   app.post("/games/:gameId/achievements", async (c) => {
@@ -166,38 +149,28 @@ export const createPlatformController = ({
     const offset = Number(c.req.query("offset")) || 0;
 
     if (!filterResult.success || !sortResult.success) {
-      return c.json(
-        { status: "ERROR", message: "Invalid filter or sort value" },
-        400,
-      );
+      throw new ValidationError("Invalid filter or sort value");
     }
 
-    try {
-      const { data, total, unlocked } = await library.getAchievements(
-        userId,
-        gameId,
-        {
-          filter: filterResult.output,
-          sort: sortResult.output,
-          limit,
-          offset,
-        },
-      );
+    const { data, total, unlocked } = await library.getAchievements(
+      userId,
+      gameId,
+      {
+        filter: filterResult.output,
+        sort: sortResult.output,
+        limit,
+        offset,
+      },
+    );
 
-      return c.json(
-        {
-          status: "SUCCESS",
-          meta: { total, unlocked, limit, offset },
-          data,
-        },
-        200,
-      );
-    } catch (error) {
-      if (error instanceof GameNotFoundError) {
-        return c.json(gameNotFound(error.message), 404);
-      }
-      throw error;
-    }
+    return c.json(
+      {
+        status: "SUCCESS",
+        meta: { total, unlocked, limit, offset },
+        data,
+      },
+      200,
+    );
   });
 
   return app;

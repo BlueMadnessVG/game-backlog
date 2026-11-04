@@ -9,7 +9,7 @@ import {
   TotpEnrollmentNotStartedError,
   TotpNotEnrolledError,
 } from "../auth.services";
-import { authHeaders } from "../../../tests/auth.helpers";
+import { authHeaders, withErrorHandling } from "../../../tests/auth.helpers";
 import { signAuthToken } from "../../../lib/jwt.utils";
 import { generateOpaqueToken } from "../../../lib/api-token.utils";
 
@@ -43,7 +43,7 @@ describe("AuthController", () => {
 
   beforeEach(() => {
     authService = makeMockAuthService();
-    app = createAuthController(authService as never);
+    app = withErrorHandling(createAuthController(authService as never));
   });
 
   describe("GET /me", () => {
@@ -143,7 +143,9 @@ describe("AuthController", () => {
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({
         status: "ERROR",
-        message: expect.any(String),
+        code: "EMAIL_TAKEN",
+        message:
+          "This email is already registered. Sign in or use a different account.",
       });
     });
   });

@@ -6,6 +6,7 @@ import { users, xboxAccounts } from "../../../db/schema";
 import { createTestDb, type TestDb } from "../../../tests/test-db";
 import { seedUser } from "../../../tests/seed";
 import { XboxAdapter } from "../xbox.adapter";
+import { LinkFailedError } from "../errors";
 
 const profile = (xuid = "2533274968382425") => ({
   xuid,
@@ -109,9 +110,12 @@ describe("XboxAdapter", () => {
       await t.db.delete(xboxAccounts);
       provider.getPlayerProfile.mockResolvedValue(null);
 
-      await expect(adapter.link(t.db, alice, { xuid: "9999" })).rejects.toThrow(
-        /Could not find Xbox profile for XUID: 9999/,
-      );
+      const failure = await adapter.link(t.db, alice, { xuid: "9999" }).catch((e) => e);
+
+      // The user's own input was wrong: 422 LINK_FAILED, not a server error.
+      expect(failure).toBeInstanceOf(LinkFailedError);
+      expect(failure).toMatchObject({ status: 422, code: "LINK_FAILED" });
+      expect(failure.message).toMatch(/Could not find Xbox profile for XUID: 9999/);
       expect(await t.db.select().from(xboxAccounts)).toHaveLength(0);
     });
 
