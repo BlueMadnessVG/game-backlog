@@ -14,7 +14,8 @@ import type {
   OAuthProviderClient,
 } from "../../providers/oauth.types";
 import { oauthStateStore } from "./auth.state";
-import { AppError } from "../../lib/errors";
+import { AppError, NotFoundError } from "../../lib/errors";
+import { emailEquals } from "../../lib/email";
 
 /**
  * Thrown when the OAuth callback state is missing, stale, or already used —
@@ -517,7 +518,7 @@ export class AuthService {
       .where(eq(users.id, userId))
       .limit(1);
     if (!user) {
-      throw new Error("User not found");
+      throw new NotFoundError("USER_NOT_FOUND", "User not found");
     }
 
     const totp = new TOTP({
@@ -554,7 +555,7 @@ export class AuthService {
       .where(eq(users.id, userId))
       .limit(1);
     if (!user) {
-      throw new Error("User not found");
+      throw new NotFoundError("USER_NOT_FOUND", "User not found");
     }
     const pending = user.totpPendingSecret;
     if (!pending) {
@@ -600,7 +601,7 @@ export class AuthService {
       .where(eq(users.id, userId))
       .limit(1);
     if (!user) {
-      throw new Error("User not found");
+      throw new NotFoundError("USER_NOT_FOUND", "User not found");
     }
     if (!user.totpSecret) {
       throw new TotpNotEnrolledError("TOTP is not enrolled for this user");
@@ -664,7 +665,7 @@ export class AuthService {
     const rows = await this.db
       .select()
       .from(users)
-      .where(eq(users.email, email))
+      .where(emailEquals(users.email, email))
       .limit(1);
     return rows[0] ?? null;
   }
@@ -682,7 +683,13 @@ export class AuthService {
       .onConflictDoNothing();
   }
 
-  private async upsertUser(profile: OAuthProfile) {
+  private async upsertUser(rawProfile: OAuthProfile) {
+    // register() and login() store/look up emails trimmed and lowercased, and
+    // users.email is a case-sensitive unique column. A provider reporting
+    // "Ann@x.com" must therefore match the "ann@x.com" account, not create a
+    // second one.
+    const profile = { ...rawProfile, email: rawProfile.email.trim().toLowerCase() };
+
     const existing = await this.findAccountUser(profile);
     if (existing) return { user: existing, created: false };
 

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -40,7 +41,10 @@ export const timestamps = {
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   username: text("username").notNull(),
-  email: text("email").notNull().unique(),
+  // Unique case-insensitively via users_email_lower_idx below, so the database
+  // itself refuses "Ann@x.com" next to "ann@x.com", whichever code path wrote
+  // it. Compare with emailEquals() (lib/email.ts) to use that index.
+  email: text("email").notNull(),
   passwordHash: text("password_hash"),
   // Base32 TOTP secret, AES-256-GCM encrypted (lib/Encryption.utils.ts,
   // `iv:tag:ct`). Promoted from totpPendingSecret by
@@ -59,7 +63,12 @@ export const users = pgTable("users", {
   // see script/seed-user.ts for the only supported path.
   role: userRoleEnum("role").default("user").notNull(),
   ...timestamps,
-});
+},
+(table) => ({
+  emailLowerUnique: uniqueIndex("users_email_lower_idx").on(
+    sql`lower(${table.email})`,
+  ),
+}));
 
 export const games = pgTable(
   "games",

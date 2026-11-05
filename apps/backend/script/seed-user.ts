@@ -34,6 +34,7 @@ import { RegisterSchema, UserRoleSchema, type OAuthProvider } from "@repo/shared
 
 import { closeDb, db } from "../db";
 import { apiTokens, users } from "../db/schema";
+import { emailEquals } from "../lib/email";
 import { signAuthToken } from "../lib/jwt.utils";
 import { hashPassword } from "../lib/password.utils";
 import { AuthService } from "../modules/auth/auth.services";
@@ -233,7 +234,7 @@ async function upsertUser(
   const existing = await db
     .select()
     .from(users)
-    .where(eq(users.email, email))
+    .where(emailEquals(users.email, email))
     .limit(1);
   const current = existing[0];
 

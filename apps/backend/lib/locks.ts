@@ -51,7 +51,7 @@ function toTwoInt4(key: bigint): { hi: number; lo: number } {
  */
 export function createPostgresLockClient(
   connectionString = process.env.DATABASE_URL,
-): AdvisoryLockClient {
+): AdvisoryLockClient & { close(): Promise<void> } {
   if (!connectionString) {
     throw new Error(
       "❌ DATABASE_URL is missing. Advisory locks require a connection string.",
@@ -71,6 +71,13 @@ export function createPostgresLockClient(
     async release(key: bigint): Promise<void> {
       const { hi, lo } = toTwoInt4(key);
       await sql`select pg_advisory_unlock(${hi}, ${lo})`;
+    },
+    /**
+     * Ends the dedicated connection. Postgres then frees every advisory lock
+     * the session still held, which is also what happens if the process dies.
+     */
+    async close(): Promise<void> {
+      await sql.end({ timeout: 5 });
     },
   };
 }

@@ -32,13 +32,13 @@
  * anywhere but its hash. Run this on the machine whose DATABASE_URL you
  * mean, and never against production.
  */
-import { eq } from "drizzle-orm";
 import { parse } from "valibot";
 
 import { ApiTokenScopeSchema, type OAuthProvider } from "@repo/shared";
 
 import { closeDb, db } from "../db";
 import { users } from "../db/schema";
+import { emailEquals } from "../lib/email";
 import { AuthService } from "../modules/auth/auth.services";
 import type { OAuthProviderClient } from "../providers/oauth.types";
 import { assertNotProduction } from "./env-guard";
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
   const [admin] = await db
     .select({ id: users.id, role: users.role })
     .from(users)
-    .where(eq(users.email, args.adminEmail))
+    .where(emailEquals(users.email, args.adminEmail))
     .limit(1);
   if (!admin) {
     throw new Error(`Admin user not found: ${args.adminEmail}`);
@@ -143,7 +143,7 @@ async function main(): Promise<void> {
   const [target] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.email, args.userEmail))
+    .where(emailEquals(users.email, args.userEmail))
     .limit(1);
   if (!target) {
     throw new Error(`Target user not found: ${args.userEmail}`);

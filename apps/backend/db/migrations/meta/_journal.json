@@ -8,6 +8,13 @@
       "when": 1793745919499,
       "tag": "0000_opposite_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793834012494,
+      "tag": "0001_red_vision",
+      "breakpoints": true
     }
   ]
 }
