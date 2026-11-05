@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
+import { readConfig } from "../config";
 import { AppError, NotFoundError, ValidationError } from "../lib/errors";
 
 /**
@@ -118,7 +119,7 @@ export const errorHandler = (err: Error, c: Context) => {
   return respond(c, 500, {
     code: "INTERNAL_ERROR",
     message:
-      process.env.APP_ENV === "development" ? err.message : "Unknown Error",
+      readConfig("server").appEnv === "development" ? err.message : "Unknown Error",
     requestId: c.get("requestId"),
   });
 };

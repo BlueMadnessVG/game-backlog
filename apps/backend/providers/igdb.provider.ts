@@ -48,8 +48,8 @@ export class IgdbProvider {
    * @example
    * ```ts
    * const igdb = new IgdbProvider(
-   *   process.env.IGDB_CLIENT_ID!,
-   *   process.env.IGDB_CLIENT_SECRET!,
+   *   config.providers.igdbClientId,
+   *   config.providers.igdbClientSecret,
    * );
    * ```
    */

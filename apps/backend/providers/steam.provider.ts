@@ -75,7 +75,7 @@ export class SteamProvider {
    *
    * @example
    * ```ts
-   * const steam = new SteamProvider(process.env.STEAM_API_KEY!);
+   * const steam = new SteamProvider(config.providers.steamApiKey);
    * ```
    */
   constructor(apiKey: string) {

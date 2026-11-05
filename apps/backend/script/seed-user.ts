@@ -34,6 +34,7 @@ import { RegisterSchema, UserRoleSchema, type OAuthProvider } from "@repo/shared
 
 import { closeDb, db } from "../db";
 import { apiTokens, users } from "../db/schema";
+import { readConfig } from "../config";
 import { emailEquals } from "../lib/email";
 import { signAuthToken } from "../lib/jwt.utils";
 import { hashPassword } from "../lib/password.utils";
@@ -160,17 +161,19 @@ function parseArgs(argv: string[]): CliArgs {
   const manifestPath = flags.get("manifest")?.[0];
   if (manifestPath) return { manifest: manifestPath, out: OUT_FILE, users: [] };
 
+  const seedEnv = readConfig("seed");
+
   const password =
     flags.get("password")?.[0] ??
-    process.env.SEED_USER_PASSWORD ??
+    seedEnv.password ??
     DEFAULT_USER.password;
 
   const email =
-    flags.get("email")?.[0] ?? process.env.SEED_USER_EMAIL ?? DEFAULT_USER.email;
+    flags.get("email")?.[0] ?? seedEnv.email ?? DEFAULT_USER.email;
 
   const username =
     flags.get("username")?.[0] ??
-    process.env.SEED_USER_USERNAME ??
+    seedEnv.username ??
     // Sanitized to satisfy AuthUsernameSchema's regex/limits so an ad-hoc
     // --email still produces a valid username instead of failing validation.
     email.split("@")[0]!.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 24);

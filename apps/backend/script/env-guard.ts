@@ -1,3 +1,5 @@
+import { readConfig } from "../config";
+
 /**
  * Refuses to run developer/setup scripts when pointed at production.
  *
@@ -13,7 +15,7 @@
  * even though the `db` import already ran.
  */
 export function assertNotProduction(): void {
-  if (process.env.APP_ENV === "production") {
+  if (readConfig("server").appEnv === "production") {
     console.error(
       "❌ Refusing to run: APP_ENV=production. This script creates credentials or resets data and must never execute against production.",
     );

@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import postgres from "postgres";
 import { HTTPException } from "hono/http-exception";
 
+import { readConfig } from "../config";
+
 /**
  * Postgres advisory-lock client.
  *
@@ -50,13 +52,8 @@ function toTwoInt4(key: bigint): { hi: number; lo: number } {
  * @throws {Error} When no connection string is available.
  */
 export function createPostgresLockClient(
-  connectionString = process.env.DATABASE_URL,
+  connectionString = readConfig("database").databaseUrl,
 ): AdvisoryLockClient & { close(): Promise<void> } {
-  if (!connectionString) {
-    throw new Error(
-      "❌ DATABASE_URL is missing. Advisory locks require a connection string.",
-    );
-  }
 
   const sql = postgres(connectionString, { max: 1, prepare: false });
 

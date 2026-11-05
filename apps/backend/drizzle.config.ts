@@ -1,19 +1,15 @@
 import { defineConfig } from "drizzle-kit";
 
-const DATABASE_URL = process.env.DATABASE_URL;
+import { readConfig } from "./config";
 
-if (!DATABASE_URL) {
-  throw new Error(
-    "❌ DATABASE_URL is not defined in your environment variables.",
-  );
-}
+const { databaseUrl } = readConfig("database");
 
 export default defineConfig({
   schema: "./db/schema/index.ts",
   out: "./db/migrations",
   dialect: "postgresql",
   dbCredentials: {
-    url: DATABASE_URL,
+    url: databaseUrl,
   },
   breakpoints: true,
   verbose: true,

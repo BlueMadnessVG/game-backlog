@@ -64,7 +64,7 @@ export class XboxProvider {
    *
    * @example
    * ```ts
-   * const xbox = new XboxProvider(process.env.OPENXBL_API_KEY!);
+   * const xbox = new XboxProvider(config.providers.openxblApiKey);
    * ```
    */
   constructor(apiKey: string) {

@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { getCookie } from "hono/cookie";
 import type { Context } from "hono";
 
+import { readConfig } from "../config";
 import { verifyAuthToken, type TokenPurpose } from "../lib/jwt.utils";
 import { isApiToken } from "../lib/api-token.utils";
 import { SESSION_COOKIE_NAME } from "../lib/session-cookie";
@@ -72,7 +73,7 @@ function enforceApiTokenScope(c: Context<AuthEnv>, scope: string): void {
   if (!MUTATING_METHODS.has(c.req.method)) return;
   if (isTokenSelfManagementPath(c.req.path)) return;
 
-  const hardened = process.env.ENFORCE_API_TOKEN_SCOPES === "true";
+  const hardened = readConfig("server").enforceApiTokenScopes;
 
   if (hardened) {
     console.warn(

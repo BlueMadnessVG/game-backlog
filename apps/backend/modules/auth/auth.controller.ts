@@ -21,6 +21,7 @@ import {
 } from "../../middleware/auth.middleware";
 import { requireCredential } from "../../middleware/credential-policy.middleware";
 import { setSessionCookie, clearSessionCookie } from "../../lib/session-cookie";
+import { readConfig } from "../../config";
 import { NotFoundError, ValidationError } from "../../lib/errors";
 import { validate } from "../../lib/validate";
 import type { TokenPurpose } from "../../lib/jwt.utils";
@@ -34,7 +35,6 @@ type Bindings = {
   };
 };
 
-const FRONTEND_FALLBACK = "http://localhost:5173";
 
 /**
  * Captures request context for the API-token audit trail (stored in
@@ -111,7 +111,7 @@ export const createAuthController = (authService: AuthService) => {
   const requireSession = requireCredential(authService, {
     credential: "session",
   });
-  const frontendUrl = () => process.env.FRONTEND_URL ?? FRONTEND_FALLBACK;
+  const frontendUrl = () => readConfig("server").frontendUrl;
 
   const providerParam = (raw: string | undefined) => {
     const result = v.safeParse(OAuthProviderSchema, raw);

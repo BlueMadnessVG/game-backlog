@@ -1,12 +1,9 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { readConfig } from "../config";
 
-const DATABASE_URL = process.env.DATABASE_URL;
-
-if (!DATABASE_URL) {
-  throw new Error("❌ DATABASE_URL is missing. Connection failed.");
-}
+const DATABASE_URL = readConfig("database").databaseUrl;
 
 const client = postgres(DATABASE_URL, {
   prepare: false,

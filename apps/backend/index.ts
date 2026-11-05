@@ -1,44 +1,66 @@
-import { db } from "./db";
-import { createApp } from "./app";
-import { SteamProvider } from "./providers/steam.provider";
-import { XboxProvider } from "./providers/xbox.provider";
-import { PsnProvider } from "./providers/psn.provider";
-import { IgdbProvider } from "./providers/igdb.provider";
-import { GoogleOAuthProvider } from "./providers/google.provider";
-import { DiscordOAuthProvider } from "./providers/discord.provider";
+import { ConfigError, loadConfig } from "./config";
 
 /**
- * Production entry point: reads the environment, builds the real external
+ * Production entry point: checks the environment, builds the real external
  * clients, hands them to the app factory (app.ts) and starts serving.
+ *
+ * The environment is validated BEFORE anything else is imported. Static imports
+ * are hoisted, and several modules (db, jwt, encryption) read their config as
+ * they load, so importing them first would fail on the first missing variable
+ * instead of reporting all of them.
  */
+function loadConfigOrExit() {
+  try {
+    return loadConfig();
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      console.error(`❌ ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
+  }
+}
+
+const config = loadConfigOrExit();
+
+const { db } = await import("./db");
+const { createApp } = await import("./app");
+const { SteamProvider } = await import("./providers/steam.provider");
+const { XboxProvider } = await import("./providers/xbox.provider");
+const { PsnProvider } = await import("./providers/psn.provider");
+const { IgdbProvider } = await import("./providers/igdb.provider");
+const { GoogleOAuthProvider } = await import("./providers/google.provider");
+const { DiscordOAuthProvider } = await import("./providers/discord.provider");
+
+const { providers } = config;
+
 const app = createApp({
   db,
   providers: {
-    steam: new SteamProvider(process.env.STEAM_API_KEY!),
-    xbox: new XboxProvider(process.env.OPENXBL_API_KEY!),
+    steam: new SteamProvider(providers.steamApiKey),
+    xbox: new XboxProvider(providers.openxblApiKey),
     psn: new PsnProvider(),
-    igdb: new IgdbProvider(
-      process.env.IGDB_CLIENT_ID!,
-      process.env.IGDB_CLIENT_SECRET!,
-    ),
+    igdb: new IgdbProvider(providers.igdbClientId, providers.igdbClientSecret),
     google: new GoogleOAuthProvider(
-      process.env.GOOGLE_CLIENT_ID!,
-      process.env.GOOGLE_CLIENT_SECRET!,
-      process.env.GOOGLE_REDIRECT_URI!,
+      providers.googleClientId,
+      providers.googleClientSecret,
+      providers.googleRedirectUri,
     ),
     discord: new DiscordOAuthProvider(
-      process.env.DISCORD_CLIENT_ID!,
-      process.env.DISCORD_CLIENT_SECRET!,
-      process.env.DISCORD_REDIRECT_URI!,
+      providers.discordClientId,
+      providers.discordClientSecret,
+      providers.discordRedirectUri,
     ),
   },
 });
+
+const { port } = config.server;
 
 /**
  * Bun-native execution
  */
 export default {
-  port: process.env.PORT || 3000,
+  port,
   fetch: app.fetch,
 };
 
@@ -50,6 +72,4 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-console.log(
-  `🚀 COMMAND CENTER LIVE: http://localhost:${process.env.PORT || 3000}`,
-);
+console.log(`🚀 COMMAND CENTER LIVE: http://localhost:${port}`);

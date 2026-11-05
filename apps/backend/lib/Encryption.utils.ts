@@ -1,22 +1,12 @@
 import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 
+import { readConfig } from "../config";
+
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96 bits — the standard/recommended IV length for GCM
 const KEY_LENGTH = 32; // AES-256 requires a 32-byte key
 
-const ENCRYPTION_KEY_HEX = process.env.ENCRYPTION_KEY;
-
-if (!ENCRYPTION_KEY_HEX) {
-  throw new Error("❌ ENCRYPTION_KEY is not defined in environment variables.");
-}
-
-const key = Buffer.from(ENCRYPTION_KEY_HEX, "hex");
-
-if (key.length !== KEY_LENGTH) {
-  throw new Error(
-    `❌ ENCRYPTION_KEY must be ${KEY_LENGTH} bytes (${KEY_LENGTH * 2} hex characters). Generate one with \`openssl rand -hex 32\`.`,
-  );
-}
+const key = Buffer.from(readConfig("encryption").encryptionKey, "hex");
 
 /**
  * Encrypts a plaintext string with AES-256-GCM.
