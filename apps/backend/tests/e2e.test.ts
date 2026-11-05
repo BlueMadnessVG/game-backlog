@@ -4,6 +4,10 @@ import { createApp } from "../app";
 import { createTestDb, type TestDb } from "./test-db";
 import { seedOwnedGame, seedUser } from "./seed";
 import type { AdvisoryLockClient } from "../lib/locks";
+import {
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+} from "../lib/provider-error.utils";
 
 // Bun's argon2 is not what this proves (and tests run under node).
 vi.mock("../lib/password.utils", () => ({
@@ -17,6 +21,11 @@ const noopLock: AdvisoryLockClient = {
 };
 
 const STEAM_ID = "76561198012345678";
+
+const unavailable = () => ({
+  status: "error",
+  error: new ProviderUnavailableError("SteamProvider", "down"),
+});
 
 /**
  * The real app (app.ts, the same factory index.ts uses) with real services on
@@ -51,9 +60,9 @@ describe("API end to end (real app, real database)", () => {
         { steamAppId: "570", name: "Dota 2", playtimeMinutes: 120, iconUrl: null, coverUrl: null, lastPlayedAt: null },
         { steamAppId: "620", name: "Portal 2", playtimeMinutes: 60, iconUrl: null, coverUrl: null, lastPlayedAt: null },
       ]),
-      // Achievement lookups fail softly, leaving the games visible in the library.
-      getPlayerAchievements: vi.fn().mockResolvedValue(null),
-      getGameSchema: vi.fn().mockResolvedValue({ status: "error" }),
+      // Achievement lookups fail, which leaves the games visible in the library.
+      getPlayerAchievements: vi.fn().mockResolvedValue(unavailable()),
+      getGameSchema: vi.fn().mockResolvedValue(unavailable()),
     };
     app = createApp({
       db: t.db,
@@ -146,6 +155,33 @@ describe("API end to end (real app, real database)", () => {
     const after = await app.request("/api/v1/library/games", asToken(token));
     expect(after.status).toBe(401);
     expect(await json(after)).toMatchObject({ status: "ERROR", code: expect.any(String) });
+  });
+
+  it("tells the caller when a platform fails, instead of reporting a sync of zero", async () => {
+    const alice = await register("alice", "alice@example.com");
+    await app.request(
+      "/api/v1/steam/sync",
+      asSession(alice.cookie, { method: "POST", body: JSON.stringify({ steamId: STEAM_ID }) }),
+    );
+    await vi.waitFor(() => expect(steam.getGameSchema).toHaveBeenCalledTimes(2));
+    const list = await app.request("/api/v1/library/games", asSession(alice.cookie));
+    const gameId = (await json(list)).data[0].id as string;
+    steam.getGameSchema.mockResolvedValue({
+      status: "error",
+      error: new ProviderRateLimitError("SteamProvider"),
+    });
+
+    const res = await app.request(
+      `/api/v1/steam/games/${gameId}/sync-achievements`,
+      asSession(alice.cookie, { method: "POST" }),
+    );
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("60");
+    expect(await json(res)).toMatchObject({
+      status: "ERROR",
+      code: "PROVIDER_RATE_LIMITED",
+    });
   });
 
   it("keeps one user's token from reading or revoking another user's data", async () => {

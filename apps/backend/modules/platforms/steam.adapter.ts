@@ -3,6 +3,7 @@ import { SteamSyncSchema } from "@repo/shared";
 
 import { steamAccounts, users } from "../../db/schema";
 import type { DbClient } from "../../db";
+import { failed } from "../../lib/provider-error.utils";
 import { LinkFailedError } from "./errors";
 import type { SteamProvider } from "../../providers/steam.provider";
 import type {
@@ -94,13 +95,21 @@ export class SteamAdapter
     ]);
 
     if (definitions.status !== "ok") return definitions;
-    // The game defines achievements but the player's side is unavailable
-    // (private profile, no stats page): we can't say anything about it.
-    if (!player) return { status: "error" };
+    // The player's side failed outright (rate limited, private profile…).
+    if (player.status === "error") return player;
+    // The game defines achievements but the player side has no stats page:
+    // we can't say anything about this player's progress.
+    if (player.status === "empty") {
+      return failed(
+        "SteamProvider",
+        undefined,
+        "Player stats unavailable for a game that defines achievements",
+      );
+    }
 
     return {
       status: "ok",
-      achievements: player.map((a) => {
+      achievements: player.achievements.map((a) => {
         const meta = definitions.schema.get(a.apiName);
         return {
           externalKey: a.apiName,

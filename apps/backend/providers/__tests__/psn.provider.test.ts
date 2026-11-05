@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PsnProvider } from "../psn.provider";
+import {
+  ProviderAuthError,
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+} from "../../lib/provider-error.utils";
 
 // Mock the entire psn-api module — we never want real network calls in tests
 vi.mock("psn-api", () => ({
@@ -452,15 +457,39 @@ describe("PsnProvider", () => {
       );
     });
 
-    it("reports 'error' on API failure instead of throwing", async () => {
-      mockGetTitleTrophies.mockRejectedValue(new Error("Trophy API error"));
+    it("reports an unexpected failure as unavailable, keeping the original error", async () => {
+      const boom = new Error("Trophy API error");
+      mockGetTitleTrophies.mockRejectedValue(boom);
 
       const result = await provider.getGameTrophies(
         "token",
         "NPWR20188_00",
         "trophy2",
       );
-      expect(result).toEqual({ status: "error" });
+
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
+      expect((result as { error: Error }).error.cause).toBe(boom);
+    });
+
+    // The reason survives, and nothing throws: the engine decides what to do.
+    it.each([
+      ["status 429", { status: 429 }, ProviderRateLimitError],
+      ["a rate-limit message", new Error("Rate limit exceeded"), ProviderRateLimitError],
+      ["status 401", { status: 401 }, ProviderAuthError],
+      ["status 403", { statusCode: 403 }, ProviderAuthError],
+    ])("reports the cause on %s instead of throwing", async (_name, failure, cls) => {
+      mockGetTitleTrophies.mockRejectedValue(failure);
+
+      const result = await provider.getGameTrophies(
+        "token",
+        "NPWR20188_00",
+        "trophy2",
+      );
+
+      expect(result).toMatchObject({ status: "error", error: expect.any(cls) });
     });
 
     it("fetches both metadata and earn state in parallel", async () => {

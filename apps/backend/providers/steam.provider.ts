@@ -8,10 +8,17 @@ import {
   SteamRecentlyPlayedSchema,
 } from "./schemas/steam.schemas";
 import {
+  failed,
   ProviderAuthError,
   ProviderRateLimitError,
   ProviderUnavailableError,
+  type ProviderFailure,
 } from "../lib/provider-error.utils";
+
+/** An HTTP status the caller asked {@link SteamProvider.fetchJson} to tolerate. */
+class ToleratedStatus {
+  constructor(readonly status: number) {}
+}
 
 export type SteamAchievementMeta = {
   displayName: string;
@@ -25,7 +32,20 @@ export type SteamAchievementMeta = {
 export type GameSchemaResult =
   | { status: "ok"; schema: Map<string, SteamAchievementMeta> }
   | { status: "empty" }
-  | { status: "error" };
+  | ProviderFailure;
+
+export type SteamPlayerAchievement = {
+  apiName: string;
+  achieved: boolean;
+  unlockedAt: Date | null;
+  name: string;
+  description: string | null;
+};
+
+export type PlayerAchievementsResult =
+  | { status: "ok"; achievements: SteamPlayerAchievement[] }
+  | { status: "empty" }
+  | ProviderFailure;
 
 /**
  * Low-level wrapper around the Steam Web API, handling authentication,
@@ -97,10 +117,10 @@ export class SteamProvider {
    * @param url - The URL to fetch.
    * @param options - Optional configuration.
    * @param options.toleratedStatuses - HTTP status codes that should be
-   *   treated as "no data" rather than failures (e.g. Steam returns `400`
-   *   for games with no stats page).
-   * @returns Parsed JSON response, or `null` when a tolerated status is
-   *   encountered.
+   *   reported to the caller as a {@link ToleratedStatus} rather than thrown
+   *   (e.g. Steam returns `400` for games with no stats page).
+   * @returns Parsed JSON response, or a {@link ToleratedStatus} when a
+   *   tolerated status is encountered.
    * @throws {ProviderAuthError} On 401/403 responses.
    * @throws {ProviderRateLimitError} On 429 responses.
    * @throws {ProviderUnavailableError} On other non-2xx responses.
@@ -118,7 +138,7 @@ export class SteamProvider {
       throw new ProviderRateLimitError("SteamProvider");
     }
     if (options.toleratedStatuses?.includes(response.status)) {
-      return null;
+      return new ToleratedStatus(response.status);
     }
     if (!response.ok) {
       throw new ProviderUnavailableError(
@@ -320,55 +340,88 @@ export class SteamProvider {
    *
    * @param steamId - The 64-bit Steam ID of the player.
    * @param appId - The Steam application ID to fetch achievements for.
-   * @returns Array of achievement objects, or `null` when the game has no
-   *   stats page or the profile is private.
-   * @throws {ProviderAuthError} On 401/403 responses.
-   * @throws {ProviderRateLimitError} On 429 responses.
-   * @throws {ProviderUnavailableError} On other non-2xx responses that are
-   *   not tolerated.
+   * @returns Never throws; a failure is reported in the result.
+   *   - `{ status: "ok", achievements }` — the player's state per achievement.
+   *   - `{ status: "empty" }` — Steam says the game has no stats page.
+   *   - `{ status: "error", error }` — rate limited (429), rejected (401/403),
+   *     unavailable (5xx, network), a private profile, or an unreadable
+   *     payload; `error` says which.
    *
    * @example
    * ```ts
-   * const achievements = await steam.getPlayerAchievements(
+   * const result = await steam.getPlayerAchievements(
    *   "76561198012345678",
    *   "730",
    * );
-   * if (achievements) {
-   *   console.log(`${achievements.length} achievements`);
+   * if (result.status === "ok") {
+   *   console.log(`${result.achievements.length} achievements`);
    * }
    * ```
    */
-  async getPlayerAchievements(steamId: string, appId: string) {
+  async getPlayerAchievements(
+    steamId: string,
+    appId: string,
+  ): Promise<PlayerAchievementsResult> {
     const url = this.buildUrl("/ISteamUserStats/GetPlayerAchievements/v0001/", {
       steamid: steamId,
       appid: appId,
       l: "english",
     });
 
-    const rawData = await this.fetchJson(url, {
-      toleratedStatuses: [400, 500],
-    });
-    if (rawData === null) return null;
+    let rawData: unknown;
+    try {
+      rawData = await this.fetchJson(url, { toleratedStatuses: [400, 500] });
+    } catch (error) {
+      console.warn(
+        `[SteamProvider][getPlayerAchievements] Request failed for app ${appId}:`,
+        error,
+      );
+      return failed("SteamProvider", error);
+    }
+
+    if (rawData instanceof ToleratedStatus) {
+      // 400: the game has no stats page, so there is nothing to report.
+      if (rawData.status === 400) return { status: "empty" };
+      // 500: private profile, or a game this player never launched. Nothing is
+      // known about their progress, which is not the same as "no achievements".
+      return failed(
+        "SteamProvider",
+        undefined,
+        "Player stats unavailable (private profile, or the game was never launched)",
+      );
+    }
 
     const result = v.safeParse(SteamPlayerAchievementsSchema, rawData);
 
-    if (!result.success || !result.output.playerstats.achievements) {
-      if (!result.success) {
-        console.error(
-          "[SteamProvider][getPlayerAchievements] Schema error:",
-          v.flatten(result.issues),
-        );
-      }
-      return null;
+    if (!result.success) {
+      console.error(
+        "[SteamProvider][getPlayerAchievements] Schema error:",
+        v.flatten(result.issues),
+      );
+      return failed(
+        "SteamProvider",
+        undefined,
+        "Player achievements response did not match expected schema",
+      );
+    }
+    if (!result.output.playerstats.achievements) {
+      return failed(
+        "SteamProvider",
+        undefined,
+        "Player stats unavailable (no achievements in the response)",
+      );
     }
 
-    return result.output.playerstats.achievements.map((a) => ({
-      apiName: a.apiname,
-      achieved: a.achieved === 1,
-      unlockedAt: a.unlocktime > 0 ? new Date(a.unlocktime * 1000) : null,
-      name: a.name ?? a.apiname,
-      description: a.description ?? null,
-    }));
+    return {
+      status: "ok",
+      achievements: result.output.playerstats.achievements.map((a) => ({
+        apiName: a.apiname,
+        achieved: a.achieved === 1,
+        unlockedAt: a.unlocktime > 0 ? new Date(a.unlocktime * 1000) : null,
+        name: a.name ?? a.apiname,
+        description: a.description ?? null,
+      })),
+    };
   }
 
   /**
@@ -394,7 +447,7 @@ export class SteamProvider {
    *     `globalPercentage`.
    *   - `{ status: "empty" }` — Steam answered and the game defines no
    *     achievements.
-   *   - `{ status: "error" }` — the request failed or the payload was
+   *   - `{ status: "error", error }` — the request failed or the payload was
    *     unreadable; nothing is known about the game.
    *
    * @example
@@ -408,13 +461,17 @@ export class SteamProvider {
    * ```
    */
   async getGameSchema(appId: string): Promise<GameSchemaResult> {
-    const [schemaData, globalData] = await Promise.all([
-      this.safeFetchJson(
+    const [schemaFetch, globalData] = await Promise.all([
+      // Not the "safe" variant: a failure here must keep its reason (429,
+      // auth, outage) so the caller can tell them apart.
+      this.fetchJson(
         this.buildUrl("/ISteamUserStats/GetSchemaForGame/v2/", {
           appid: appId,
           l: "english",
         }),
-        "getGameSchema:schema",
+      ).then(
+        (data) => ({ data }),
+        (error: unknown) => ({ error }),
       ),
       this.safeFetchJson(
         new URL(
@@ -424,20 +481,29 @@ export class SteamProvider {
       ),
     ]);
 
-    // safeFetchJson returns null on ANY failure (network, 429, 5xx, auth), so
-    // null here means "we don't know", never "the game has none".
-    if (schemaData === null) return { status: "error" };
+    // A failed request means "we don't know", never "the game has none".
+    if ("error" in schemaFetch) {
+      console.warn(
+        `[SteamProvider][getGameSchema] Request failed for ${appId}:`,
+        schemaFetch.error,
+      );
+      return failed("SteamProvider", schemaFetch.error);
+    }
 
     const schemaResult = v.safeParse(
       SteamAchievementDefinitionsSchema,
-      schemaData,
+      schemaFetch.data,
     );
     if (!schemaResult.success) {
       console.error(
         `[SteamProvider][getGameSchema] Schema error for ${appId}:`,
         v.flatten(schemaResult.issues),
       );
-      return { status: "error" };
+      return failed(
+        "SteamProvider",
+        undefined,
+        "Game schema response did not match expected schema",
+      );
     }
 
     const schemaDefs =

@@ -57,3 +57,43 @@ export class ProviderUnavailableError extends AppError {
     return "The game platform is temporarily unavailable. Try again later.";
   }
 }
+
+/** The failures a platform API can report. */
+export type ProviderError =
+  | ProviderAuthError
+  | ProviderRateLimitError
+  | ProviderUnavailableError;
+
+/**
+ * How a provider method that returns an outcome (`ok` / `empty` / `error`)
+ * reports a failure: never by throwing, always with the reason, so the caller
+ * can tell "rate limited, back off" from "this one game failed".
+ */
+export type ProviderFailure = { status: "error"; error: ProviderError };
+
+const isProviderError = (err: unknown): err is ProviderError =>
+  err instanceof ProviderAuthError ||
+  err instanceof ProviderRateLimitError ||
+  err instanceof ProviderUnavailableError;
+
+/**
+ * Turns anything that went wrong into a {@link ProviderFailure}. A typed
+ * provider error passes through unchanged (a 429 stays a rate limit); anything
+ * else (network failure, unreadable payload, plain message) becomes
+ * {@link ProviderUnavailableError}, keeping the original as its `cause`.
+ */
+export function failed(
+  provider: string,
+  err: unknown,
+  message?: string,
+): ProviderFailure {
+  if (isProviderError(err)) return { status: "error", error: err };
+  const detail =
+    message ?? (err instanceof Error ? err.message : String(err ?? "Request failed"));
+  return {
+    status: "error",
+    error: new ProviderUnavailableError(provider, detail, {
+      cause: err instanceof Error ? err : undefined,
+    }),
+  };
+}

@@ -1,6 +1,7 @@
 import type { GenericSchema } from "valibot";
 
 import type { DbClient } from "../../db";
+import type { ProviderFailure } from "../../lib/provider-error.utils";
 
 export type PlatformKey = "steam" | "xbox" | "playstation";
 
@@ -48,11 +49,15 @@ export type NormalizedAchievement = {
  *  - `empty`: the platform answered, and the game has none.
  *  - `error`: the lookup failed; nothing is known. This must never be reported
  *    as `empty`, because `empty` hides the game for every user who owns it.
+ *    It carries the reason (rate limited, rejected, unavailable) so the engine
+ *    can tell "back off" from "this one game failed".
+ *
+ * Adapters report a failed lookup this way and do not throw.
  */
 export type AchievementsOutcome =
   | { status: "ok"; achievements: NormalizedAchievement[] }
   | { status: "empty" }
-  | { status: "error" };
+  | ProviderFailure;
 
 /**
  * Everything that differs between Steam, Xbox and PSN, and nothing else.

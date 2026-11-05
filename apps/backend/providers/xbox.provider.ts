@@ -7,9 +7,11 @@ import {
   type XboxAchievementSchema,
 } from "./schemas/xbox.schemas";
 import {
+  failed,
   ProviderAuthError,
   ProviderRateLimitError,
   ProviderUnavailableError,
+  type ProviderFailure,
 } from "../lib/provider-error.utils";
 
 type XboxAchievementResult = {
@@ -27,7 +29,7 @@ type XboxAchievementResult = {
 type PlayerAchievementsResult =
   | { status: "ok"; achievements: XboxAchievementResult[] }
   | { status: "empty" }
-  | { status: "error" };
+  | ProviderFailure;
 
 type XboxAchievementRewards = v.InferOutput<
   typeof XboxAchievementSchema
@@ -520,7 +522,7 @@ export class XboxProvider {
    * @returns A {@link PlayerAchievementsResult} discriminated union:
    *   - `{ status: "ok", achievements }` — achievements found and returned.
    *   - `{ status: "empty" }` — game genuinely has zero achievements.
-   *   - `{ status: "error" }` — API call failed, schema mismatch, or
+   *   - `{ status: "error", error }` — API call failed, schema mismatch, or
    *     truncated response (error already logged).
    *
    * @example
@@ -548,7 +550,7 @@ export class XboxProvider {
         `[XboxProvider][getPlayerAchievements] Fetch failed for title ${titleId}:`,
         error,
       );
-      return { status: "error" };
+      return failed("XboxProvider", error);
     }
 
     const result = v.safeParse(XboxAchievementsResponseSchema, rawData);
@@ -558,11 +560,19 @@ export class XboxProvider {
         "[XboxProvider][getPlayerAchievements] Schema error:",
         v.flatten(result.issues),
       );
-      return { status: "error" };
+      return failed(
+        "XboxProvider",
+        undefined,
+        "Achievements response did not match expected schema",
+      );
     }
 
     if (!this.isEnvelopeOk(result.output.code, "getPlayerAchievements")) {
-      return { status: "error" };
+      return failed(
+        "XboxProvider",
+        undefined,
+        "OpenXBL reported a failure for the achievements request",
+      );
     }
 
     const achievements = result.output.content.achievements ?? [];
@@ -573,7 +583,11 @@ export class XboxProvider {
         console.warn(
           `[XboxProvider][getPlayerAchievements] title ${titleId}: empty achievements array but totalRecords=${totalRecords} — treating as a transient failure, not genuine emptiness`,
         );
-        return { status: "error" };
+        return failed(
+          "XboxProvider",
+          undefined,
+          "Empty achievements page although the title reports achievements",
+        );
       }
       return { status: "empty" };
     }

@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { XboxProvider } from "../xbox.provider";
-import { ProviderUnavailableError } from "../../lib/provider-error.utils";
+import {
+  ProviderAuthError,
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+} from "../../lib/provider-error.utils";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -292,19 +296,45 @@ describe("XboxProvider", () => {
         }),
       );
       const result = await provider.getPlayerAchievements("xuid", "tid-1");
-      expect(result).toEqual({ status: "error" });
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
     });
 
-    it("reports 'error' when the request fails", async () => {
-      mockFetch.mockResolvedValue(makeResponse({}, 500));
+    // The reason survives, and nothing throws: the engine decides what to do.
+    it.each([
+      ["HTTP 429", 429, ProviderRateLimitError],
+      ["HTTP 401", 401, ProviderAuthError],
+      ["HTTP 500", 500, ProviderUnavailableError],
+    ])("reports the cause on %s instead of throwing", async (_name, status, cls) => {
+      mockFetch.mockResolvedValue(makeResponse({}, status));
+
       const result = await provider.getPlayerAchievements("xuid", "tid-1");
-      expect(result).toEqual({ status: "error" });
+
+      expect(result).toMatchObject({ status: "error", error: expect.any(cls) });
+    });
+
+    it("reports a network failure as unavailable, keeping the original error", async () => {
+      const boom = new Error("ECONNRESET");
+      mockFetch.mockRejectedValue(boom);
+
+      const result = await provider.getPlayerAchievements("xuid", "tid-1");
+
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
+      expect((result as { error: Error }).error.cause).toBe(boom);
     });
 
     it("reports 'error' when the payload doesn't match the schema", async () => {
       mockFetch.mockResolvedValue(makeResponse({ unexpected: "shape" }));
       const result = await provider.getPlayerAchievements("xuid", "tid-1");
-      expect(result).toEqual({ status: "error" });
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
     });
 
     it("marks achievement as not achieved when timeUnlocked is empty string", async () => {

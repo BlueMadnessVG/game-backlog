@@ -7,6 +7,7 @@ import { createTestDb, type TestDb } from "../../../tests/test-db";
 import { seedUser } from "../../../tests/seed";
 import { XboxAdapter } from "../xbox.adapter";
 import { LinkFailedError } from "../errors";
+import { ProviderRateLimitError } from "../../../lib/provider-error.utils";
 
 const profile = (xuid = "2533274968382425") => ({
   xuid,
@@ -197,10 +198,17 @@ describe("XboxAdapter", () => {
       });
     });
 
-    it.each([["empty"], ["error"]])("passes '%s' through unchanged", async (status) => {
-      provider.getPlayerAchievements.mockResolvedValue({ status });
+    it("passes 'empty' through unchanged", async () => {
+      provider.getPlayerAchievements.mockResolvedValue({ status: "empty" });
 
-      expect(await adapter.fetchAchievements(account, game)).toEqual({ status });
+      expect(await adapter.fetchAchievements(account, game)).toEqual({ status: "empty" });
+    });
+
+    it("passes a failure through with its cause", async () => {
+      const failure = { status: "error", error: new ProviderRateLimitError("XboxProvider") };
+      provider.getPlayerAchievements.mockResolvedValue(failure);
+
+      expect(await adapter.fetchAchievements(account, game)).toBe(failure);
     });
   });
 });

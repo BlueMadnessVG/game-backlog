@@ -21,6 +21,12 @@ import type { AdvisoryLockClient } from "../../../lib/locks";
 import { createTestDb, type TestDb } from "../../../tests/test-db";
 import { seedUser } from "../../../tests/seed";
 import { AccountNotLinkedError, GameNotFoundError } from "../errors";
+import {
+  ProviderAuthError,
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+  type ProviderFailure,
+} from "../../../lib/provider-error.utils";
 import { PlatformLibrary } from "../platform-library";
 import type {
   AchievementsOutcome,
@@ -66,6 +72,11 @@ const ach = (
 const ok = (...list: NormalizedAchievement[]): AchievementsOutcome => ({
   status: "ok",
   achievements: list,
+});
+
+const failure = (error: ProviderFailure["error"]): AchievementsOutcome => ({
+  status: "error",
+  error,
 });
 
 const makeAdapter = () => ({
@@ -495,6 +506,42 @@ describe("PlatformLibrary", () => {
       );
     });
 
+    describe("when the platform fails to answer", () => {
+      it.each([
+        ["rate limited", new ProviderRateLimitError("Test")],
+        ["rejecting our credentials", new ProviderAuthError("Test")],
+        ["unavailable", new ProviderUnavailableError("Test", "down")],
+      ])("throws the provider's error (%s) and writes nothing", async (_name, error) => {
+        const alice = await seedUser(t.db, "alice");
+        const [gameId] = await syncLibrary(alice, [owned()]);
+        adapter.fetchAchievements.mockResolvedValue(failure(error));
+
+        await expect(library.syncAchievements(alice, gameId!)).rejects.toBe(error);
+
+        // Nothing is known, so nothing changes: the game isn't hidden either.
+        expect((await t.db.select().from(games))[0]!.hasAchievements).toBeNull();
+        expect(await t.db.select().from(achievements)).toHaveLength(0);
+        expect(await t.db.select().from(userAchievements)).toHaveLength(0);
+      });
+
+      it("keeps what was synced before when a later sync fails", async () => {
+        const alice = await seedUser(t.db, "alice");
+        const [gameId] = await syncLibrary(alice, [owned()]);
+        adapter.fetchAchievements.mockResolvedValue(ok(ach("A", true)));
+        await library.syncAchievements(alice, gameId!);
+
+        adapter.fetchAchievements.mockResolvedValue(
+          failure(new ProviderRateLimitError("Test")),
+        );
+        await expect(library.syncAchievements(alice, gameId!)).rejects.toBeInstanceOf(
+          ProviderRateLimitError,
+        );
+
+        expect((await t.db.select().from(games))[0]!.hasAchievements).toBe(true);
+        expect(await t.db.select().from(userAchievements)).toHaveLength(1);
+      });
+    });
+
     describe("ownership", () => {
       it("rejects a game that isn't in the user's library", async () => {
         const alice = await seedUser(t.db, "alice");
@@ -574,6 +621,44 @@ describe("PlatformLibrary", () => {
       warn.mockRestore();
     });
 
+    it("skips a game the platform couldn't answer for, and carries on with the rest", async () => {
+      const alice = await seedUser(t.db, "alice");
+      const gameIds = await syncLibrary(alice, manyGames(5));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      adapter.fetchAchievements.mockImplementation(async (_account, game) =>
+        (game as { externalId: string }).externalId === "g1"
+          ? failure(new ProviderUnavailableError("Test", "down"))
+          : ok(ach("A", true)),
+      );
+
+      await library.syncAllAchievements(alice, gameIds);
+
+      expect(adapter.fetchAchievements).toHaveBeenCalledTimes(5);
+      expect(await t.db.select().from(userAchievements)).toHaveLength(4);
+      warn.mockRestore();
+    });
+
+    it.each([
+      ["rate limiting us", new ProviderRateLimitError("Test")],
+      ["rejecting our credentials", new ProviderAuthError("Test")],
+    ])("stops the whole job when the platform is %s", async (_name, error) => {
+      // Every later call would fail the same way, so don't make them.
+      const alice = await seedUser(t.db, "alice");
+      const gameIds = await syncLibrary(alice, manyGames(5));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      adapter.fetchAchievements.mockResolvedValue(failure(error));
+
+      await library.syncAllAchievements(alice, gameIds);
+
+      // batch.size is 2: the first batch was in flight, the other 3 games were never asked.
+      expect(adapter.fetchAchievements).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("Achievement sync stopped"),
+        expect.any(String),
+      );
+      warn.mockRestore();
+    });
+
     it("does nothing for an empty list", async () => {
       const alice = await seedUser(t.db, "alice");
 
@@ -611,6 +696,14 @@ describe("PlatformLibrary", () => {
       return { alice, gameId: gameId! };
     };
     const names = (page: { data: { name: string }[] }) => page.data.map((a) => a.name);
+
+    it("reports a failed first read instead of returning an empty page", async () => {
+      const { alice, gameId } = await setup();
+      const error = new ProviderRateLimitError("Test");
+      adapter.fetchAchievements.mockResolvedValue(failure(error));
+
+      await expect(library.getAchievements(alice, gameId)).rejects.toBe(error);
+    });
 
     it("syncs on the first read only", async () => {
       const { alice, gameId } = await setup();

@@ -15,6 +15,11 @@ import type { DbClient } from "../../db";
 import { withLock, type AdvisoryLockClient } from "../../lib/locks";
 import { deriveGameStatus } from "../../lib/game.utils";
 import {
+  ProviderAuthError,
+  ProviderRateLimitError,
+  type ProviderError,
+} from "../../lib/provider-error.utils";
+import {
   setHasAchievements,
   withoutKnownNoAchievementGames,
 } from "../../lib/game-catalog";
@@ -213,7 +218,9 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
   /**
    * Syncs achievements for many games in rate-limited batches. Games already
    * known to have none are skipped without calling the platform. A failure on
-   * one game is logged and the rest continue.
+   * one game is logged and the rest continue, except when the platform is
+   * rate limiting us or rejecting our credentials: every later call would fail
+   * the same way, so the job stops there instead of hammering the API.
    */
   async syncAllAchievements(userId: string, gameIds: string[]): Promise<void> {
     return withLock(
@@ -221,6 +228,7 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
       async () => {
         const toSync = await withoutKnownNoAchievementGames(this.db, gameIds);
         const { size, delayMs } = this.adapter.batch;
+        let stopReason: ProviderError | undefined;
 
         for (let i = 0; i < toSync.length; i += size) {
           const batch = toSync.slice(i, i + size);
@@ -228,6 +236,13 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
           await Promise.allSettled(
             batch.map((gameId) =>
               this.syncAchievements(userId, gameId).catch((err) => {
+                if (
+                  err instanceof ProviderRateLimitError ||
+                  err instanceof ProviderAuthError
+                ) {
+                  stopReason ??= err;
+                  return;
+                }
                 console.warn(
                   `[PlatformLibrary:${this.platform}] Achievement sync skipped for game ${gameId}:`,
                   err,
@@ -235,6 +250,14 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
               }),
             ),
           );
+
+          if (stopReason) {
+            console.warn(
+              `[PlatformLibrary:${this.platform}] Achievement sync stopped after ${i + batch.length} of ${toSync.length} games:`,
+              stopReason.message,
+            );
+            return;
+          }
 
           if (i + size < toSync.length) await sleep(delayMs);
         }
@@ -249,7 +272,8 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
    *
    * @remarks
    * What the platform answered decides what is written:
-   *  - `error`: nothing. We don't know anything.
+   *  - `error`: nothing. We don't know anything, so the provider error is
+   *    thrown for the caller (the HTTP layer maps it to 502/503).
    *  - `empty`: the shared catalog row is flagged `hasAchievements = false`
    *    (hiding it from library reads). It is never deleted: other users own it.
    *  - `ok`: the flag is set to `true` and the definitions and this user's
@@ -257,6 +281,7 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
    *
    * @throws {GameNotFoundError} When the game isn't in the user's library for
    *   this platform, or they have no account linked.
+   * @throws {ProviderError} When the platform failed to answer.
    */
   async syncAchievements(
     userId: string,
@@ -271,7 +296,7 @@ export class PlatformLibrary<Account = unknown, LinkBody = unknown>
       metadata: game.metadata,
     });
 
-    if (outcome.status === "error") return { synced: 0 };
+    if (outcome.status === "error") throw outcome.error;
 
     // An `ok` with nothing in it is an empty answer too (and an upsert of zero
     // rows would fail), so it is handled the same way.

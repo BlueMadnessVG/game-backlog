@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SteamProvider } from "../steam.provider";
-import { ProviderUnavailableError } from "../../lib/provider-error.utils";
+import {
+  ProviderAuthError,
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+} from "../../lib/provider-error.utils";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -176,33 +180,79 @@ describe("SteamProvider", () => {
       );
 
       const result = await provider.getPlayerAchievements("steam-id", "123");
-      expect(result).toHaveLength(2);
-      expect(result![0]!.achieved).toBe(true);
-      expect(result![1]!.achieved).toBe(false);
-      expect(result![1]!.unlockedAt).toBeNull();
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") return;
+      expect(result.achievements).toHaveLength(2);
+      expect(result.achievements[0]!.achieved).toBe(true);
+      expect(result.achievements[1]!.achieved).toBe(false);
+      expect(result.achievements[1]!.unlockedAt).toBeNull();
     });
 
-    it("returns null on 400 (game has no stats)", async () => {
+    it("reports 'empty' on 400 (the game has no stats page)", async () => {
       mockFetch.mockResolvedValue(makeResponse({}, 400));
       const result = await provider.getPlayerAchievements(
         "steam-id",
         "no-stats-app",
       );
-      expect(result).toBeNull();
+      expect(result).toEqual({ status: "empty" });
     });
 
-    it("returns null on 500", async () => {
+    // Not "empty": a private profile says nothing about whether the game has
+    // achievements, and "empty" hides the game for everyone.
+    it("reports an error, not 'empty', on 500 (private profile or never launched)", async () => {
       mockFetch.mockResolvedValue(makeResponse({}, 500));
       const result = await provider.getPlayerAchievements("steam-id", "app");
-      expect(result).toBeNull();
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
     });
 
-    it("returns null when achievements array is missing", async () => {
+    it("reports an error when the achievements array is missing", async () => {
       mockFetch.mockResolvedValue(
         makeResponse({ playerstats: { success: false } }),
       );
       const result = await provider.getPlayerAchievements("steam-id", "app");
-      expect(result).toBeNull();
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
+    });
+
+    it("reports an error when the payload doesn't match the schema", async () => {
+      mockFetch.mockResolvedValue(makeResponse({ nope: 1 }));
+      const result = await provider.getPlayerAchievements("steam-id", "app");
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
+    });
+
+    // The reason survives, and nothing throws: the engine decides what to do.
+    it.each([
+      ["HTTP 429", 429, ProviderRateLimitError],
+      ["HTTP 401", 401, ProviderAuthError],
+      ["HTTP 403", 403, ProviderAuthError],
+      ["HTTP 503", 503, ProviderUnavailableError],
+    ])("reports the cause on %s instead of throwing", async (_name, status, cls) => {
+      mockFetch.mockResolvedValue(makeResponse({}, status));
+
+      const result = await provider.getPlayerAchievements("steam-id", "app");
+
+      expect(result).toMatchObject({ status: "error", error: expect.any(cls) });
+    });
+
+    it("reports a network failure as unavailable, keeping the original error", async () => {
+      const boom = new Error("ECONNRESET");
+      mockFetch.mockRejectedValue(boom);
+
+      const result = await provider.getPlayerAchievements("steam-id", "app");
+
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
+      expect((result as { error: Error }).error.cause).toBe(boom);
     });
   });
 
@@ -286,22 +336,36 @@ describe("SteamProvider", () => {
     // The bug this distinction fixes: a failed request used to look exactly
     // like "no achievements", and that made the sync delete the game.
     it.each([
-      ["HTTP 500", () => makeResponse({}, 500)],
-      ["HTTP 429 (rate limited)", () => makeResponse({}, 429)],
-      ["HTTP 403", () => makeResponse({}, 403)],
-      ["a payload that doesn't match the schema", () => makeResponse({ nope: 1 })],
-    ])("reports 'error', not 'empty', on %s", async (_name, response) => {
+      ["HTTP 500", () => makeResponse({}, 500), ProviderUnavailableError],
+      ["HTTP 429 (rate limited)", () => makeResponse({}, 429), ProviderRateLimitError],
+      ["HTTP 403", () => makeResponse({}, 403), ProviderAuthError],
+      [
+        "a payload that doesn't match the schema",
+        () => makeResponse({ nope: 1 }),
+        ProviderUnavailableError,
+      ],
+    ])("reports 'error', not 'empty', on %s", async (_name, response, cls) => {
       respondWith(response);
 
-      expect(await provider.getGameSchema("1")).toEqual({ status: "error" });
+      expect(await provider.getGameSchema("1")).toMatchObject({
+        status: "error",
+        error: expect.any(cls),
+      });
     });
 
     it("reports 'error' when the request itself fails (network)", async () => {
+      const boom = new Error("ECONNRESET");
       respondWith(() => {
-        throw new Error("ECONNRESET");
+        throw boom;
       });
 
-      expect(await provider.getGameSchema("1")).toEqual({ status: "error" });
+      const result = await provider.getGameSchema("1");
+
+      expect(result).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
+      expect((result as { error: Error }).error.cause).toBe(boom);
     });
   });
 });

@@ -6,6 +6,10 @@ import { createTestDb, type TestDb } from "../../../tests/test-db";
 import { seedUser } from "../../../tests/seed";
 import { SteamAdapter } from "../steam.adapter";
 import { LinkFailedError } from "../errors";
+import {
+  ProviderRateLimitError,
+  ProviderUnavailableError,
+} from "../../../lib/provider-error.utils";
 
 const profile = (steamId = "76561198012345678") => ({
   steamId,
@@ -28,6 +32,11 @@ const player = (apiName: string, achieved: boolean, extra = {}) => ({
   name: `player ${apiName}`,
   description: null,
   ...extra,
+});
+
+const playerOk = (...achievements: ReturnType<typeof player>[]) => ({
+  status: "ok" as const,
+  achievements,
 });
 
 const meta = (overrides = {}) => ({
@@ -154,7 +163,7 @@ describe("SteamAdapter", () => {
     const game = { externalId: "570" };
 
     it("merges the player's state with the game's definitions", async () => {
-      provider.getPlayerAchievements.mockResolvedValue([player("ACH_1", true), player("ACH_2", false)]);
+      provider.getPlayerAchievements.mockResolvedValue(playerOk(player("ACH_1", true), player("ACH_2", false)));
       provider.getGameSchema.mockResolvedValue({
         status: "ok",
         schema: new Map([["ACH_1", meta()], ["ACH_2", meta({ displayName: "Second", hidden: false, globalPercentage: null })]]),
@@ -182,7 +191,7 @@ describe("SteamAdapter", () => {
     });
 
     it("falls back to the player's own data for an achievement missing from the definitions", async () => {
-      provider.getPlayerAchievements.mockResolvedValue([player("ACH_X", true, { description: "from player" })]);
+      provider.getPlayerAchievements.mockResolvedValue(playerOk(player("ACH_X", true, { description: "from player" })));
       provider.getGameSchema.mockResolvedValue({ status: "ok", schema: new Map([["OTHER", meta()]]) });
 
       const outcome = await adapter.fetchAchievements(account, game);
@@ -196,25 +205,37 @@ describe("SteamAdapter", () => {
     });
 
     it("reports 'empty' when Steam says the game defines no achievements", async () => {
-      provider.getPlayerAchievements.mockResolvedValue(null);
+      provider.getPlayerAchievements.mockResolvedValue({ status: "empty" });
       provider.getGameSchema.mockResolvedValue({ status: "empty" });
 
       expect(await adapter.fetchAchievements(account, game)).toEqual({ status: "empty" });
     });
 
-    it("reports 'error' when the definitions lookup failed", async () => {
-      provider.getPlayerAchievements.mockResolvedValue([player("ACH_1", true)]);
-      provider.getGameSchema.mockResolvedValue({ status: "error" });
+    it("passes the definitions lookup's failure through, with its cause", async () => {
+      const failure = { status: "error", error: new ProviderRateLimitError("SteamProvider") };
+      provider.getPlayerAchievements.mockResolvedValue(playerOk(player("ACH_1", true)));
+      provider.getGameSchema.mockResolvedValue(failure);
 
-      expect(await adapter.fetchAchievements(account, game)).toEqual({ status: "error" });
+      expect(await adapter.fetchAchievements(account, game)).toBe(failure);
     });
 
-    it("reports 'error', not 'empty', when the game has definitions but the player's side is unavailable", async () => {
+    it("passes the player side's failure through, with its cause", async () => {
       // e.g. a private profile: we know nothing about this player's progress.
-      provider.getPlayerAchievements.mockResolvedValue(null);
+      const failure = { status: "error", error: new ProviderUnavailableError("SteamProvider", "private") };
+      provider.getPlayerAchievements.mockResolvedValue(failure);
       provider.getGameSchema.mockResolvedValue({ status: "ok", schema: new Map([["ACH_1", meta()]]) });
 
-      expect(await adapter.fetchAchievements(account, game)).toEqual({ status: "error" });
+      expect(await adapter.fetchAchievements(account, game)).toBe(failure);
+    });
+
+    it("reports an error, not 'empty', when the game has definitions but the player side has no stats page", async () => {
+      provider.getPlayerAchievements.mockResolvedValue({ status: "empty" });
+      provider.getGameSchema.mockResolvedValue({ status: "ok", schema: new Map([["ACH_1", meta()]]) });
+
+      expect(await adapter.fetchAchievements(account, game)).toMatchObject({
+        status: "error",
+        error: expect.any(ProviderUnavailableError),
+      });
     });
   });
 });

@@ -9,6 +9,7 @@ import {
 } from "../../../db/schema";
 import type { DbClient } from "../../../db";
 import type { AdvisoryLockClient } from "../../../lib/locks";
+import { ProviderUnavailableError } from "../../../lib/provider-error.utils";
 import { LibraryService } from "../library.services";
 import { PlatformLibrary } from "../../platforms/platform-library";
 import { SteamAdapter } from "../../platforms/steam.adapter";
@@ -28,6 +29,12 @@ import {
 // because the failure is a cascade of foreign keys, which no mock reproduces.
 
 type Outcome = "ok" | "empty" | "error";
+
+/** What a provider answers for a non-"ok" outcome; a failure carries its cause. */
+const answer = (outcome: "empty" | "error") =>
+  outcome === "error"
+    ? { status: "error", error: new ProviderUnavailableError("Test", "platform down") }
+    : { status: "empty" };
 
 /** Everything platform-specific, so the scenarios below are written once. */
 type PlatformCase = {
@@ -72,9 +79,12 @@ const cases: PlatformCase[] = [
       const reads = new LibraryService(db, {} as never, {} as never);
       return {
         respond(outcome) {
-          provider.getPlayerAchievements.mockResolvedValue([
-            { apiName: "ACH_0", achieved: true, unlockedAt: null, name: "ACH_0", description: null },
-          ]);
+          provider.getPlayerAchievements.mockResolvedValue({
+            status: "ok",
+            achievements: [
+              { apiName: "ACH_0", achieved: true, unlockedAt: null, name: "ACH_0", description: null },
+            ],
+          });
           provider.getGameSchema.mockResolvedValue(
             outcome === "ok"
               ? {
@@ -83,7 +93,7 @@ const cases: PlatformCase[] = [
                     ["ACH_0", { displayName: "A0", description: null, hidden: false, iconUrl: "u", iconGrayUrl: "g", globalPercentage: 5 }],
                   ]),
                 }
-              : { status: outcome },
+              : answer(outcome),
           );
         },
         lookups: () => provider.getGameSchema.mock.calls.length,
@@ -114,7 +124,7 @@ const cases: PlatformCase[] = [
                     { apiName: "ACH_0", name: "A0", description: null, isSecret: false, iconUrl: null, gamerscore: 10, globalPercentage: 5, achieved: true, unlockedAt: null },
                   ],
                 }
-              : { status: outcome },
+              : answer(outcome),
           );
         },
         lookups: () => provider.getPlayerAchievements.mock.calls.length,
@@ -145,7 +155,7 @@ const cases: PlatformCase[] = [
                     { trophyId: "0", name: "T0", detail: null, trophyType: "bronze", trophyHidden: false, trophyIconUrl: null, trophyEarnedRate: 5, earned: true, earnedDateTime: null },
                   ],
                 }
-              : { status: outcome },
+              : answer(outcome),
           );
         },
         lookups: () => provider.getGameTrophies.mock.calls.length,
@@ -245,7 +255,10 @@ describe.each(cases)("catalog integrity: $platform", (c) => {
     const platform = c.setup(t.db, noopLock);
     platform.respond("error");
 
-    await platform.syncGame(alice, gameId);
+    // The caller is told why, and nothing is written.
+    await expect(platform.syncGame(alice, gameId)).rejects.toBeInstanceOf(
+      ProviderUnavailableError,
+    );
 
     expect(await flag(gameId)).toBeNull();
     expect(await count(t.db, userGames, eq(userGames.gameId, gameId))).toBe(2);

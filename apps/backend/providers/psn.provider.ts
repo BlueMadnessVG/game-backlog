@@ -14,15 +14,17 @@ import type {
   PsnTrophy,
 } from "./schemas/psn.schemas";
 import {
+  failed,
   ProviderAuthError,
   ProviderRateLimitError,
   ProviderUnavailableError,
+  type ProviderFailure,
 } from "../lib/provider-error.utils";
 
 type GameTrophiesResult =
   | { status: "ok"; trophies: PsnTrophy[] }
   | { status: "empty" }
-  | { status: "error" };
+  | ProviderFailure;
 
 /**
  * Low-level wrapper around the `psn-api` SDK, handling authentication,
@@ -391,7 +393,8 @@ export class PsnProvider {
    * @returns A {@link GameTrophiesResult} discriminated union:
    *   - `{ status: "ok", trophies }` — trophies found and returned.
    *   - `{ status: "empty" }` — game has zero defined trophies.
-   *   - `{ status: "error" }` — API call failed (error already logged).
+   *   - `{ status: "error", error }` — API call failed; `error` says why
+   *     (rate limited, rejected, unavailable). Already logged.
    *
    * @example
    * ```ts
@@ -468,7 +471,10 @@ export class PsnProvider {
         `[PsnProvider][getGameTrophies] Failed for ${npCommunicationId}:`,
         error,
       );
-      return { status: "error" };
+      return failed(
+        "PsnProvider",
+        PsnProvider.classifyError(error, "Could not fetch PSN trophies"),
+      );
     }
   }
 }

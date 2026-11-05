@@ -11,6 +11,7 @@ import { PsnAdapter } from "../psn.adapter";
 import { LinkFailedError, RelinkRequiredError } from "../errors";
 import {
   ProviderAuthError,
+  ProviderRateLimitError,
   ProviderUnavailableError,
 } from "../../../lib/provider-error.utils";
 
@@ -463,12 +464,21 @@ describe("PsnAdapter", () => {
       expect(provider.getGameTrophies).toHaveBeenCalledWith("tok", "NPWR1_00", expected);
     });
 
-    it.each([["empty"], ["error"]])("passes '%s' through unchanged", async (status) => {
-      provider.getGameTrophies.mockResolvedValue({ status });
+    it("passes 'empty' through unchanged", async () => {
+      provider.getGameTrophies.mockResolvedValue({ status: "empty" });
 
       expect(
         await adapter.fetchAchievements(account, { externalId: "x", metadata: null }),
-      ).toEqual({ status });
+      ).toEqual({ status: "empty" });
+    });
+
+    it("passes a failure through with its cause", async () => {
+      const failure = { status: "error", error: new ProviderRateLimitError("PsnProvider") };
+      provider.getGameTrophies.mockResolvedValue(failure);
+
+      expect(
+        await adapter.fetchAchievements(account, { externalId: "x", metadata: null }),
+      ).toBe(failure);
     });
   });
 });
