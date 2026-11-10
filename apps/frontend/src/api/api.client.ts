@@ -10,8 +10,11 @@ import { env } from '@/env';
  * has to send it (`withCredentials`) and, because cookie-authenticated
  * mutating requests are CSRF-checked, the `X-Request-With` header.
  */
-export const apiClient = axios.create({
-  baseURL: `${env.VITE_API_URL.replace(/\/$/, '')}/api/v1`,
+/** Origin from env plus the API prefix; also used for full-page OAuth redirects. */
+export const API_BASE_URL = `${env.VITE_API_URL.replace(/\/$/, '')}/api/v1`;
+
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

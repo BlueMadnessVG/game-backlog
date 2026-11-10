@@ -6,7 +6,7 @@ import {
 } from '@repo/shared';
 import * as v from 'valibot';
 
-import { apiClient, envelope, MessageResponseSchema, request } from '../api.client';
+import { API_BASE_URL, envelope, MessageResponseSchema, request } from '../api.client';
 
 const AuthUserSchema = v.object({
   id: v.string(),
@@ -37,7 +37,7 @@ const UserResponseSchema = envelope(AuthUserSchema);
  */
 export const authService = {
   login: (provider: OAuthProvider): void => {
-    window.location.href = `${apiClient.defaults.baseURL}/auth/${provider}`;
+    window.location.href = `${API_BASE_URL}/auth/${provider}`;
   },
 
   /**
