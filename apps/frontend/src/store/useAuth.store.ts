@@ -43,15 +43,13 @@ export const useAuthStore = create<AuthState>()(
 
         login: async (input) => {
           const session = await authService.loginWithPassword(input);
-          persistToken(session.token);
-          set({ token: session.token, user: session.user, status: 'authenticated' });
+          set({ user: session.user, status: 'authenticated' });
           return session;
         },
 
         register: async (input) => {
           const session = await authService.register(input);
-          persistToken(session.token);
-          set({ token: session.token, user: session.user, status: 'authenticated' });
+          set({ user: session.user, status: 'authenticated' });
           return session;
         },
 

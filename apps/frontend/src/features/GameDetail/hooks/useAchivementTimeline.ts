@@ -8,6 +8,7 @@ import {
   type UseMutateFunction,
 } from '@tanstack/react-query';
 
+import type { MessageResponse } from '@/api/api.client';
 import type {
   Achievement,
   AchievementFilter,
@@ -45,7 +46,7 @@ interface UseAchievementTimelineReturn {
   isLoading: boolean;
   isSyncing: boolean;
 
-  sync: UseMutateFunction<AchievementsResponse, Error, void, unknown>;
+  sync: UseMutateFunction<MessageResponse, Error, void, unknown>;
 }
 
 // ── Pure Helpers ──────────────────────────────────────────────────────────────

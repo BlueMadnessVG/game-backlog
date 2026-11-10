@@ -1,6 +1,11 @@
-import { type AchievementsResponse, type Game, type GamesResponse } from '@repo/shared';
+import {
+  AchievementsResponseSchema,
+  type AchievementsResponse,
+  type Game,
+  type GamesResponse,
+} from '@repo/shared';
 
-import { apiClient } from '../api.client';
+import { apiClient, MessageResponseSchema, request, type MessageResponse } from '../api.client';
 
 interface ApiResponse<T> {
   status: string;
@@ -44,27 +49,21 @@ export const steamService = {
     return data;
   },
 
-  getAchievements: async (
+  getAchievements: (
     gameId: string,
     params?: AchievementParams,
     signal?: AbortSignal,
-  ): Promise<AchievementsResponse> => {
-    const { data } = await apiClient.post<AchievementsResponse>(
-      `/steam/games/${gameId}/achievements`,
-      null,
-      {
-        signal,
-        params: { limit: params?.limit ?? 50, offset: params?.offset ?? 0 },
-      },
-    );
-    return data;
-  },
+  ): Promise<AchievementsResponse> =>
+    request(AchievementsResponseSchema, {
+      method: 'POST',
+      path: `/steam/games/${gameId}/achievements`,
+      query: { limit: params?.limit ?? 50, offset: params?.offset ?? 0 },
+      signal,
+    }),
 
-  syncAchievements: async (gameId: string): Promise<AchievementsResponse> => {
-    const { data } = await apiClient.post<AchievementsResponse>(
-      `/steam/games/${gameId}/sync-achievements`,
-      null,
-    );
-    return data;
-  },
+  syncAchievements: (gameId: string): Promise<MessageResponse> =>
+    request(MessageResponseSchema, {
+      method: 'POST',
+      path: `/steam/games/${gameId}/sync-achievements`,
+    }),
 };

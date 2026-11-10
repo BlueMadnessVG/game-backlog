@@ -1,20 +1,34 @@
-import { type LoginInput, type OAuthProvider, type RegisterInput } from '@repo/shared';
+import {
+  OAuthProviderSchema,
+  type LoginInput,
+  type OAuthProvider,
+  type RegisterInput,
+} from '@repo/shared';
+import * as v from 'valibot';
 
-import { apiClient } from '../api.client';
+import { apiClient, envelope, request } from '../api.client';
 
-export interface AuthUser {
-  id: string;
-  username: string;
-  email: string;
-}
+const AuthUserSchema = v.object({
+  id: v.string(),
+  username: v.string(),
+  email: v.string(),
+});
 
-export interface AuthSession {
-  token: string;
-  user: AuthUser;
-  created: boolean;
-}
+/**
+ * What register/login return. The token is not in the body: the backend sets
+ * it as an HttpOnly session cookie.
+ */
+const AuthSessionSchema = v.object({
+  user: AuthUserSchema,
+  created: v.boolean(),
+});
 
-const sessionFrom = (data: AuthSession): AuthSession => data;
+export type AuthUser = v.InferOutput<typeof AuthUserSchema>;
+export type AuthSession = v.InferOutput<typeof AuthSessionSchema>;
+
+const ProvidersSchema = envelope(v.object({ providers: v.array(OAuthProviderSchema) }));
+const SessionResponseSchema = envelope(AuthSessionSchema);
+const UserResponseSchema = envelope(AuthUserSchema);
 
 /**
  * Kicks off the OAuth dance by redirecting to the backend, which bounces the
@@ -30,33 +44,32 @@ export const authService = {
    * renders whichever of these it has flagged as enabled.
    */
   providers: async (): Promise<OAuthProvider[]> => {
-    const { data } = await apiClient.get<{
-      status: string;
-      data: { providers: OAuthProvider[] };
-    }>('/auth/providers');
-    return data.data.providers;
+    const response = await request(ProvidersSchema, { path: '/auth/providers' });
+    return response.data.providers;
   },
 
   /**
    * Registers an email/password account and returns the new session.
    */
   register: async (input: RegisterInput): Promise<AuthSession> => {
-    const { data } = await apiClient.post<{
-      status: string;
-      data: AuthSession;
-    }>('/auth/register', input);
-    return sessionFrom(data.data);
+    const response = await request(SessionResponseSchema, {
+      method: 'POST',
+      path: '/auth/register',
+      body: input,
+    });
+    return response.data;
   },
 
   /**
    * Signs in with email/password and returns the new session.
    */
   loginWithPassword: async (input: LoginInput): Promise<AuthSession> => {
-    const { data } = await apiClient.post<{
-      status: string;
-      data: AuthSession;
-    }>('/auth/login', input);
-    return sessionFrom(data.data);
+    const response = await request(SessionResponseSchema, {
+      method: 'POST',
+      path: '/auth/login',
+      body: input,
+    });
+    return response.data;
   },
 
   /**
@@ -65,11 +78,8 @@ export const authService = {
    */
   me: async (): Promise<AuthUser | null> => {
     try {
-      const { data } = await apiClient.get<{
-        status: string;
-        data: AuthUser;
-      }>('/auth/me');
-      return data.data;
+      const response = await request(UserResponseSchema, { path: '/auth/me' });
+      return response.data;
     } catch {
       return null;
     }
