@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { useParams } from '@tanstack/react-router';
 
-import { AchievementList } from './components/AchievementList/AchievementList';
+import { AchievementListInner } from './components/AchievementListInner/AchievementListInner';
 import styles from './css/GameDetails.module.css';
 import { useGameDetail } from './hooks/useGameDetail';
 
@@ -96,7 +96,7 @@ function GameDetailManager() {
   const { id } = useParams({ from: '/games/$id' });
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('info');
-  const { game: activeGame, isLoading, isError, queryClient } = useGameDetail({ gameId: id });
+  const { game: activeGame, isLoading, isError } = useGameDetail({ gameId: id });
 
   if (isLoading) {
     return <div className={styles.viewContainer}>Loading…</div>;
@@ -175,7 +175,7 @@ function GameDetailManager() {
           )}
 
           {activeTab === 'achievements' && activeGame?.id && (
-            <AchievementList gameId={activeGame.id} queryClient={queryClient} />
+            <AchievementListInner gameId={activeGame.id} />
           )}
         </div>
 

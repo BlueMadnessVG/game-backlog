@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import type { Game } from '@repo/shared';
 
@@ -16,14 +16,11 @@ interface UseGameDetailReturn {
   isError: boolean;
   error: Error | null;
   refetch: () => void;
-  queryClient: ReturnType<typeof useQueryClient>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useGameDetail({ gameId }: UseGameDetailOptions): UseGameDetailReturn {
-  const queryClient = useQueryClient();
-
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['game', gameId],
     queryFn: async ({ signal }) => {
@@ -40,6 +37,5 @@ export function useGameDetail({ gameId }: UseGameDetailOptions): UseGameDetailRe
     error,
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     refetch,
-    queryClient,
   };
 }

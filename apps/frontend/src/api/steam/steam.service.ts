@@ -51,6 +51,7 @@ export const steamService = {
   ): Promise<AchievementsResponse> => {
     const { data } = await apiClient.post<AchievementsResponse>(
       `/steam/games/${gameId}/achievements`,
+      null,
       {
         signal,
         params: { limit: params?.limit ?? 50, offset: params?.offset ?? 0 },

@@ -55,7 +55,6 @@ export const AchievementListInner: React.FC<AchievementListInnerProps> = ({ game
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
-    isFromCache,
   } = useAchievementTimeline({ gameId });
 
   const completionPercent = total > 0 ? Math.round((unlocked / total) * 100) : 0;
@@ -83,9 +82,7 @@ export const AchievementListInner: React.FC<AchievementListInnerProps> = ({ game
         <span className={styles.statsText}>
           {unlocked}/{total} UNLOCKED
         </span>
-        <span className={styles.statsPct}>{completionPercent}%</span>
-        {isFromCache && <span className={styles.cacheTag}>◉ CACHED</span>}
-      </div>
+        <span className={styles.statsPct}>{completionPercent}%</span>      </div>
 
       {/* ── Progress bar ─────────────────────────────────────────────────── */}
       <div className={styles.progressTrack}>

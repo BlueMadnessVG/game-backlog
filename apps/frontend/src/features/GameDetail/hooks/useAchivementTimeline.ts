@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import {
   useInfiniteQuery,
@@ -16,7 +16,6 @@ import type {
 } from '@repo/shared';
 
 import { steamService } from '@/api/steam/steam.service';
-import { useAchievementCache } from '@/store/useAchievementCache';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +43,6 @@ interface UseAchievementTimelineReturn {
   setSort: (sort: AchievementSort) => void;
 
   isLoading: boolean;
-  isFromCache: boolean;
   isSyncing: boolean;
 
   sync: UseMutateFunction<AchievementsResponse, Error, void, unknown>;
@@ -94,18 +92,12 @@ function flattenPages(data: InfiniteData<AchievementsResponse> | undefined): Ach
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line complexity
 export function useAchievementTimeline({
   gameId,
 }: UseAchievementTimelineOptions): UseAchievementTimelineReturn {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<AchievementFilter>('all');
   const [sort, setSort] = useState<AchievementSort>('unlock-date');
-
-  const { setCache, getCache, hasCache } = useAchievementCache();
-
-  const cachedEntry = getCache(gameId);
-  const isFromCache = hasCache(gameId);
 
   const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery<
     AchievementsResponse,
@@ -127,23 +119,8 @@ export function useAchievementTimeline({
       const nextOffset = offset + limit;
       return nextOffset < total ? nextOffset : undefined;
     },
-    enabled: !!gameId && !isFromCache,
+    enabled: !!gameId,
   });
-
-  // ── Persist fresh data into the Zustand cache ─────────────────────────────
-  useEffect(() => {
-    if (!data || isFromCache) return;
-
-    const freshAchievements = flattenPages(data);
-    if (freshAchievements.length === 0) return;
-
-    setCache(gameId, {
-      achievements: freshAchievements,
-      total: data.pages[0]?.meta.total ?? 0,
-      unlocked: data.pages[0]?.meta.unlocked ?? 0,
-      fetchedAt: Date.now(),
-    });
-  }, [data, gameId, isFromCache, setCache]);
 
   const { mutate: sync, isPending: isSyncing } = useMutation({
     mutationFn: () => steamService.syncAchievements(gameId),
@@ -152,14 +129,14 @@ export function useAchievementTimeline({
     },
   });
 
-  // ── Resolve final data: prefer cache, fall back to live query ────────────
-  const achievements = isFromCache ? (cachedEntry?.achievements ?? []) : flattenPages(data);
-  const total = isFromCache ? (cachedEntry?.total ?? 0) : (data?.pages[0]?.meta.total ?? 0);
-  const unlocked = isFromCache
-    ? (cachedEntry?.unlocked ?? 0)
-    : (data?.pages[0]?.meta.unlocked ?? 0);
+  const achievements = useMemo(() => flattenPages(data), [data]);
+  const total = data?.pages[0]?.meta.total ?? 0;
+  const unlocked = data?.pages[0]?.meta.unlocked ?? 0;
 
-  const filtered = applyFilterAndSort(achievements, filter, sort);
+  const filtered = useMemo(
+    () => applyFilterAndSort(achievements, filter, sort),
+    [achievements, filter, sort],
+  );
 
   return {
     achievements,
@@ -177,8 +154,7 @@ export function useAchievementTimeline({
     setFilter,
     setSort,
 
-    isLoading: !isFromCache && isLoading,
-    isFromCache,
+    isLoading,
     isSyncing,
     sync,
   };
