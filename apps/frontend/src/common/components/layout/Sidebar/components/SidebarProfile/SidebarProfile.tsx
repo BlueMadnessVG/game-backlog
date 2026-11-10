@@ -60,7 +60,7 @@ export const SidebarProfile = ({
           <button className={styles.action_btn} title="Settings">
             <Settings size={16} />
           </button>
-          <button className={styles.action_btn} title="Logout" onClick={logout}>
+          <button className={styles.action_btn} title="Logout" onClick={() => void logout()}>
             <LogOut size={16} />
           </button>
           <button

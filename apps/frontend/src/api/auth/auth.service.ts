@@ -6,7 +6,7 @@ import {
 } from '@repo/shared';
 import * as v from 'valibot';
 
-import { apiClient, envelope, request } from '../api.client';
+import { apiClient, envelope, MessageResponseSchema, request } from '../api.client';
 
 const AuthUserSchema = v.object({
   id: v.string(),
@@ -31,8 +31,9 @@ const SessionResponseSchema = envelope(AuthSessionSchema);
 const UserResponseSchema = envelope(AuthUserSchema);
 
 /**
- * Kicks off the OAuth dance by redirecting to the backend, which bounces the
- * browser back to `/auth/callback#token=<jwt>` on success.
+ * Kicks off the OAuth dance by redirecting to the backend. On success it sets
+ * the session cookie and bounces the browser back to `/auth/callback`; on
+ * failure it appends `#error=<reason>`.
  */
 export const authService = {
   login: (provider: OAuthProvider): void => {
@@ -73,8 +74,15 @@ export const authService = {
   },
 
   /**
-   * Fetches the current session user. Returns `null` when the token is
-   * missing, expired, or otherwise rejected.
+   * Ends the session: the backend clears the cookie.
+   */
+  logout: async (): Promise<void> => {
+    await request(MessageResponseSchema, { method: 'POST', path: '/auth/logout' });
+  },
+
+  /**
+   * Fetches the current session user. Returns `null` when there is no valid
+   * session cookie.
    */
   me: async (): Promise<AuthUser | null> => {
     try {

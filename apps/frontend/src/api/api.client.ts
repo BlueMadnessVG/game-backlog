@@ -1,27 +1,36 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import * as v from 'valibot';
 
-import { clearToken, getToken } from './auth/token';
-
 import { env } from '@/env';
 
 // ── Transport ─────────────────────────────────────────────────────────────────
 
+/**
+ * The session is an HttpOnly cookie owned by the browser, so the client only
+ * has to send it (`withCredentials`) and, because cookie-authenticated
+ * mutating requests are CSRF-checked, the `X-Request-With` header.
+ */
 export const apiClient = axios.create({
   baseURL: `${env.VITE_API_URL.replace(/\/$/, '')}/api/v1`,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
+    'X-Request-With': 'frontend',
   },
 });
 
+/**
+ * Seam to the session owner: the client reports a 401, whoever holds the
+ * session decides what to do. Keeps this module free of store imports.
+ */
+let onUnauthorized: (() => void) | null = null;
+
+export const setUnauthorizedHandler = (handler: (() => void) | null): void => {
+  onUnauthorized = handler;
+};
+
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = getToken();
-
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
     console.log(`📡 [OUTGOING] ${config.method?.toUpperCase()} -> ${config.url}`);
     return config;
   },
@@ -41,10 +50,8 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Expired/invalid session — drop the stored token so the next request
-    // starts unauthenticated. Individual pages decide how to surface this.
     if (error?.response?.status === 401) {
-      clearToken();
+      onUnauthorized?.();
     }
 
     return Promise.reject(error);
