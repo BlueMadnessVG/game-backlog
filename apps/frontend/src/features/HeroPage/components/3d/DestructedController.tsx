@@ -11,17 +11,16 @@ import GlowGroup from './GlowGroup';
 import PlatformHologram from './PlatformHologram';
 import updateButton from './utils/DestructuredController.utils';
 import { useButtonHotspotsStore } from '../../store/heroButtonHotspots.Store';
-import { useScrollStore } from '../../store/heroPageScroll.Store';
-import { PS_BLUE, XBOX_GREEN, STEAM_BLUE, UNIFIED_AMBER } from '../../utils/platformColors';
 import {
+  at,
   CAMERA_CLOSEUP_END,
   CAMERA_CLOSEUP_START,
   CONTROLLER_CENTER_END,
   CONTROLLER_CENTER_START,
   DOCK_COMPLETE,
-  HOLOGRAM_GATE_END,
-  PLATFORM_TIMELINE,
-} from '../../utils/scrollTimeline';
+  heroProgress,
+} from '../../timeline';
+import { PS_BLUE, XBOX_GREEN, STEAM_BLUE, UNIFIED_AMBER } from '../../utils/platformColors';
 
 import type { Mesh } from 'three';
 
@@ -144,22 +143,11 @@ export function DeconstructedController({
     const closeupProgress = smoothstep(CAMERA_CLOSEUP_START, CAMERA_CLOSEUP_END, r);
     group.current.position.x = lerp(0, CONTROLLER_RIGHT_SIDE_OFFSET, closeupProgress);
 
-    if (r > 0.2 && r < HOLOGRAM_GATE_END) {
-      const [steamStart, steamEnd] = PLATFORM_TIMELINE.steam;
-      const [xboxStart, xboxEnd] = PLATFORM_TIMELINE.xbox;
-      const [psStart, psEnd] = PLATFORM_TIMELINE.playstation;
-      const [unifiedStart] = PLATFORM_TIMELINE.unified;
-
-      crossActive.current = r > steamStart && r <= steamEnd ? 1 : 0;
-      triangleActive.current = r > xboxStart && r <= xboxEnd ? 1 : 0;
-      squareActive.current = r > psStart && r <= psEnd ? 1 : 0;
-      circleActive.current = r > unifiedStart ? 1 : 0;
-    } else {
-      crossActive.current = 0;
-      triangleActive.current = 0;
-      squareActive.current = 0;
-      circleActive.current = 0;
-    }
+    const { platform } = at(r);
+    crossActive.current = platform === 'steam' ? 1 : 0;
+    triangleActive.current = platform === 'xbox' ? 1 : 0;
+    squareActive.current = platform === 'playstation' ? 1 : 0;
+    circleActive.current = platform === 'unified' ? 1 : 0;
   };
 
   useFrame((_state, delta) => {
@@ -176,7 +164,7 @@ export function DeconstructedController({
 
       if (!hasEntered.current) invalidate();
 
-      const r = useScrollStore.getState().progress;
+      const r = heroProgress.get();
       updateScrollRotation(r);
     }
 

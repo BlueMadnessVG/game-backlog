@@ -4,17 +4,15 @@ import { AnimatePresence, motion, useMotionValueEvent, useTransform } from 'fram
 import { Cable, Database, Library, ScanSearch, type LucideIcon } from 'lucide-react';
 
 import styles from './css/FeatureDisplayPanel.module.css';
-import { useScrollProgressValue } from '../../store/ScrollProgressContext';
+import { at, heroProgress } from '../../timeline';
 import { getChapterSample } from '../../utils/chapterSamples';
-import { activeDisplayIndex } from '../../utils/scrollTimeline';
 import { SECTIONS, type Chapter } from '../../utils/sections';
 
 /**
  * DOM info panel showing the deep-dive chapter for the currently active
  * platform hologram.
  *
- * Resolves hero-relative scroll progress through activeDisplayIndex
- * (scrollTimeline) into a display number, maps it to a SECTIONS chapter, and
+ * Asks the Hero timeline (`at(h).display`) which display is on stage, maps it to a SECTIONS chapter, and
  * cross-fades the chapter copy plus its synthetic code sample.
  *
  * Exports:
@@ -55,8 +53,7 @@ function CodeSample({ chapter }: { chapter: Chapter }) {
 }
 
 export function FeatureDisplayPanel() {
-  const progress = useScrollProgressValue();
-  const display = useTransform(progress, activeDisplayIndex);
+  const display = useTransform(heroProgress, (h) => at(h).display);
 
   const [index, setIndex] = useState(0);
   useMotionValueEvent(display, 'change', setIndex);

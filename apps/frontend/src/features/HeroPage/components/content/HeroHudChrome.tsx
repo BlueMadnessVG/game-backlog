@@ -1,7 +1,7 @@
 import { Gamepad2 } from 'lucide-react';
 
 import styles from './css/HeroHudChrome.module.css';
-import { useScrollStore } from '../../store/heroPageScroll.Store';
+import { heroProgress, useProgressNumber } from '../../timeline';
 
 /**
  * Static HUD chrome framing the hero viewport.
@@ -61,7 +61,7 @@ const CIRCUIT_NODES: [number, number][] = [
 ];
 
 export function HeroHudChrome() {
-  const progress = useScrollStore((state) => state.progress);
+  const progress = useProgressNumber(heroProgress);
   const showPrompt = progress < 0.04;
 
   return (

@@ -1,16 +1,23 @@
 import { useMemo, useRef } from 'react';
 
 import styles from './css/ScrollProgressRail.module.css';
-import { usePageProgressStore, getActiveRange } from '../../store/pageProgress.Store';
+import {
+  at,
+  heroToPage,
+  pageProgress,
+  pageToHero,
+  PLATFORM_TIMELINE,
+  useHeroWindow,
+  useProgressNumber,
+} from '../../timeline';
 import { PLATFORM_COLORS, type PlatformKey } from '../../utils/platformColors';
-import { PLATFORM_TIMELINE } from '../../utils/scrollTimeline';
 
 import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
 /**
  * Visible scroll control for the whole page — the vertical rail on the right
- * edge. Reads global page progress from usePageProgressStore (and the active
- * chapter window) to drive the wave, the platform markers and the scrubber.
+ * edge. Reads page progress and the hero window from the Hero timeline to
+ * drive the wave, the platform markers and the scrubber.
  *
  * Exports:
  *  - ScrollProgressRail: renders the rail; drag-to-scrub scrolls the main
@@ -33,27 +40,25 @@ function ratioToScrollTop(container: HTMLElement, ratio: number) {
  * window's dot glows and the rail glows with the active platform's accent.
  */
 export function ScrollProgressRail() {
-  const progress = usePageProgressStore((s) => s.progress);
-  const heroEnd = usePageProgressStore((s) => s.heroEnd);
+  const progress = useProgressNumber(pageProgress);
+  const heroWindow = useHeroWindow((s) => s.window);
   const mainRef = useMainScroll();
   const dragging = useRef(false);
 
-  const markers = useMemo(() => {
-    const end = heroEnd > 0 ? heroEnd : 0.3;
-    return Object.entries(PLATFORM_TIMELINE).map(([id, [start, windowEnd]]) => ({
-      id,
-      start: start * end,
-      end: windowEnd * end,
-    }));
-  }, [heroEnd]);
-
-  const activeId = useMemo(
-    () => getActiveRange(progress, markers)?.id ?? null,
-    [progress, markers],
+  const markers = useMemo(
+    () =>
+      (Object.entries(PLATFORM_TIMELINE) as [PlatformKey, [number, number]][]).map(
+        ([id, [start, end]]) => ({
+          id,
+          start: heroToPage(start, heroWindow),
+          end: heroToPage(end, heroWindow),
+        }),
+      ),
+    [heroWindow],
   );
 
-  const activeColor =
-    activeId && activeId in PLATFORM_COLORS ? PLATFORM_COLORS[activeId as PlatformKey] : null;
+  const activeId = at(pageToHero(progress, heroWindow)).platform;
+  const activeColor = activeId ? PLATFORM_COLORS[activeId] : null;
 
   const waveLines = useMemo(() => {
     const range = 0.12;
@@ -121,7 +126,7 @@ export function ScrollProgressRail() {
             className={`${styles.dot}${active ? ` ${styles.dotActive}` : ''}`}
             style={
               {
-                '--dot-color': PLATFORM_COLORS[range.id as PlatformKey],
+                '--dot-color': PLATFORM_COLORS[range.id],
                 top: `${range.start * 100}%`,
               } as React.CSSProperties
             }

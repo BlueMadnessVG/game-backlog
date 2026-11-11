@@ -2,17 +2,13 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { lerp } from 'three/src/math/MathUtils.js';
 
-import { useScrollStore } from '../../store/heroPageScroll.Store';
-import {
-  CAMERA_CLOSEUP_END,
-  CAMERA_CLOSEUP_START,
-} from '../../utils/scrollTimeline';
+import { CAMERA_CLOSEUP_END, CAMERA_CLOSEUP_START, heroProgress } from '../../timeline';
 
 /**
  * Scroll-driven camera rig for the hero exit. Once the platform activations
  * complete and the controller has glided back to dead-center, the camera eases
  * into the controller middle (a dolly-in via z-position plus fov) aimed at the
- * face center. Purely functional — reads the shared scroll store every frame,
+ * face center. Purely functional — reads the Hero timeline's progress every frame,
  * so it stays in sync with the controller pose without any re-renders.
  *
  * Exports:
@@ -27,7 +23,7 @@ function smoothstep(edge0: number, edge1: number, value: number) {
 export function CameraRig() {
   useFrame(({ camera: cam }) => {
     const camera = cam as THREE.PerspectiveCamera;
-    const r = useScrollStore.getState().progress;
+    const r = heroProgress.get();
     const p = smoothstep(CAMERA_CLOSEUP_START, CAMERA_CLOSEUP_END, r);
 
     camera.position.set(0, lerp(0, 0.08, p), lerp(5, 2.6, p));

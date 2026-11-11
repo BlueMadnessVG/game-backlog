@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { motion, useMotionValueEvent, useTransform } from 'framer-motion';
 
 import styles from './css/HeroTagline.module.css';
-import { useScrollProgressValue } from '../../store/ScrollProgressContext';
+import { heroProgress } from '../../timeline';
 
 /**
  * Hero tagline ("One library / All platform") layered over the 3D controller.
@@ -15,7 +15,7 @@ import { useScrollProgressValue } from '../../store/ScrollProgressContext';
  *  - HeroTagline: the animated tagline block (default export too).
  */
 export function HeroTagline() {
-  const progress = useScrollProgressValue();
+  const progress = heroProgress;
   const [gone, setGone] = useState(false);
 
   useMotionValueEvent(progress, 'change', (latest) => {
