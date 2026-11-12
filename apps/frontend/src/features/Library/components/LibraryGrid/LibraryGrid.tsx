@@ -1,11 +1,12 @@
 import styles from './css/LibraryGrid.module.css';
 import { useLibraryVirtualGrid } from './hooks/LibraryVirtualGrid';
-import { useLibrary } from '../../hooks/useLibrary.hook';
 import GameCard from '../GameCard/GameCard';
 import { LibraryHeader } from '../LibraryHeader/LibraryHeader';
 import LibrarySkeleton from '../ui/LibrarySkeleton/LibraryGameCardSkeleton';
 
 import type { Game } from '@repo/shared';
+
+import { useLibraryGames } from '@/api/library/library.queries';
 
 interface LibraryGridProps {
   games: Game[];
@@ -14,7 +15,7 @@ interface LibraryGridProps {
 function LibraryGrid({ games }: LibraryGridProps) {
   'use no memo';
 
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = useLibrary();
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = useLibraryGames();
 
   const { scrollRef, virtualizer, COLUMNS } = useLibraryVirtualGrid({
     totalItems: games.length,

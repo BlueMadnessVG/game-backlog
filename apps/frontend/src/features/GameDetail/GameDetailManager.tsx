@@ -4,9 +4,11 @@ import { useParams } from '@tanstack/react-router';
 
 import { AchievementListInner } from './components/AchievementListInner/AchievementListInner';
 import styles from './css/GameDetails.module.css';
-import { useGameDetail } from './hooks/useGameDetail';
 
 import type { Game } from '@repo/shared';
+
+import { useGame } from '@/api/library/library.queries';
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,7 +98,7 @@ function GameDetailManager() {
   const { id } = useParams({ from: '/games/$id' });
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('info');
-  const { game: activeGame, isLoading, isError } = useGameDetail({ gameId: id });
+  const { game: activeGame, isLoading, isError } = useGame(id);
 
   if (isLoading) {
     return <div className={styles.viewContainer}>Loading…</div>;

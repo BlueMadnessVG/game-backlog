@@ -1,26 +1,11 @@
 import { useMemo, useState } from 'react';
 
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-  type InfiniteData,
-  type UseMutateFunction,
-} from '@tanstack/react-query';
 
 import type { MessageResponse } from '@/api/api.client';
-import type {
-  Achievement,
-  AchievementFilter,
-  AchievementsResponse,
-  AchievementSort,
-} from '@repo/shared';
+import type { Achievement, AchievementFilter, AchievementSort } from '@repo/shared';
+import type { UseMutateFunction } from '@tanstack/react-query';
 
-import { steamService } from '@/api/steam/steam.service';
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const ACHIEVEMENTS_PAGE_LIMIT = 50;
+import { useGameAchievements, useSyncAchievements } from '@/api/library/library.queries';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -87,52 +72,18 @@ function applyFilterAndSort(
   return sortAchievements(filterAchievements(achievements, filter), sort);
 }
 
-function flattenPages(data: InfiniteData<AchievementsResponse> | undefined): Achievement[] {
-  return data?.pages.flatMap((page) => page.data) ?? [];
-}
-
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
+/** Achievement data from the library queries, plus the view's filter/sort state. */
 export function useAchievementTimeline({
   gameId,
 }: UseAchievementTimelineOptions): UseAchievementTimelineReturn {
-  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<AchievementFilter>('all');
   const [sort, setSort] = useState<AchievementSort>('unlock-date');
 
-  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery<
-    AchievementsResponse,
-    Error,
-    InfiniteData<AchievementsResponse>,
-    string[],
-    number
-  >({
-    queryKey: ['achievements', gameId],
-    queryFn: ({ signal, pageParam }) =>
-      steamService.getAchievements(
-        gameId,
-        { limit: ACHIEVEMENTS_PAGE_LIMIT, offset: pageParam },
-        signal,
-      ),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage): number | undefined => {
-      const { total, limit, offset } = lastPage.meta;
-      const nextOffset = offset + limit;
-      return nextOffset < total ? nextOffset : undefined;
-    },
-    enabled: !!gameId,
-  });
-
-  const { mutate: sync, isPending: isSyncing } = useMutation({
-    mutationFn: () => steamService.syncAchievements(gameId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['achievements', gameId] });
-    },
-  });
-
-  const achievements = useMemo(() => flattenPages(data), [data]);
-  const total = data?.pages[0]?.meta.total ?? 0;
-  const unlocked = data?.pages[0]?.meta.unlocked ?? 0;
+  const { achievements, total, unlocked, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useGameAchievements(gameId);
+  const { sync, isSyncing } = useSyncAchievements(gameId);
 
   const filtered = useMemo(
     () => applyFilterAndSort(achievements, filter, sort),
@@ -145,9 +96,8 @@ export function useAchievementTimeline({
     total,
     unlocked,
 
-    hasNextPage: hasNextPage ?? false,
+    hasNextPage,
     isFetchingNextPage,
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     fetchNextPage,
 
     filter,

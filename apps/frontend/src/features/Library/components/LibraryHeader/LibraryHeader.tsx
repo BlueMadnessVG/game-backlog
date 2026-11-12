@@ -6,9 +6,11 @@ import { CompletionRing } from './components/Completedring';
 import { PlatinumBadge } from './components/Platinumbadge';
 import { StatCard, type StatAccent } from './components/Statcard';
 import styles from './css/LibraryHearder.module.css';
-import { useLibraryStats } from './hook/useLibraryStats';
 
 import type { PlatformStats } from '@repo/shared';
+
+import { useLibraryStats } from '@/api/library/library.queries';
+
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

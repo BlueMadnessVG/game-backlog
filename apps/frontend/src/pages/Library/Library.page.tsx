@@ -1,12 +1,7 @@
-import { LibraryProvider } from '@/features/Library/context/LibraryProvider.context';
 import LibraryManager from '@/features/Library/LibraryManager';
 
 function Library() {
-  return (
-    <LibraryProvider>
-      <LibraryManager />
-    </LibraryProvider>
-  );
+  return <LibraryManager />;
 }
 
 export default Library;

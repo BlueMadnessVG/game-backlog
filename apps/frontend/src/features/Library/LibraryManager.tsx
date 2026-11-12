@@ -1,10 +1,11 @@
 import LibraryGrid from './components/LibraryGrid/LibraryGrid';
 import { LibraryEmptyState } from './components/ui/LibraryEmptyState/LibraryEmptyState';
 import LibrarySkeleton from './components/ui/LibrarySkeleton/LibrarySkeleton';
-import { useLibrary } from './hooks/useLibrary.hook';
+
+import { useLibraryGames } from '@/api/library/library.queries';
 
 function LibraryManager() {
-  const { games, isLoading /* , refetch  */ } = useLibrary();
+  const { games, isLoading } = useLibraryGames();
 
   if (isLoading) return <LibrarySkeleton />;
 
