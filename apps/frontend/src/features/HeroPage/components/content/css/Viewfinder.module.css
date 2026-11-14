@@ -1,0 +1,131 @@
+.viewfinder {
+  position: fixed;
+  inset: 0 0 0 var(--dx-shell-left);
+  z-index: 30;
+  padding: var(--dx-gutter);
+  pointer-events: none;
+  font-family: var(--dx-mono);
+  font-size: 0.75rem;
+  color: var(--dx-ink-3);
+}
+
+/* ─── Corner brackets ─── */
+.bracket {
+  position: absolute;
+  width: 2rem;
+  height: 2rem;
+  border: 0 solid var(--dx-ink-3);
+}
+
+.tl {
+  top: var(--dx-gutter);
+  left: var(--dx-gutter);
+  border-top-width: 1px;
+  border-left-width: 1px;
+}
+
+.tr {
+  top: var(--dx-gutter);
+  right: var(--dx-gutter);
+  border-top-width: 1px;
+  border-right-width: 1px;
+}
+
+.bl {
+  bottom: var(--dx-gutter);
+  left: var(--dx-gutter);
+  border-bottom-width: 1px;
+  border-left-width: 1px;
+}
+
+.br {
+  right: var(--dx-gutter);
+  bottom: var(--dx-gutter);
+  border-right-width: 1px;
+  border-bottom-width: 1px;
+}
+
+/* ─── Readouts ─── */
+.readouts {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+}
+
+.readoutGroup {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.recDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--dx-accent);
+}
+
+.time {
+  min-width: 5.5em;
+  color: var(--dx-ink-2);
+}
+
+/* ─── Ruler / scrubber ─── */
+.ruler {
+  --ruler-w: min(36rem, 72vw);
+
+  position: absolute;
+  bottom: calc(var(--dx-gutter) + 0.5rem);
+  left: 50%;
+  width: var(--ruler-w);
+  height: 2.25rem;
+  transform: translateX(-50%);
+  cursor: pointer;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.ruler:focus-visible {
+  outline: 2px solid var(--dx-accent);
+  outline-offset: 6px;
+}
+
+.ticks {
+  position: absolute;
+  inset: auto 0 0;
+  height: 1rem;
+  background:
+    linear-gradient(90deg, var(--dx-ink-3) 1px, transparent 1px) left bottom / calc(100% / 6) 100%
+      repeat-x,
+    linear-gradient(90deg, var(--dx-ink-3) 1px, transparent 1px) left bottom / calc(100% / 60) 50%
+      repeat-x;
+  opacity: 0.7;
+}
+
+.indicator {
+  position: absolute;
+  bottom: 1rem;
+  width: 0;
+  height: 0;
+  border-inline: 5px solid transparent;
+  border-top: 8px solid var(--dx-accent);
+  transform: translateX(-50%);
+}
+
+.marker {
+  position: absolute;
+  bottom: 1.2rem;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--marker);
+  transform: translateX(-50%);
+}
+
+@media (max-width: 719px) {
+  .readoutGroup {
+    gap: 0.75rem;
+  }
+}

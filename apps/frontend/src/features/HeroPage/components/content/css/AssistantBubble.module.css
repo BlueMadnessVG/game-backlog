@@ -1,0 +1,59 @@
+.cube {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 16;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.cube:focus-visible {
+  outline: 2px solid var(--dx-accent);
+  outline-offset: 4px;
+}
+
+.bubble {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 17;
+  max-width: min(18rem, 60vw);
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--dx-line);
+  background: color-mix(in srgb, var(--dx-base) 92%, transparent);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.2s ease;
+}
+
+.bubble[data-open='false'] {
+  opacity: 0;
+}
+
+/* Sits beside the cube, on whichever side has room. */
+.bubble[data-side='right'] {
+  margin-left: 0.75rem;
+}
+
+.bubble[data-side='left'] {
+  margin-left: -0.75rem;
+  translate: -100% 0;
+}
+
+.text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--dx-ink-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    transition: none;
+  }
+}

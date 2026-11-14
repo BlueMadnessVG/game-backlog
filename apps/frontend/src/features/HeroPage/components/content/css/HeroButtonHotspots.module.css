@@ -7,8 +7,8 @@
 
 .hotspot {
   position: absolute;
-  width: 72px;
-  height: 72px;
+  width: 48px;
+  height: 48px;
   border: 1px solid transparent;
   border-radius: 50%;
   background: transparent;

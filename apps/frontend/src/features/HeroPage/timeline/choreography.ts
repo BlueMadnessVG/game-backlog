@@ -40,7 +40,7 @@ export const HUD_FADE_END = 0.9;
 export const SCENE_FADE_START = 0.9;
 export const SCENE_FADE_END = 1;
 
-const ACTIVATION_START = 0.3;
+export const ACTIVATION_START = 0.3;
 const ACTIVATION_END = 0.98;
 const ACTIVATION_SPAN = ACTIVATION_END - ACTIVATION_START;
 

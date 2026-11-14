@@ -1,0 +1,188 @@
+.leader {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.leaderPath {
+  fill: none;
+  stroke: var(--leader);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.8;
+}
+
+.leaderStart {
+  fill: var(--leader);
+}
+
+/* ─── Twelve-column frame the blocks sit on ─── */
+.columns {
+  position: absolute;
+  inset: 24% 0 auto var(--dx-shell-left);
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  column-gap: var(--dx-gap);
+  padding-inline: var(--dx-gutter);
+  pointer-events: none;
+}
+
+.panel {
+  min-width: 0;
+}
+
+.left {
+  grid-column: 2 / 6;
+}
+
+.right {
+  grid-column: 8 / 12;
+}
+
+/* ─── Label line: text, dashed rule, dot on the side facing the cube ─── */
+.tag {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  font-family: var(--dx-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--dx-accent);
+}
+
+.tagText {
+  white-space: nowrap;
+}
+
+.rule {
+  flex: 1;
+  border-bottom: 1px dashed var(--dx-line);
+}
+
+.dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--platform);
+  box-shadow: 0 0 8px var(--platform);
+}
+
+.right .tag {
+  flex-direction: row-reverse;
+}
+
+.headline {
+  margin: 0 0 1rem;
+  font-family: var(--dx-body);
+  font-size: clamp(1.25rem, 1.05rem + 0.8vw, 1.75rem);
+  font-stretch: 108%;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--dx-ink-1);
+}
+
+.paragraphs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.body {
+  max-width: 52ch;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--dx-ink-2);
+}
+
+/* ─── Sample payload ─── */
+.sample {
+  margin: 0;
+  border: 1px solid var(--dx-line);
+  background: color-mix(in srgb, var(--dx-base) 82%, transparent);
+}
+
+.sampleCaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--dx-line);
+  font-family: var(--dx-mono);
+  font-size: 0.75rem;
+  color: var(--dx-ink-3);
+}
+
+.sampleTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code {
+  max-height: 9rem;
+  margin: 0;
+  padding: 0.75rem;
+  overflow: hidden;
+  font-family: var(--dx-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--dx-ink-2);
+  mask-image: linear-gradient(180deg, #000 60%, transparent);
+}
+
+/* The global `code` rule styles inline snippets; undo it inside the block. */
+.code code {
+  display: block;
+  padding: 0;
+  background: none;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
+  letter-spacing: normal;
+  color: inherit;
+}
+
+@media (max-height: 759px) {
+  .sample {
+    display: none;
+  }
+}
+
+/* ─── Phone: bottom sheet above the ruler, no leader ─── */
+@media (max-width: 719px) {
+  .leader {
+    display: none;
+  }
+
+  .columns {
+    inset: auto 0 calc(var(--dx-gutter) + 4rem) var(--dx-shell-left);
+    grid-template-columns: 1fr;
+  }
+
+  .left,
+  .right {
+    grid-column: 1;
+    padding: 1rem;
+    border: 1px solid var(--dx-line);
+    background: color-mix(in srgb, var(--dx-base) 90%, transparent);
+    backdrop-filter: blur(8px);
+  }
+
+  .right .tag {
+    flex-direction: row;
+  }
+
+  .sample {
+    display: none;
+  }
+}

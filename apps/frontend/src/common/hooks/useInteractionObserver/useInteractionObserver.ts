@@ -42,6 +42,8 @@ export function useInteractionObserver<T extends HTMLElement = HTMLDivElement>({
       }
     }, optionsRef.current);
 
+    observer.observe(target);
+
     return () => {
       observer.disconnect();
     };

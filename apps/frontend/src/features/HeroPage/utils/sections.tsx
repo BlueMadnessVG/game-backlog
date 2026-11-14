@@ -38,7 +38,8 @@ export type ChapterId =
 export interface Chapter {
   id: ChapterId;
   index: number;
-  kicker: string;
+  /** Short sentence-case name of the pipeline stage. */
+  part: string;
   headline: string;
   paragraphs: string[];
   accent: string;
@@ -52,7 +53,7 @@ export const SECTIONS: Chapter[] = [
   {
     id: 'ingest',
     index: 1,
-    kicker: 'INGEST // PROVIDERS',
+    part: 'Ingest',
     headline: 'Every platform is a separate pipe',
     paragraphs: [
       'Steam, Xbox and PlayStation never share a protocol. Each is wrapped by its own provider — a thin client that owns authentication, URL building and response parsing.',
@@ -66,7 +67,7 @@ export const SECTIONS: Chapter[] = [
   {
     id: 'normalization',
     index: 2,
-    kicker: 'NORMALIZATION // VALIBOT',
+    part: 'Normalization',
     headline: 'Raw JSON never reaches the database unvalidated',
     paragraphs: [
       'Every provider response is parsed with a Valibot schema before it is allowed near the DB. The schema is the trust boundary between what a third-party API returns and what this system believes.',
@@ -80,7 +81,7 @@ export const SECTIONS: Chapter[] = [
   {
     id: 'persistence',
     index: 3,
-    kicker: 'PERSISTENCE // DATA MODEL',
+    part: 'Persistence',
     headline: 'One catalog, three mappings, per-user state',
     paragraphs: [
       'Games live in a single shared catalog keyed on (title, platform) — two users owning the same Steam title share one row.',
@@ -95,7 +96,7 @@ export const SECTIONS: Chapter[] = [
   {
     id: 'unified-read',
     index: 4,
-    kicker: 'UNIFIED READ // LIBRARY',
+    part: 'Unified read',
     headline: 'Merged at read time, not write time',
     paragraphs: [
       'The LibraryService runs three platform queries in parallel, maps every row to the same Game shape, merges them, and sorts by most-recently-updated.',

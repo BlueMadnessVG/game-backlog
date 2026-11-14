@@ -1,0 +1,158 @@
+.section {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  column-gap: var(--dx-gap);
+  align-items: start;
+  padding: var(--dx-section-pad) var(--dx-gutter);
+}
+
+.copy {
+  grid-column: 2 / 9;
+}
+
+.slot {
+  grid-column: 9 / 12;
+  align-self: stretch;
+  min-height: 16rem;
+}
+
+.heading {
+  max-width: 12ch;
+  margin: 0 0 3rem;
+  font-family: var(--dx-body);
+  font-size: clamp(2rem, 1.2rem + 3.4vw, 4.5rem);
+  font-stretch: 112%;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  text-transform: uppercase;
+  color: var(--dx-ink-1);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 2.5rem;
+  align-items: center;
+}
+
+/* ─── Plate stack (CSS 3D) ─── */
+.stage {
+  display: grid;
+  place-items: center;
+  min-height: 22rem;
+  perspective: 1200px;
+}
+
+.stack {
+  position: relative;
+  width: 14rem;
+  height: 9rem;
+  transform: rotateX(58deg) rotateZ(-32deg);
+  transform-style: preserve-3d;
+}
+
+.plate {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--dx-line);
+  background: color-mix(in srgb, var(--dx-accent) 8%, transparent);
+  transform: translateZ(calc((5 - var(--i)) * 2.25rem));
+  transition:
+    transform 0.35s ease,
+    background-color 0.35s ease,
+    border-color 0.35s ease;
+}
+
+.plate[data-active='true'] {
+  border-color: var(--dx-accent);
+  background: color-mix(in srgb, var(--dx-accent) 26%, transparent);
+  transform: translateZ(calc((5 - var(--i)) * 2.25rem + 1.25rem));
+}
+
+/* ─── Labelled list ─── */
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--dx-ink-2);
+  cursor: pointer;
+}
+
+.item[aria-pressed='true'] {
+  color: var(--dx-ink-1);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--dx-accent);
+  outline-offset: 2px;
+}
+
+.itemName {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.itemRule {
+  flex: 1;
+  border-bottom: 1px dashed var(--dx-line);
+}
+
+.item[aria-pressed='true'] .itemName {
+  color: var(--dx-accent);
+}
+
+.itemDetail {
+  display: block;
+  max-width: 46ch;
+  margin-top: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--dx-ink-2);
+}
+
+@media (max-width: 959px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .stage {
+    min-height: 14rem;
+  }
+}
+
+@media (max-width: 719px) {
+  .section {
+    grid-template-columns: 1fr;
+  }
+
+  .copy {
+    grid-column: 1;
+  }
+
+  .slot {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plate {
+    transition: none;
+  }
+}
