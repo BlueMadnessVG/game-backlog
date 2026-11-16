@@ -152,6 +152,7 @@ export function Viewfinder() {
         role="slider"
         tabIndex={0}
         aria-label="Page position"
+        data-wheel-forward
         aria-orientation="horizontal"
         aria-valuemin={0}
         aria-valuemax={100}

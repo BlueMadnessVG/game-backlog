@@ -15,6 +15,7 @@ import { SyncAnatomy } from './components/content/SyncAnatomy';
 import { Viewfinder } from './components/content/Viewfinder';
 import styles from './css/HeroPageManager.module.css';
 import { HUD_FADE_END, HUD_FADE_START, heroProgress, useHeroTimeline } from './timeline';
+import { useWheelForward } from './utils/useWheelForward';
 
 import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
@@ -36,6 +37,7 @@ export function HeroPageManager() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useHeroTimeline(mainRef, heroSequenceRef, rootRef);
+  useWheelForward(rootRef, mainRef);
 
   const hudOpacity = useTransform(heroProgress, [HUD_FADE_START, HUD_FADE_END], [1, 0]);
   const hudVisibility = useTransform(heroProgress, (p) =>

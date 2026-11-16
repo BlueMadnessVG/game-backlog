@@ -56,6 +56,7 @@ export function HeroButtonHotspots() {
             type="button"
             className={styles.hotspot}
             aria-label={BUTTON_LABELS[key]}
+            data-wheel-forward
             style={{
               left: x,
               top: y,

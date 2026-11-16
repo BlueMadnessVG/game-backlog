@@ -40,7 +40,9 @@ export function HeroScene() {
           toneMapping: 3,
           toneMappingExposure: 1.15,
         }}
-        style={{ touchAction: 'pan-y' }}
+        // R3F sets pointer-events: auto on its wrapper; on a fixed full-screen
+        // layer that swallows the mouse wheel. The scene uses no R3F events.
+        style={{ touchAction: 'pan-y', pointerEvents: 'none' }}
       >
         <ambientLight intensity={0.35} color="#b9a6ff" />
         <spotLight position={[3, 4, 4]} angle={0.6} penumbra={1} intensity={3} color="#e9ddff" />

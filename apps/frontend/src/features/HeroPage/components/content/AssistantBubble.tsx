@@ -67,6 +67,7 @@ export function AssistantBubble() {
         type="button"
         className={styles.cube}
         aria-label="Assistant"
+        data-wheel-forward
         aria-expanded={shown}
         onClick={() => (line ? toggle() : setHint((h) => !h))}
       />
