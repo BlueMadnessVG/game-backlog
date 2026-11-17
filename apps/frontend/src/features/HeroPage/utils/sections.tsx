@@ -14,8 +14,8 @@ import type { HeroButtonKey } from '../store/heroButtonHotspots.Store';
 /**
  * Single source of truth for the deep-dive chapters rendered below the hero
  * sequence. Each chapter documents one stage of the sync pipeline and is
- * anchored by an accent color drawn from the PlatformHologram theme tokens so
- * the visual language stays consistent with the 3D controller.
+ * anchored by an accent color from PLATFORM_COLORS so it matches the
+ * cube's corner light for that platform.
  *
  * `button` maps a chapter to the controller face-button whose platform theme
  * best matches that stage (used by the docked mini-controller glow):

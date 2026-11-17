@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react';
+import { useRef } from 'react';
 
 import { Edges, RoundedBox } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
@@ -6,7 +6,6 @@ import * as THREE from 'three';
 
 import { pose } from './assistantPose';
 import { CubeModel } from './CubeModel';
-import PlatformHologram from './PlatformHologram';
 import { FACE_H, FACE_W, useFaceTexture } from './useFaceTexture';
 import { useAssistantStore } from '../../store/assistant.Store';
 import {
@@ -17,7 +16,7 @@ import { PLATFORM_COLORS, type PlatformKey } from '../../utils/platformColors';
 
 /**
  * Body of the page-long assistant, with a screen on the front that draws its
- * face and four platform corner lights (each with a hologram).
+ * face and four glowing platform corner lights.
  *
  * Two bodies, chosen by `BODY`:
  *  - 'model': the GLTF placeholder (CubeModel) with a mounted face screen.
@@ -66,19 +65,9 @@ const LIGHTS: {
   { key: 'unified', hotspot: 'Hotspot-Circle', button: 'circle', slab: 2, side: 1 },
 ];
 
-function CornerLight({
-  platform,
-  hotspot,
-  button,
-  slab,
-  side,
-}: {
-  platform: PlatformKey;
-  hotspot: string;
-  button: HeroButtonKey;
-  slab: 0 | 2;
-  side: -1 | 1;
-}) {
+/** One platform's glowing corner light, on the top or bottom row. */
+function CornerLight({ light }: { light: (typeof LIGHTS)[number] }) {
+  const { key: platform, hotspot, button, slab, side } = light;
   const color = PLATFORM_COLORS[platform];
   const core = useRef<THREE.Mesh>(null);
   const halo = useRef<THREE.Mesh>(null);
@@ -116,30 +105,6 @@ function CornerLight({
 }
 
 
-/** One platform's corner light + hologram, placed on the top or bottom row. */
-function LightRig({ light, children }: { light: (typeof LIGHTS)[number]; children?: ReactNode }) {
-  return (
-    <>
-      <CornerLight
-        platform={light.key}
-        hotspot={light.hotspot}
-        button={light.button}
-        slab={light.slab}
-        side={light.side}
-      />
-      {/* Hologram authored in centi-units; scale into cube space. */}
-      <group position={[light.side * 0.9, light.slab === 0 ? 0.5 : -0.5, 0.95]} scale={0.009}>
-        <PlatformHologram
-          position={[0, 0, 0]}
-          color={PLATFORM_COLORS[light.key]}
-          activeRef={pose.active[light.key]}
-        />
-      </group>
-      {children}
-    </>
-  );
-}
-
 /** Code-built body: three slabs that slide apart with `pose.spread`. */
 function ProceduralBody({ faceTexture }: { faceTexture: THREE.Texture }) {
   const slabs = [useRef<THREE.Group>(null), useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
@@ -168,7 +133,7 @@ function ProceduralBody({ faceTexture }: { faceTexture: THREE.Texture }) {
           )}
 
           {LIGHTS.filter((light) => light.slab === i).map((light) => (
-            <LightRig key={light.key} light={light} />
+            <CornerLight key={light.key} light={light} />
           ))}
         </group>
       ))}
@@ -223,7 +188,7 @@ function ModelBody({ faceTexture }: { faceTexture: THREE.Texture }) {
           }}
           position={[0, SLAB_Y[light.slab], 0]}
         >
-          <LightRig light={light} />
+          <CornerLight light={light} />
         </group>
       ))}
     </group>
