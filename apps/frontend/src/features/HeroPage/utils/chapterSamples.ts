@@ -1,54 +1,40 @@
-import { mappingRows, statsSample, steamAchievementBatch, validatedGame } from './sampleData';
+import { catalogRowsSample, ownedGameSample, rateLimitErrorSample, statsSample } from './sampleData';
 
-import type { Chapter } from './sections';
+import type { Chapter, ChapterId } from './sections';
 
 /**
- * Maps each HeroPage deep-dive chapter to the sample payload it should
- * display, sourced from ./sampleData.
+ * Maps each part callout to the sample payload it shows, from ./sampleData.
  *
  * Exports:
  *  - SamplePanelData: { title, code } shape handed to the panel renderer.
- *  - getChapterSample(chapter): resolves the sample for a Chapter, falling
- *    back to the sampleData items above (or a per-chapter computed payload,
- *    e.g. the redacted .env lines for the security chapter).
+ *  - getChapterSample(chapter): the sample for a Chapter.
  */
 export interface SamplePanelData {
   title: string;
   code: string;
 }
 
-interface SampleEntry {
-  title: string;
-  code: (chapter: Chapter) => string;
-}
+const json = (value: unknown) => JSON.stringify(value, null, 2);
 
-const CHAPTER_SAMPLES: Record<string, SampleEntry> = {
+const CHAPTER_SAMPLES: Record<ChapterId, SamplePanelData> = {
   ingest: {
-    title: 'providers/steam.provider.ts → achievements.batch[5]',
-    code: () => JSON.stringify(steamAchievementBatch, null, 2),
+    title: 'SteamAdapter.fetchOwnedGames → OwnedGame',
+    code: json(ownedGameSample),
   },
   normalization: {
-    title: 'v.parse(GameSchema, rawProviderPayload)',
-    code: () => JSON.stringify(validatedGame, null, 2),
+    title: 'ProviderRateLimitError → 503',
+    code: json(rateLimitErrorSample),
   },
   persistence: {
-    title: 'db/schema/core.ts — mapping + per-user rows',
-    code: () => JSON.stringify([...mappingRows], null, 2),
+    title: 'games + user_games rows',
+    code: json(catalogRowsSample),
   },
   'unified-read': {
-    title: 'GET /api/stats — merged at read time',
-    code: () => JSON.stringify(statsSample, null, 2),
-  },
-  security: {
-    title: '.env — server-side only',
-    code: (chapter) => (chapter.redacted ?? []).map((key) => `${key}=<REDACTED>`).join('\n'),
+    title: 'GET /api/v1/library/stats',
+    code: json(statsSample),
   },
 };
 
 export function getChapterSample(chapter: Chapter): SamplePanelData {
-  const entry = CHAPTER_SAMPLES[chapter.id];
-  return {
-    title: entry.title,
-    code: entry.code(chapter),
-  };
+  return CHAPTER_SAMPLES[chapter.id];
 }

@@ -1,95 +1,61 @@
-import type { Achievement, Game, Stats } from '@repo/shared';
+import type { Stats } from '@repo/shared';
 
 /**
- * Static sample data for the HeroPage deep-dive chapter panels.
+ * Static sample data for the HeroPage part callouts and the stock list.
  *
- * Everything here is fabricated — fake titles, ids and numbers — so the
- * panels can render realistic payload structure (matching the @repo/shared
- * Valibot schemas) without ever touching real user data. It is purely
- * display data: nothing is fetched at runtime.
+ * Everything here is fabricated — fake titles, ids and numbers — but each
+ * object is shaped like the backend value it documents, so the panels show
+ * real structure without touching user data. Nothing is fetched at runtime.
  *
  * Exports:
- *  - SYNTHETIC_NOTICE: banner text marking the data as fake.
- *  - steamAchievementBatch: an Achievement[] batch mirroring the batched
- *    sync window.
- *  - validatedGame / enrichedGame: Game rows (post-validation and post-IGDB
- *    cover backfill).
- *  - MappingRow / UserGameRow + mappingRows: catalog ↔ external-id bindings
- *    and a per-user row.
+ *  - ownedGameSample: an `OwnedGame` as a platform adapter returns it
+ *    (apps/backend/modules/platforms/platform-adapter.ts).
+ *  - rateLimitErrorSample: the JSON body error.handler.ts sends for a
+ *    ProviderRateLimitError.
+ *  - catalogRowsSample: one shared `games` catalog row and the `user_games`
+ *    row that holds one user's state for it.
  *  - statsSample: aggregated library stats (total + per-platform).
  */
-/**
- * Synthetic sample payloads used by the deep-dive chapter panels. Every value
- * here is fabricated — fake titles, ids and numbers — but each object is
- * shaped exactly like the Valibot schema it documents so the panels show real
- * payload structure without leaking any user data. Nothing in this file is
- * fetched at runtime; it is static display data.
- */
 
-export const SYNTHETIC_NOTICE = 'SYNTHETIC SAMPLE — NOT REAL DATA';
-
-/** Steam-achievement batch — five items, mirroring the batched sync window. */
-export const steamAchievementBatch: Achievement[] = [
-  {
-    id: '7f3a9c1e-6d2b-4f8a-9c5e-2b1d4e6a8f03',
-    externalId: '367520_1',
-    gameId: 'a1b2c3d4-0001-4e5f-8a9b-1c2d3e4f5a6b',
-    name: 'First Landing',
-    description: 'Touch down on the survey site.',
-    hidden: false,
-    iconUrl: 'https://example.com/icons/first-landing.png',
-    iconGrayUrl: 'https://example.com/icons/first-landing-grey.png',
-    achieved: true,
-    unlockedAt: '2026-07-18T21:04:12.000Z',
-    globalPercentage: 78.4,
-    addedAt: '2026-07-18T21:04:12.000Z',
-    updatedAt: '2026-07-18T21:04:12.000Z',
-  },
-];
-
-/** Steam library row — the Game shape produced after Valibot validation. */
-export const validatedGame: Game = {
-  id: 'a1b2c3d4-0001-4e5f-8a9b-1c2d3e4f5a6b',
+/** `SteamAdapter.fetchOwnedGames` output — the platform-neutral OwnedGame shape. */
+export const ownedGameSample = {
   externalId: '367520',
   title: 'Deepstar Salvage',
-  platform: 'steam',
-  status: 'in-progress',
   iconUrl: 'https://example.com/icons/deepstar-salvage.png',
   coverUrl: 'https://example.com/covers/deepstar-salvage.jpg',
-  bannerUrl: 'https://example.com/banners/deepstar-salvage.jpg',
-  playTime: 18240,
-  completionPercentage: 38,
+  bannerUrl: null,
+  playTimeMinutes: 18240,
   lastPlayedAt: '2026-07-23T02:51:47.000Z',
-  addedAt: '2026-06-30T14:02:11.000Z',
-  updatedAt: '2026-07-23T02:51:47.000Z',
+  completionPercentage: null,
+  metadata: {},
 };
 
-export interface MappingRow {
-  table: 'steam_games' | 'xbox_games' | 'psn_games';
-  externalId: string;
-  gameId: string;
-}
+/** HTTP 503 body (with `Retry-After: 60`) for a rate-limited provider call. */
+export const rateLimitErrorSample = {
+  status: 'ERROR',
+  code: 'PROVIDER_RATE_LIMITED',
+  message: 'The game platform is rate limiting us. Try again in a minute.',
+  requestId: '4c1f8e2a-9b7d-4e3a-8f6c-2d5b1a9e7c30',
+};
 
-export interface UserGameRow {
-  table: 'user_games';
-  userId: string;
-  gameId: string;
-  status: 'in-progress';
-  playTime: number;
-  completionPercentage: number;
-  lastPlayedAt: string;
-}
-
-/** Catalog ↔ external-id bindings plus one per-user row. */
-export const mappingRows: MappingRow[] = [
-  { table: 'steam_games', externalId: '367520', gameId: 'a1b2c3d4-0001-4e5f-8a9b-1c2d3e4f5a6b' },
-  { table: 'xbox_games', externalId: '9P7Q4V2K1M', gameId: 'b2c3d4e5-0002-4f6a-9b1c-2d3e4f5a6b7c' },
-  {
-    table: 'psn_games',
-    externalId: 'EP1234-CUSA45678_00-DEEPSTARSALVAGE',
-    gameId: 'c3d4e5f6-0003-4a7b-8c2d-3e4f5a6b7c8d',
+/** One shared catalog row plus the per-user row that points at it. */
+export const catalogRowsSample = {
+  games: {
+    id: 'a1b2c3d4-0001-4e5f-8a9b-1c2d3e4f5a6b',
+    platform: 'steam',
+    external_id: '367520',
+    title: 'Deepstar Salvage',
+    has_achievements: true,
   },
-];
+  user_games: {
+    user_id: 'f0e1d2c3-0009-4b8a-9c7d-6e5f4a3b2c1d',
+    game_id: 'a1b2c3d4-0001-4e5f-8a9b-1c2d3e4f5a6b',
+    status: 'in-progress',
+    play_time: 18240,
+    completion_percentage: 38,
+    last_played_at: '2026-07-23T02:51:47.000Z',
+  },
+};
 
 /** Aggregated library stats — total + per-platform breakdown. */
 export const statsSample: Stats = {
@@ -119,21 +85,4 @@ export const statsSample: Stats = {
       completedGames: 10,
     },
   },
-};
-
-/** Xbox title after IGDB cover enrichment backfill. */
-export const enrichedGame: Game = {
-  id: 'b2c3d4e5-0002-4f6a-9b1c-2d3e4f5a6b7c',
-  externalId: '9P7Q4V2K1M',
-  title: 'Hollow Protocol',
-  platform: 'xbox',
-  status: 'backlog',
-  iconUrl: 'https://example.com/icons/hollow-protocol.png',
-  coverUrl: 'https://example.com/covers/hollow-protocol-from-igdb.jpg',
-  bannerUrl: null,
-  playTime: 0,
-  completionPercentage: 0,
-  lastPlayedAt: null,
-  addedAt: '2026-08-01T11:20:00.000Z',
-  updatedAt: '2026-08-01T11:26:14.000Z',
 };

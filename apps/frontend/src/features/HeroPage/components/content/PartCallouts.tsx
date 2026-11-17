@@ -3,10 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion, useMotionValueEvent, useTransform } from 'framer-motion';
 
 import styles from './css/PartCallouts.module.css';
-import {
-  useButtonHotspotsStore,
-  type HeroButtonKey,
-} from '../../store/heroButtonHotspots.Store';
+import { useButtonHotspotsStore, type HeroButtonKey } from '../../store/heroButtonHotspots.Store';
 import { at, DISPLAY_TIMELINE, heroProgress } from '../../timeline';
 import { getChapterSample } from '../../utils/chapterSamples';
 import { PLATFORM_COLORS, type PlatformKey } from '../../utils/platformColors';

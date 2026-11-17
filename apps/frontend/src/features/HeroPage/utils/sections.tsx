@@ -1,39 +1,17 @@
 import { PLATFORM_COLORS } from './platformColors';
 
-import type { HeroButtonKey } from '../store/heroButtonHotspots.Store';
-
 /**
- * Deep-dive chapter definitions rendered below the hero sequence.
+ * The four part callouts shown during the hero's platform beats. Each one
+ * documents a stage of the backend sync pipeline (apps/backend) and names the
+ * objects that stage is built from. The accent comes from PLATFORM_COLORS so
+ * it matches the cube's corner light for that beat.
  *
  * Exports:
- *  - ChapterId: union of the six pipeline-stage ids.
- *  - Chapter: shape of a single chapter (headline, body copy, accent color,
- *    controller button mapping, optional redacted secrets).
- *  - SECTIONS: the ordered Chapter[] used by the chapter list.
+ *  - ChapterId: union of the four pipeline-stage ids.
+ *  - Chapter: shape of one callout (copy, objects, accent, side, source path).
+ *  - SECTIONS: the ordered Chapter[]; `index` matches the timeline's display.
  */
-/**
- * Single source of truth for the deep-dive chapters rendered below the hero
- * sequence. Each chapter documents one stage of the sync pipeline and is
- * anchored by an accent color from PLATFORM_COLORS so it matches the
- * cube's corner light for that platform.
- *
- * `button` maps a chapter to the controller face-button whose platform theme
- * best matches that stage (used by the docked mini-controller glow):
- *   ingest → Steam (the reference provider), normalization/unified-read →
- *   Unified (cross-platform), persistence → PlayStation (deepest mapping
- *   chain), enrichment → Xbox (primary cover target). Security has none —
- *   secrets guard every platform.
- *
- * `redacted` is only used by the Security chapter — it names the secrets that
- * must never reach the browser, rendered as <REDACTED> chips.
- */
-export type ChapterId =
-  | 'ingest'
-  | 'normalization'
-  | 'persistence'
-  | 'unified-read'
-  | 'enrichment'
-  | 'security';
+export type ChapterId = 'ingest' | 'normalization' | 'persistence' | 'unified-read';
 
 export interface Chapter {
   id: ChapterId;
@@ -42,11 +20,12 @@ export interface Chapter {
   part: string;
   headline: string;
   paragraphs: string[];
+  /** Backend classes, types and tables this stage uses (shown as chips). */
+  objects: string[];
   accent: string;
   alignment: 'left' | 'right';
+  /** Where the stage lives in apps/backend. */
   tag: string;
-  button?: HeroButtonKey;
-  redacted?: string[];
 }
 
 export const SECTIONS: Chapter[] = [
@@ -54,44 +33,69 @@ export const SECTIONS: Chapter[] = [
     id: 'ingest',
     index: 1,
     part: 'Ingest',
-    headline: 'Every platform is a separate pipe',
+    headline: 'Every platform is its own provider',
     paragraphs: [
-      'Steam, Xbox and PlayStation never share a protocol. Each is wrapped by its own provider — a thin client that owns authentication, URL building and response parsing.',
-      'SteamProvider talks to the Steam Web API (GetOwnedGames, GetSchemaForGame). XboxProvider talks to OpenXBL (title history, player stats). PsnProvider wraps the psn-api SDK (profile, titles, trophies). IgdbProvider is used for cover enrichment only.',
+      'SteamProvider calls the Steam Web API with a key (GetOwnedGames, GetPlayerAchievements, GetSchemaForGame), XboxProvider calls OpenXBL with an X-Authorization header, and PsnProvider wraps the psn-api SDK with tokens exchanged from an NPSSO. Each one owns its auth, URLs and HTTP-error mapping.',
+      'A PlatformAdapter sits on each provider — SteamAdapter, XboxAdapter, PsnAdapter — and turns its responses into one OwnedGame and NormalizedAchievement shape, with its own batch size and pause so a full achievement sync stays under that API’s rate limit.',
+    ],
+    objects: [
+      'SteamProvider',
+      'XboxProvider',
+      'PsnProvider',
+      'PlatformAdapter',
+      'SteamAdapter',
+      'XboxAdapter',
+      'PsnAdapter',
+      'OwnedGame',
+      'NormalizedAchievement',
     ],
     accent: PLATFORM_COLORS.steam,
     alignment: 'left',
-    tag: 'providers/*.provider.ts',
-    button: 'cross',
+    tag: 'modules/platforms/*.adapter.ts',
   },
   {
     id: 'normalization',
     index: 2,
     part: 'Normalization',
-    headline: 'Raw JSON never reaches the database unvalidated',
+    headline: 'Nothing is trusted until it parses',
     paragraphs: [
-      'Every provider response is parsed with a Valibot schema before it is allowed near the DB. The schema is the trust boundary between what a third-party API returns and what this system believes.',
-      'A schema mismatch throws a typed ProviderUnavailableError instead of corrupting rows. Nice-to-have data — like global achievement percentages — fails soft: it is logged and dropped, never fatal.',
+      'Every response goes through v.safeParse against a Valibot schema — SteamOwnedGamesResponseSchema, XboxTitleHistorySchema, IgdbGamesResponseSchema and the rest — before it can reach the database.',
+      'Failures become typed errors: ProviderAuthError, ProviderRateLimitError (sent with Retry-After) and ProviderUnavailableError. Required calls throw; nice-to-have data like global percentages, Xbox playtime or IGDB covers is logged and dropped. deriveGameStatus then files each game as backlog, in-progress, completed or retired.',
+    ],
+    objects: [
+      'Valibot schemas',
+      'ProviderAuthError',
+      'ProviderRateLimitError',
+      'ProviderUnavailableError',
+      'AppError',
+      'deriveGameStatus',
     ],
     accent: PLATFORM_COLORS.xbox,
     alignment: 'right',
     tag: 'providers/schemas/*.schemas.ts',
-    button: 'circle',
   },
   {
     id: 'persistence',
     index: 3,
     part: 'Persistence',
-    headline: 'One catalog, three mappings, per-user state',
+    headline: 'One shared catalog, per-user state on top',
     paragraphs: [
-      'Games live in a single shared catalog keyed on (title, platform) — two users owning the same Steam title share one row.',
-      'Per-platform mapping tables (steam_games, xbox_games, psn_games) bind external IDs — appId, titleId, npCommunicationId — back to the catalog.',
-      "Everything user-specific — status, play time, completion, last played — is written to user_games, so one user's sync can never overwrite another's.",
+      'games and achievements are a shared catalog keyed on (platform, external_id) — a Steam appid, Xbox titleId or PSN npCommunicationId — so two users who own the same title share one row. Each user’s status, play time, completion and unlock dates live in user_games and user_achievements.',
+      'steam_accounts, xbox_accounts and psn_accounts only link a user to a platform; PSN tokens are encrypted with AES-256-GCM. PlatformLibrary writes each sync in one transaction under a Postgres advisory lock (withLock), so a user’s syncs never overlap.',
+    ],
+    objects: [
+      'games',
+      'achievements',
+      'user_games',
+      'user_achievements',
+      '*_accounts',
+      'PlatformLibrary',
+      'withLock',
+      'encrypt / decrypt',
     ],
     accent: PLATFORM_COLORS.playstation,
     alignment: 'left',
-    tag: 'db/schema/core.ts',
-    button: 'square',
+    tag: 'db/schema/*.ts',
   },
   {
     id: 'unified-read',
@@ -99,13 +103,19 @@ export const SECTIONS: Chapter[] = [
     part: 'Unified read',
     headline: 'Merged at read time, not write time',
     paragraphs: [
-      'The LibraryService runs three platform queries in parallel, maps every row to the same Game shape, merges them, and sorts by most-recently-updated.',
-      'Achievements are dispatched by the stored platform — steam, xbox or playstation — each resolved through its own service.',
-      'Stats are computed per platform and folded into one total: games, completion percentage, achievements and completed count.',
+      'LibraryService serves the library from one query that joins user_games to games across every platform — filtered, newest-updated first and paged. getStats runs two per-platform queries in parallel (games and achievements) and folds them into one total.',
+      'Achievement requests are dispatched to the PlatformLibrary for the game’s stored platform. Everything is served by Hono under /api/v1, behind the auth middleware: a session cookie or a bkl_ API token.',
+    ],
+    objects: [
+      'LibraryService',
+      'PlatformLibrary',
+      'Game',
+      'Stats',
+      'Hono /api/v1',
+      'createAuthMiddleware',
     ],
     accent: PLATFORM_COLORS.unified,
     alignment: 'right',
     tag: 'modules/library/library.services.ts',
-    button: 'circle',
   },
 ];

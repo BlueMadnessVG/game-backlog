@@ -23,7 +23,7 @@
 /* ─── Twelve-column frame the blocks sit on ─── */
 .columns {
   position: absolute;
-  inset: 24% 0 auto var(--dx-shell-left);
+  inset: 18% 0 auto var(--dx-shell-left);
   z-index: 4;
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -101,6 +101,26 @@
   margin: 0;
   font-size: 0.9375rem;
   line-height: 1.6;
+  color: var(--dx-ink-2);
+}
+
+/* ─── Backend objects used by the stage ─── */
+.objects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  max-width: 52ch;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.object {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--platform) 45%, transparent);
+  font-family: var(--dx-mono);
+  font-size: 0.6875rem;
+  line-height: 1.4;
   color: var(--dx-ink-2);
 }
 
