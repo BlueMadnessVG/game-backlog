@@ -9,7 +9,7 @@ import type { Emotion } from '../store/assistant.Store';
  *  - SECTION_SCRIPT: line + emotion per below-the-hero section id.
  *  - IDLE_HINT: what the cube says when clicked with nothing to add.
  */
-export type SectionId = 'stock' | 'anatomy' | 'cta';
+export type SectionId = 'stock' | 'anatomy' | 'sync' | 'trust' | 'cta';
 
 export const SECTION_SCRIPT: Record<SectionId, { line: string; emotion: Emotion }> = {
   stock: {
@@ -19,6 +19,14 @@ export const SECTION_SCRIPT: Record<SectionId, { line: string; emotion: Emotion 
   anatomy: {
     line: 'Every game passes through six steps. Pick one and I will show you where it sits.',
     emotion: 'think',
+  },
+  sync: {
+    line: 'Press sync once. I save your games first, then keep fetching achievements in the background.',
+    emotion: 'think',
+  },
+  trust: {
+    line: 'I only keep what a sync needs. Keys and secrets never leave the server.',
+    emotion: 'happy',
   },
   cta: {
     line: 'Your library is ready when you are.',

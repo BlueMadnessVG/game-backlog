@@ -26,12 +26,12 @@ const LAYERS = [
   {
     name: 'Catalog row',
     detail:
-      'Games live in one shared catalog, keyed on title and platform, so two players who own the same game share a row.',
+      'Games live in one shared catalog, keyed on the platform and its own game ID, so two players who own the same game share a row.',
   },
   {
-    name: 'Platform mapping',
+    name: 'Achievements',
     detail:
-      'Small tables tie each platform’s own game ID back to the catalog row, so a sync can always find the same game again.',
+      'Each game’s achievement list is stored once and shared. Unlocks are saved per player against it.',
   },
   {
     name: 'Your progress',

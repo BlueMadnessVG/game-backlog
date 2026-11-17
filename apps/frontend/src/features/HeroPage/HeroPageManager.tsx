@@ -12,6 +12,8 @@ import { LoadCounter } from './components/content/LoadCounter';
 import { PartCallouts } from './components/content/PartCallouts';
 import { StockList } from './components/content/StockList';
 import { SyncAnatomy } from './components/content/SyncAnatomy';
+import { SyncRun } from './components/content/SyncRun';
+import { TrustLedger } from './components/content/TrustLedger';
 import { Viewfinder } from './components/content/Viewfinder';
 import styles from './css/HeroPageManager.module.css';
 import { HUD_FADE_END, HUD_FADE_START, heroProgress, useHeroTimeline } from './timeline';
@@ -71,6 +73,8 @@ export function HeroPageManager() {
       <div className={styles.contentBelow}>
         <StockList />
         <SyncAnatomy />
+        <SyncRun />
+        <TrustLedger />
         <ClosingCta />
       </div>
     </div>
