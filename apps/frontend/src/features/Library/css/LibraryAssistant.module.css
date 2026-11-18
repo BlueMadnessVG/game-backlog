@@ -1,0 +1,28 @@
+/*
+ * Assistant anchors on the Library page. The cube centres on each box and
+ * matches its height, so these sizes are the cube's on-screen size.
+ */
+
+/* Fixed bottom-right dock (while loading, and once the title scrolls away). */
+.corner {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  width: 88px;
+  height: 88px;
+  pointer-events: none;
+}
+
+/* Beside the page title. */
+.header {
+  flex: none;
+  width: 104px;
+  height: 104px;
+}
+
+/* Takes the empty state's icon spot. */
+.empty {
+  width: 160px;
+  height: 160px;
+  margin-bottom: 1rem;
+}

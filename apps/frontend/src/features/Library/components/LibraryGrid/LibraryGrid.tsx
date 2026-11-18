@@ -1,5 +1,7 @@
 import styles from './css/LibraryGrid.module.css';
 import { useLibraryVirtualGrid } from './hooks/LibraryVirtualGrid';
+import assistant from '../../css/LibraryAssistant.module.css';
+import { LIBRARY_SCRIPT } from '../../utils/libraryAssistant';
 import GameCard from '../GameCard/GameCard';
 import { LibraryHeader } from '../LibraryHeader/LibraryHeader';
 import LibrarySkeleton from '../ui/LibrarySkeleton/LibraryGameCardSkeleton';
@@ -7,6 +9,7 @@ import LibrarySkeleton from '../ui/LibrarySkeleton/LibraryGameCardSkeleton';
 import type { Game } from '@repo/shared';
 
 import { useLibraryGames } from '@/api/library/library.queries';
+import { AssistantAnchor } from '@/common/components/layout/Assistant';
 
 interface LibraryGridProps {
   games: Game[];
@@ -29,7 +32,22 @@ function LibraryGrid({ games }: LibraryGridProps) {
       <div className={styles.library_stats_wrapper}>
         <LibraryHeader />
       </div>
-      <h1 className={styles.library_header}>LIBRARY DATABASE</h1>
+      <div className={styles.library_title_row}>
+        <h1 className={styles.library_header}>LIBRARY DATABASE</h1>
+        {/* The cube sits beside the title while it is on screen… */}
+        <AssistantAnchor
+          id="library-header"
+          className={assistant.header}
+          margin="0px"
+          {...LIBRARY_SCRIPT.header}
+        />
+      </div>
+      {/* …and drops to a small corner dock once the title scrolls away. */}
+      <AssistantAnchor
+        id="library-corner"
+        className={assistant.corner}
+        {...LIBRARY_SCRIPT.corner}
+      />
 
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {

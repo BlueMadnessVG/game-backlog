@@ -9,6 +9,20 @@
   margin-bottom: 2.5rem;
 }
 
+/* Title + the assistant cube's spot beside it. */
+.library_title_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding-right: 1.5rem;
+}
+
+.library_title_row .library_header {
+  margin-bottom: 0;
+}
+
 .library_header {
   display: flex;
   align-items: center;

@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 
 import { create } from 'zustand';
 
+import { prefersReducedMotion } from '../utils/motion';
+
 import type { AssistantDirector } from '../scene/director';
 
 /**
@@ -20,10 +22,14 @@ import type { AssistantDirector } from '../scene/director';
  * The cube is shown whenever any of these is present (see isAssistantActive).
  * `hint` is what the bubble says when the cube is clicked with no line.
  *
+ * Motion: `reducedMotion` mirrors the OS setting live (AssistantHost keeps it
+ * in sync); while it is on, the cube holds still (see isAssistantStill).
+ *
  * Exports:
  *  - Emotion, AssistantScreen.
  *  - useAssistantStore: zustand store.
  *  - isAssistantActive: whether the current page uses the cube.
+ *  - isAssistantStill: whether the cube should hold still.
  */
 export type Emotion = 'idle' | 'happy' | 'think' | 'talk' | 'surprised' | 'sleep';
 
@@ -51,6 +57,7 @@ interface AssistantState {
   director: AssistantDirector | null;
   anchorCount: number;
   hint: string;
+  reducedMotion: boolean;
   setReady: () => void;
   setEmotion: (emotion: Emotion) => void;
   say: (line: string | null, emotion?: Emotion) => void;
@@ -62,6 +69,7 @@ interface AssistantState {
   /** +1 when an anchor mounts, -1 when it unmounts. */
   addAnchors: (delta: number) => void;
   setHint: (hint: string) => void;
+  setReducedMotion: (reduced: boolean) => void;
 }
 
 export const useAssistantStore = create<AssistantState>((set) => ({
@@ -75,6 +83,7 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   director: null,
   anchorCount: 0,
   hint: 'Soon you will be able to ask me about your library.',
+  reducedMotion: prefersReducedMotion(),
   setReady: () => set({ ready: true }),
   setEmotion: (emotion) => set({ emotion }),
   say: (line, emotion) => set((s) => ({ line, emotion: emotion ?? s.emotion })),
@@ -85,6 +94,7 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   setDirector: (director) => set({ director }),
   addAnchors: (delta) => set((s) => ({ anchorCount: Math.max(0, s.anchorCount + delta) })),
   setHint: (hint) => set({ hint }),
+  setReducedMotion: (reducedMotion) => set({ reducedMotion }),
 }));
 
 type ActiveFields = Pick<AssistantState, 'scene' | 'accessory' | 'director' | 'anchorCount'>;
@@ -92,4 +102,9 @@ type ActiveFields = Pick<AssistantState, 'scene' | 'accessory' | 'director' | 'a
 /** The current page uses the cube (registered content, a director or anchors). */
 export function isAssistantActive(s: ActiveFields): boolean {
   return s.scene !== null || s.accessory !== null || s.director !== null || s.anchorCount > 0;
+}
+
+/** The cube holds still: the OS asks for reduced motion. */
+export function isAssistantStill(s: Pick<AssistantState, 'reducedMotion'>): boolean {
+  return s.reducedMotion;
 }

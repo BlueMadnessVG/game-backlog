@@ -27,10 +27,18 @@
   outline-offset: 4px;
 }
 
+/*
+ * A manual popover, opened once on mount, so it renders in the top layer above
+ * any page's stacking contexts. The UA popover styles (centred, inset 0, auto
+ * margin, canvas colours, scrolling) are reset; without Popover support it is
+ * a plain fixed box and looks the same.
+ */
 .bubble {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0 auto auto 0;
+  margin: 0;
+  overflow: visible;
+  color: inherit;
   z-index: 17;
   max-width: min(18rem, 60vw);
   padding: 0.75rem 1rem;

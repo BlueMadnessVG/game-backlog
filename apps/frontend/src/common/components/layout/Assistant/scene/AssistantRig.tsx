@@ -4,17 +4,18 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { CUBE_SIZE } from './AssistantCube';
+import { lookTarget, sideOf } from './gaze';
 import { anchorRegistry } from '../anchors/registry';
 import { pxToScale, selectAnchor, type AnchorTarget } from '../anchors/selectAnchor';
 import { GazeReactions } from '../face/gazeReactions';
 import { pose } from '../face/pose';
 import {
   isAssistantActive,
+  isAssistantStill,
   useAssistantStore,
   type AssistantScreen,
   type Emotion,
 } from '../store/assistant.Store';
-import { prefersReducedMotion } from '../utils/motion';
 
 import type { DirectorPose } from './director';
 
@@ -27,7 +28,8 @@ import type { DirectorPose } from './director';
  *  2. Director: if the page registered one (useAssistantDirector), its pose is
  *     blended with the docked pose by `dockBlend` — e.g. the hero's entry spin
  *     and scroll timeline.
- *  3. On top of either: idle sway and bob, per-emotion body language, and a
+ *  3. On top of either (unless the cube is still — reduced motion):
+ *     idle sway and bob, per-emotion body language, and a
  *     gaze that follows the pointer from the cube's own position (looking at
  *     the centre after a left/right switch until the mouse moves again), plus
  *     the eye reactions (GazeReactions).
@@ -45,10 +47,6 @@ const MOTION_REF_SCALE = 1.15;
 /** Where and how big the cube sits when no anchor is near (NDC, scale). */
 const FALLBACK_NDC = { x: 0.72, y: -0.62 };
 const FALLBACK_SCALE = 0.62;
-/** Gaze gain on the cube→pointer vector (NDC), before clamping to -1..1. */
-const LOOK_GAIN = 1;
-/** |NDC x| below this counts as the centre when detecting a left/right switch. */
-const SIDE_DEADZONE = 0.15;
 
 const lerp = THREE.MathUtils.lerp;
 const damp = (current: number, target: number, rate: number, delta: number) =>
@@ -58,26 +56,6 @@ const clamp = THREE.MathUtils.clamp;
 /** Eases the docked scale toward `target` (jumps for reduced motion). */
 function nextDockScale(current: number, target: number, still: boolean, dt: number) {
   return still ? target : damp(current, target, 4, dt);
-}
-
-/** Screen side for an NDC x: -1 left, 0 centre (inside the dead-zone), 1 right. */
-function sideOf(x: number): -1 | 0 | 1 {
-  if (x > SIDE_DEADZONE) return 1;
-  if (x < -SIDE_DEADZONE) return -1;
-  return 0;
-}
-
-/**
- * Target gaze (-1..1 per axis), measured from the cube's own screen position:
- * toward `aim` (the pointer) or, with no aim, toward the screen centre.
- */
-function lookTarget(aim: { x: number; y: number } | null, cube: { x: number; y: number }) {
-  const ax = aim ? aim.x : 0;
-  const ay = aim ? aim.y : 0;
-  return {
-    x: clamp((ax - cube.x) * LOOK_GAIN, -1, 1),
-    y: clamp((ay - cube.y) * LOOK_GAIN, -1, 1),
-  };
 }
 
 /** Idle sway (radians) and bob (world units); both zero for reduced motion. */
@@ -176,6 +154,7 @@ export function AssistantRig({ children }: { children: ReactNode }) {
   const lastEmotion = useRef<Emotion | null>(null);
   const lastLine = useRef<string | null>(null);
   const lastScreen = useRef<AssistantScreen>({ x: -1, y: -1, size: -1, visible: false });
+  /** Hold still this frame: the OS reduced-motion setting (live). */
   const reduced = useRef(false);
   const motion = useRef<Motion>({ ...REST });
   const emotionSince = useRef(0);
@@ -186,7 +165,6 @@ export function AssistantRig({ children }: { children: ReactNode }) {
   const [gaze] = useState(() => new GazeReactions());
 
   useEffect(() => {
-    reduced.current = prefersReducedMotion();
     const onMove = (e: PointerEvent) => {
       pointer.current.x = (e.clientX / window.innerWidth) * 2 - 1;
       pointer.current.y = -((e.clientY / window.innerHeight) * 2 - 1);
@@ -275,6 +253,7 @@ export function AssistantRig({ children }: { children: ReactNode }) {
     const store = useAssistantStore.getState();
     const active = isAssistantActive(store);
     const dt = Math.min(delta, 0.05);
+    reduced.current = isAssistantStill(store);
     const still = reduced.current;
     const t = clock.elapsedTime;
     const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * CAMERA_Z;

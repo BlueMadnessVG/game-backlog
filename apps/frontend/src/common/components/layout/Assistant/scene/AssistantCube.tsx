@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { CubeModel } from './CubeModel';
 import { pose } from '../face/pose';
 import { FACE_H, FACE_W, useFaceTexture } from '../face/useFaceTexture';
-import { useAssistantStore } from '../store/assistant.Store';
+import { isAssistantStill, useAssistantStore } from '../store/assistant.Store';
 
 /**
  * Body of the app-wide assistant, with a screen on the front that draws its
@@ -112,8 +112,18 @@ export function AssistantCube({ children }: { children?: ReactNode }) {
   const face = useFaceTexture(BODY === 'model' ? 'round' : 'wide');
 
   useFrame(({ clock }) => {
-    const { emotion } = useAssistantStore.getState();
-    face.update(clock.elapsedTime, emotion, pose.look, emotion !== 'sleep', pose.eyes);
+    const store = useAssistantStore.getState();
+    const { emotion } = store;
+    // Still (reduced motion): freeze the face's own animation — the
+    // talking wave, thinking dots and blinks — on a fixed frame.
+    const still = isAssistantStill(store);
+    face.update(
+      still ? 0 : clock.elapsedTime,
+      emotion,
+      pose.look,
+      !still && emotion !== 'sleep',
+      pose.eyes,
+    );
   });
 
   return (

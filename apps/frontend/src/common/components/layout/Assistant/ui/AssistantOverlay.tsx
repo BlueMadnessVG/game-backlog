@@ -7,19 +7,43 @@ import { useAssistantStore, type AssistantScreen } from '../store/assistant.Stor
 import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
 /**
- * DOM companion of the 3D cube, mounted once by AssistantHost: a focusable
- * button laid over the cube (so the assistant can be reached by keyboard and
- * clicked) and the speech bubble beside it. Both follow the cube's projected
- * viewport position, applied straight to the elements — the store updates
- * every frame and React never re-renders for it.
+ * DOM companion of the 3D cube, mounted once by AssistantHost:
+ *  - a focusable button laid over the cube (so it can be reached by keyboard
+ *    and clicked), which toggles the speech bubble;
+ *  - the speech bubble beside it: the page's current line, or the store's
+ *    `hint` when there is none (the AI chat will replace the hint later).
+ *    It is a manual popover, so it sits in the top layer above any page.
  *
- * Clicking the cube toggles the bubble: the page's current line, or the
- * store's `hint` when there is none. The AI chat will replace the hint later.
- * The wheel over the (fixed) cube button is forwarded to the page scroller.
+ * Both follow the cube's projected viewport position, applied straight to the
+ * elements — the store updates every frame and React never re-renders for it.
+ * While the cube is hidden its button is `inert`, so Tab skips it. The wheel
+ * over the (fixed) button is forwarded to the scroller beneath.
  *
  * Exports:
  *  - AssistantOverlay (default export too).
  */
+function place(el: HTMLElement, visible: boolean, x: number, y: number) {
+  el.style.transform = `translate(${x}px, ${y}px)`;
+  el.style.visibility = visible ? 'visible' : 'hidden';
+  el.inert = !visible;
+}
+
+function placeButton(button: HTMLElement, s: AssistantScreen) {
+  button.style.width = `${s.size}px`;
+  button.style.height = `${s.size}px`;
+  place(button, s.visible, s.x - s.size / 2, s.y - s.size / 2);
+}
+
+/** Beside the cube, on whichever side has room. */
+function placeBubble(bubble: HTMLElement, s: AssistantScreen) {
+  const flip = s.x > window.innerWidth * 0.55;
+  bubble.dataset.side = flip ? 'left' : 'right';
+  bubble.style.transform = `translate(${flip ? s.x - s.size / 2 : s.x + s.size / 2}px, ${
+    s.y - s.size / 2
+  }px)`;
+  bubble.style.visibility = s.visible ? 'visible' : 'hidden';
+}
+
 export function AssistantOverlay() {
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -39,24 +63,21 @@ export function AssistantOverlay() {
     return () => window.clearTimeout(id);
   }, [hintShown]);
 
+  // Open the bubble's popover once, so it renders in the top layer; its own
+  // visibility and opacity do the showing and hiding from then on.
+  useEffect(() => {
+    const bubble = bubbleRef.current;
+    if (!bubble || !('showPopover' in bubble)) return;
+    bubble.showPopover();
+    return () => {
+      if (bubble.isConnected) bubble.hidePopover();
+    };
+  }, []);
+
   useEffect(() => {
     const apply = (screen: AssistantScreen) => {
-      const button = buttonRef.current;
-      const bubble = bubbleRef.current;
-      if (button) {
-        button.style.width = `${screen.size}px`;
-        button.style.height = `${screen.size}px`;
-        button.style.transform = `translate(${screen.x - screen.size / 2}px, ${screen.y - screen.size / 2}px)`;
-        button.style.visibility = screen.visible ? 'visible' : 'hidden';
-      }
-      if (bubble) {
-        const flip = screen.x > window.innerWidth * 0.55;
-        bubble.dataset.side = flip ? 'left' : 'right';
-        bubble.style.transform = `translate(${
-          flip ? screen.x - screen.size / 2 : screen.x + screen.size / 2
-        }px, ${screen.y - screen.size / 2}px)`;
-        bubble.style.visibility = screen.visible ? 'visible' : 'hidden';
-      }
+      if (buttonRef.current) placeButton(buttonRef.current, screen);
+      if (bubbleRef.current) placeBubble(bubbleRef.current, screen);
     };
     apply(useAssistantStore.getState().screen);
     return useAssistantStore.subscribe((state, prev) => {
@@ -80,6 +101,7 @@ export function AssistantOverlay() {
       />
       <div
         ref={bubbleRef}
+        popover="manual"
         className={styles.bubble}
         role="status"
         aria-live="polite"
