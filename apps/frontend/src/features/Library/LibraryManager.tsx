@@ -8,7 +8,7 @@ import { useLibraryGames } from '@/api/library/library.queries';
 import { AssistantAnchor } from '@/common/components/layout/Assistant';
 
 function LibraryManager() {
-  const { games, isLoading } = useLibraryGames();
+  const { games, isLoading, isError, error, refetch } = useLibraryGames();
 
   if (isLoading) {
     return (
@@ -24,7 +24,9 @@ function LibraryManager() {
     );
   }
 
-  if (!games?.length) return <LibraryEmptyState />;
+  if (isError && !games.length) return <LibraryEmptyState error={error} onRetry={refetch} />;
+
+  if (!games.length) return <LibraryEmptyState />;
 
   return (
     <div>

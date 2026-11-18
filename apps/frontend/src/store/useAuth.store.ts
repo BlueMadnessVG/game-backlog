@@ -63,6 +63,12 @@ export const useAuthStore = create<AuthState>()(
                   : { user: null, status: 'unauthenticated' },
               );
             })
+            .catch((error: unknown) => {
+              // Backend unreachable or misbehaving — not a 401. Treat the user
+              // as signed out for now, but say why instead of failing silently.
+              console.error('[auth] could not restore session', error);
+              set({ user: null, status: 'unauthenticated' });
+            })
             .finally(() => {
               hydrating = null;
             });

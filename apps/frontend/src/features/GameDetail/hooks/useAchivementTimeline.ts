@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
-
-import type { MessageResponse } from '@/api/api.client';
+import type { AchievementSyncResult } from '@/api/library/library.service';
 import type { Achievement, AchievementFilter, AchievementSort } from '@repo/shared';
 import type { UseMutateFunction } from '@tanstack/react-query';
 
-import { useGameAchievements, useSyncAchievements } from '@/api/library/library.queries';
+import {
+  useAchievementSummary,
+  useGameAchievements,
+  useSyncAchievements,
+} from '@/api/library/library.queries';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,7 +18,9 @@ interface UseAchievementTimelineOptions {
 
 interface UseAchievementTimelineReturn {
   achievements: Achievement[];
+  /** Same list as `achievements`: filter and sort are applied by the backend. */
   filtered: Achievement[];
+  /** Whole-game counts, independent of the current filter. */
   total: number;
   unlocked: number;
 
@@ -31,70 +36,32 @@ interface UseAchievementTimelineReturn {
   isLoading: boolean;
   isSyncing: boolean;
 
-  sync: UseMutateFunction<MessageResponse, Error, void, unknown>;
-}
-
-// ── Pure Helpers ──────────────────────────────────────────────────────────────
-
-function filterAchievements(achievements: Achievement[], filter: AchievementFilter): Achievement[] {
-  if (filter === 'unlocked') return achievements.filter((a) => a.achieved);
-  if (filter === 'locked') return achievements.filter((a) => !a.achieved);
-  return achievements;
-}
-
-function sortAchievements(achievements: Achievement[], sort: AchievementSort): Achievement[] {
-  return [...achievements].sort((a, b) => {
-    if (sort === 'unlock-date') {
-      if (!a.unlockedAt && !b.unlockedAt) return 0;
-      if (!a.unlockedAt) return 1;
-      if (!b.unlockedAt) return -1;
-      return new Date(b.unlockedAt).getTime() - new Date(a.unlockedAt).getTime();
-    }
-
-    if (sort === 'name') return a.name.localeCompare(b.name);
-
-    if (sort === 'rarity') {
-      if (a.globalPercentage === null && b.globalPercentage === null) return 0;
-      if (a.globalPercentage === null) return 1;
-      if (b.globalPercentage === null) return -1;
-      return a.globalPercentage - b.globalPercentage;
-    }
-
-    return 0;
-  });
-}
-
-function applyFilterAndSort(
-  achievements: Achievement[],
-  filter: AchievementFilter,
-  sort: AchievementSort,
-): Achievement[] {
-  return sortAchievements(filterAchievements(achievements, filter), sort);
+  sync: UseMutateFunction<AchievementSyncResult, Error, void, unknown>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/** Achievement data from the library queries, plus the view's filter/sort state. */
+/**
+ * Achievement data plus the view's filter/sort state. Filter and sort are sent
+ * to `GET /library/games/:gameId/achievements`, so pagination stays correct:
+ * sorting client-side would only reorder the pages loaded so far.
+ */
 export function useAchievementTimeline({
   gameId,
 }: UseAchievementTimelineOptions): UseAchievementTimelineReturn {
   const [filter, setFilter] = useState<AchievementFilter>('all');
   const [sort, setSort] = useState<AchievementSort>('unlock-date');
 
-  const { achievements, total, unlocked, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    useGameAchievements(gameId);
+  const { achievements, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useGameAchievements(gameId, { filter, sort });
+  const summary = useAchievementSummary(gameId);
   const { sync, isSyncing } = useSyncAchievements(gameId);
-
-  const filtered = useMemo(
-    () => applyFilterAndSort(achievements, filter, sort),
-    [achievements, filter, sort],
-  );
 
   return {
     achievements,
-    filtered,
-    total,
-    unlocked,
+    filtered: achievements,
+    total: summary.total,
+    unlocked: summary.unlocked,
 
     hasNextPage,
     isFetchingNextPage,
@@ -105,7 +72,7 @@ export function useAchievementTimeline({
     setFilter,
     setSort,
 
-    isLoading,
+    isLoading: isLoading || summary.isLoading,
     isSyncing,
     sync,
   };

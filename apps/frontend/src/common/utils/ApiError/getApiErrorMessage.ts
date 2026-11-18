@@ -9,5 +9,11 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (!(error instanceof ApiError)) return fallback;
 
   const isClientSide = (CLIENT_ERROR_CODES as readonly string[]).includes(error.code);
-  return isClientSide ? fallback : error.message;
+  if (isClientSide) return fallback;
+
+  // Provider rate limits (503) carry a Retry-After; tell the user when to retry.
+  if (error.retryAfter !== undefined && error.retryAfter > 0) {
+    return `${error.message} (reintenta en ${error.retryAfter}s)`;
+  }
+  return error.message;
 }

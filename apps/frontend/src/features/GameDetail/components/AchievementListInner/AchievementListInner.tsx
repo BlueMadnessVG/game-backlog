@@ -106,7 +106,7 @@ export const AchievementListInner: React.FC<AchievementListInnerProps> = ({ game
       {/* ── List ─────────────────────────────────────────────────────────── */}
       <div className={styles.list}>
         {filtered.map((achievement) => (
-          <AchievementRow key={achievement.name ?? achievement.name} achievement={achievement} />
+          <AchievementRow key={achievement.id} achievement={achievement} />
         ))}
 
         {filtered.length === 0 && (

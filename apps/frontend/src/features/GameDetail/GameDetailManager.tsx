@@ -5,7 +5,7 @@ import { useParams } from '@tanstack/react-router';
 import { AchievementListInner } from './components/AchievementListInner/AchievementListInner';
 import styles from './css/GameDetails.module.css';
 
-import type { Game } from '@repo/shared';
+import type { Game, GameStatus } from '@repo/shared';
 
 import { useGame } from '@/api/library/library.queries';
 
@@ -40,16 +40,15 @@ function platformLabel(platform: string | undefined): string {
   return platform.toUpperCase();
 }
 
-function statusLabel(status: string | undefined): string {
-  if (!status) return '—';
-  const MAP: Record<string, string> = {
-    backlog: 'BACKLOG',
-    playing: 'PLAYING',
-    completed: 'DONE',
-    dropped: 'DROPPED',
-    wishlist: 'WISHLIST',
-  };
-  return MAP[status] ?? status.toUpperCase();
+const STATUS_LABELS: Record<GameStatus, string> = {
+  backlog: 'BACKLOG',
+  'in-progress': 'PLAYING',
+  completed: 'DONE',
+  retired: 'RETIRED',
+};
+
+function statusLabel(status: GameStatus | undefined): string {
+  return status ? STATUS_LABELS[status] : '—';
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────

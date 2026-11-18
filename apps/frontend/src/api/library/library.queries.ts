@@ -5,16 +5,18 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  keepPreviousData,
   type InfiniteData,
   type UseMutateFunction,
 } from '@tanstack/react-query';
 
-import { libraryService } from './library.service';
+import { libraryService, type AchievementSyncResult } from './library.service';
 import { flattenPages, nextOffset } from '../queryClient/offsetPaging';
 
-import type { MessageResponse } from '../api.client';
 import type {
   Achievement,
+  AchievementFilter,
+  AchievementSort,
   AchievementsResponse,
   Game,
   GamesResponse,
@@ -33,7 +35,11 @@ export const libraryKeys = {
   games: () => [...libraryKeys.all, 'games'] as const,
   stats: () => [...libraryKeys.all, 'stats'] as const,
   game: (id: string) => [...libraryKeys.all, 'game', id] as const,
+  /** Prefix for every filter/sort variant of one game's achievements. */
   achievements: (id: string) => [...libraryKeys.all, 'achievements', id] as const,
+  achievementList: (id: string, filter: AchievementFilter, sort: AchievementSort) =>
+    [...libraryKeys.achievements(id), filter, sort] as const,
+  achievementSummary: (id: string) => [...libraryKeys.achievements(id), 'summary'] as const,
 };
 
 const PAGE_SIZE = 50;
@@ -50,13 +56,25 @@ const EMPTY_PLATFORM_STATS: PlatformStats = {
 interface UseLibraryGamesReturn {
   games: Game[];
   isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: () => void;
   isFetchingNextPage: boolean;
   hasNextPage: boolean;
   fetchNextPage: () => void;
 }
 
 export function useLibraryGames(): UseLibraryGamesReturn {
-  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useInfiniteQuery<
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery<
     GamesResponse,
     Error,
     InfiniteData<GamesResponse>,
@@ -75,6 +93,10 @@ export function useLibraryGames(): UseLibraryGamesReturn {
   return {
     games,
     isLoading,
+    isError,
+    error,
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    refetch,
     isFetchingNextPage,
     hasNextPage,
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -117,7 +139,11 @@ interface UseGameReturn {
   error: Error | null;
 }
 
-/** One game, read through the list endpoint's `id` filter (no detail endpoint). */
+/**
+ * One game, read through `GET /library/games?id=`. The per-platform detail
+ * route (`GET /{steam|xbox|psn}/games/:id`) needs the platform up front, which
+ * a bare id from the URL doesn't carry.
+ */
 export function useGame(id: string): UseGameReturn {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: libraryKeys.game(id),
@@ -143,20 +169,35 @@ interface UseGameAchievementsReturn {
   fetchNextPage: () => void;
 }
 
-export function useGameAchievements(id: string): UseGameAchievementsReturn {
+interface UseGameAchievementsOptions {
+  filter?: AchievementFilter;
+  sort?: AchievementSort;
+}
+
+/** One game's achievements, filtered and sorted by the backend. */
+export function useGameAchievements(
+  id: string,
+  { filter = 'all', sort = 'rarity' }: UseGameAchievementsOptions = {},
+): UseGameAchievementsReturn {
   const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery<
     AchievementsResponse,
     Error,
     InfiniteData<AchievementsResponse>,
-    ReturnType<typeof libraryKeys.achievements>,
+    ReturnType<typeof libraryKeys.achievementList>,
     number
   >({
-    queryKey: libraryKeys.achievements(id),
+    queryKey: libraryKeys.achievementList(id, filter, sort),
     queryFn: ({ signal, pageParam }) =>
-      libraryService.getAchievements(id, { limit: PAGE_SIZE, offset: pageParam }, signal),
+      libraryService.getAchievements(
+        id,
+        { filter, sort, limit: PAGE_SIZE, offset: pageParam },
+        signal,
+      ),
     initialPageParam: 0,
     getNextPageParam: nextOffset,
     enabled: !!id,
+    // Keep the old list on screen while a new filter/sort loads.
+    placeholderData: keepPreviousData,
   });
 
   const achievements = useMemo(() => flattenPages(data), [data]);
@@ -174,8 +215,29 @@ export function useGameAchievements(id: string): UseGameAchievementsReturn {
   };
 }
 
+/**
+ * Whole-game achievement counts. The list endpoint's `meta.total` and
+ * `meta.unlocked` are computed *after* the filter, so the progress header
+ * reads them from an unfiltered one-row request instead.
+ */
+export function useAchievementSummary(id: string): {
+  total: number;
+  unlocked: number;
+  isLoading: boolean;
+} {
+  const { data, isLoading } = useQuery({
+    queryKey: libraryKeys.achievementSummary(id),
+    queryFn: ({ signal }) =>
+      libraryService.getAchievements(id, { filter: 'all', limit: 1, offset: 0 }, signal),
+    select: (response) => response.meta,
+    enabled: !!id,
+  });
+
+  return { total: data?.total ?? 0, unlocked: data?.unlocked ?? 0, isLoading };
+}
+
 interface UseSyncAchievementsReturn {
-  sync: UseMutateFunction<MessageResponse, Error, void, unknown>;
+  sync: UseMutateFunction<AchievementSyncResult, Error, void, unknown>;
   isSyncing: boolean;
 }
 
@@ -188,6 +250,7 @@ export function useSyncAchievements(id: string): UseSyncAchievementsReturn {
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => libraryService.syncAchievements(id),
+    meta: { errorMessage: 'No se pudieron sincronizar los logros.' },
     onSuccess: () => {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: libraryKeys.achievements(id) }),
@@ -198,4 +261,26 @@ export function useSyncAchievements(id: string): UseSyncAchievementsReturn {
   });
 
   return { sync: mutate, isSyncing: isPending };
+}
+
+// ── Covers ────────────────────────────────────────────────────────────────────
+
+/** How long to wait before re-reading games after starting cover enrichment. */
+const ENRICH_REFRESH_DELAY_MS = 15_000;
+
+/**
+ * Starts background cover-art enrichment. The backend answers immediately,
+ * so the games list is refreshed once after a delay to pick up new covers.
+ */
+export function useEnrichCovers() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => libraryService.enrichCovers(),
+    onSuccess: () => {
+      setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: libraryKeys.games() });
+      }, ENRICH_REFRESH_DELAY_MS);
+    },
+  });
 }

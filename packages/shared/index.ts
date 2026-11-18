@@ -7,3 +7,5 @@ export * from "./src/schemas/api_token.schema";
 
 export * from "./src/schemas/achievement.schema";
 export * from "./src/schemas/stats.schema";
+export * from "./src/schemas/platform_sync.schema";
+export * from "./src/schemas/api_error.schema";

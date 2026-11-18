@@ -86,3 +86,54 @@ export const TotpStepUpSchema = v.object({
 
 export type TotpEnrollInput = v.InferOutput<typeof TotpEnrollSchema>;
 export type TotpStepUpInput = v.InferOutput<typeof TotpStepUpSchema>;
+
+// ── Response contracts ───────────────────────────────────────────────────────
+// What the auth routes send back. Kept lenient on timestamps (plain strings):
+// they come from Drizzle `Date`s serialised by `c.json`, whose exact format is
+// a backend detail the UI never parses.
+
+/** The user as returned inside register/login responses. */
+export const AuthUserSchema = v.object({
+  id: v.pipe(v.string(), v.uuid()),
+  username: v.string(),
+  email: v.string(),
+});
+
+/** GET /auth/me — the session user, plus account timestamps. */
+export const MeSchema = v.object({
+  ...AuthUserSchema.entries,
+  createdAt: v.optional(v.string()),
+  updatedAt: v.optional(v.string()),
+});
+
+/** POST /auth/register and /auth/login. The token travels as an HttpOnly cookie, never in the body. */
+export const AuthSessionSchema = v.object({
+  user: AuthUserSchema,
+  created: v.boolean(),
+});
+
+/** GET /auth/providers */
+export const ProvidersSchema = v.object({
+  providers: v.array(OAuthProviderSchema),
+});
+
+/** POST /auth/totp/enroll/start — the secret is shown exactly once. */
+export const TotpEnrollStartResultSchema = v.object({
+  secret: v.string(),
+  otpauthUrl: v.string(),
+});
+
+/** POST /auth/step-up — a 5-minute Bearer token for step-up-gated routes. */
+export const StepUpResultSchema = v.object({
+  token: v.string(),
+  expiresAt: v.string(),
+});
+
+export type AuthUser = v.InferOutput<typeof AuthUserSchema>;
+export type Me = v.InferOutput<typeof MeSchema>;
+export type AuthSession = v.InferOutput<typeof AuthSessionSchema>;
+export type Providers = v.InferOutput<typeof ProvidersSchema>;
+export type TotpEnrollStartResult = v.InferOutput<
+  typeof TotpEnrollStartResultSchema
+>;
+export type StepUpResult = v.InferOutput<typeof StepUpResultSchema>;
