@@ -2,14 +2,19 @@ import { useEffect, useState } from 'react';
 
 import * as THREE from 'three';
 
+import type { EyeReactions } from './assistantPose';
 import type { Emotion } from '../../store/assistant.Store';
 
 /**
  * The assistant's face: a small 2D canvas drawn per emotion and uploaded as a
  * texture. There is no mouth — each state reads from the eyes alone (and from
  * the body motion in AssistantRig). It is only redrawn when what would be
- * drawn changes (emotion, blink, quantised look/scan, talk animation frame),
- * so an idle face costs nothing per frame.
+ * drawn changes (emotion, blink, quantised look and eye reactions, animation
+ * frame), so an idle face costs nothing per frame.
+ *
+ * While tracking the mouse the eyes travel across the screen, flatten a little
+ * when looking up or down, widen on fast moves, squint when the cursor is on the cube and blink on request
+ * (`EyeReactions` from AssistantRig).
  *
  * Two shapes share the same drawing code through a layout:
  *  - 'wide': 512×224, for a rectangular screen (procedural body).
@@ -36,6 +41,15 @@ const THINK_FPS = 20;
 const BAR_COUNT = 23;
 /** Travelling wave that drives the bar heights: frequencies, scroll speed, peak px. */
 const WAVE = { f1: 2.2, f2: 5.1, speed: 6, peak: 46 };
+/** Look quantisation (steps per unit) — fine enough to glide, coarse enough to cache. */
+const LOOK_STEPS = 16;
+/** Eye-reaction quantisation (steps per unit). */
+const REACT_STEPS = 8;
+/** Eye height lost at full up/down look. */
+const SQUASH_Y = 0.12;
+/** Full squint: height lost, width gained, eye-line lift in px (before `s`). */
+const SQUINT = { height: 0.8, width: 0.15, lift: 8 };
+const BLINK_TIME = 0.14;
 
 interface Layout {
   w: number;
@@ -45,12 +59,29 @@ interface Layout {
   eyeY: number;
   /** Size scale for eyes, strokes and look offsets. */
   s: number;
+  /** Eye travel at full look, in px (before `s`). */
+  tx: number;
+  ty: number;
 }
 
 const LAYOUTS: Record<FaceShape, Layout> = {
-  wide: { w: FACE_W, h: FACE_H, left: 160, right: 352, eyeY: 112, s: 1.15 },
-  round: { w: FACE_ROUND, h: FACE_ROUND, left: 120, right: 264, eyeY: 192, s: 1.25 },
+  wide: { w: FACE_W, h: FACE_H, left: 160, right: 352, eyeY: 112, s: 1.15, tx: 70, ty: 30 },
+  // Round travel keeps the outer pill ~12px inside the 192px circle at full (diagonal) look.
+  round: {
+    w: FACE_ROUND,
+    h: FACE_ROUND,
+    left: 120,
+    right: 264,
+    eyeY: 192,
+    s: 1.25,
+    tx: 60,
+    ty: 54,
+  },
 };
+
+/** Eye-position response (<1 moves the eyes further for small and medium looks). */
+const EYE_CURVE = 0.5;
+const reach = (v: number) => Math.sign(v) * Math.abs(v) ** EYE_CURVE;
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -74,6 +105,11 @@ interface Pose {
   /** Look vector, -1..1. */
   lx: number;
   ly: number;
+  /** Height scale from looking up or down. */
+  squashY: number;
+  /** Eye reactions, 0..1. */
+  wide: number;
+  squint: number;
   blink: boolean;
   frame: number;
   s: number;
@@ -81,18 +117,24 @@ interface Pose {
 
 type Draw = (ctx: Ctx, p: Pose) => void;
 
+/** Open-eye pill height with squash, widen and squint applied. */
+function eyeHeight(p: Pose) {
+  if (p.blink) return 6;
+  return 76 * p.s * p.squashY * (1 + 0.15 * p.wide) * (1 - SQUINT.height * p.squint);
+}
+
+/** The two pill eyes shared by idle and talk. */
+function pills(ctx: Ctx, p: Pose) {
+  const h = eyeHeight(p);
+  const w = 54 * p.s * (1 + SQUINT.width * p.squint);
+  pill(ctx, p.left, p.y, w, h);
+  pill(ctx, p.right, p.y, w, h);
+}
+
 const DRAW: Record<Emotion, Draw> = {
-  idle: (ctx, p) => {
-    const h = p.blink ? 6 : 76 * p.s;
-    pill(ctx, p.left, p.y, 54 * p.s, h);
-    pill(ctx, p.right, p.y, 54 * p.s, h);
-  },
+  idle: pills,
   // Same eyes as idle; the sound wave behind them (drawVoiceWave) carries the speech.
-  talk: (ctx, p) => {
-    const h = p.blink ? 6 : 76 * p.s;
-    pill(ctx, p.left, p.y, 54 * p.s, h);
-    pill(ctx, p.right, p.y, 54 * p.s, h);
-  },
+  talk: pills,
   // No eyes: three dots with a bounce-and-brighten wave running left to right.
   think: (ctx, p) => {
     const t = p.frame / THINK_FPS;
@@ -101,7 +143,13 @@ const DRAW: Record<Emotion, Draw> = {
       const k = Math.max(0, Math.sin((t * 2.4 - i * 0.55) * Math.PI));
       ctx.globalAlpha = 0.3 + 0.7 * k;
       ctx.beginPath();
-      ctx.arc(cx + (i - 1) * 48 * p.s, p.y - k * 14 * p.s, 16 * p.s * (1 + 0.15 * k), 0, Math.PI * 2);
+      ctx.arc(
+        cx + (i - 1) * 48 * p.s,
+        p.y - k * 14 * p.s,
+        16 * p.s * (1 + 0.15 * k),
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -112,10 +160,13 @@ const DRAW: Record<Emotion, Draw> = {
     arc(ctx, p.right, p.y + 16 * p.s, 34 * p.s, Math.PI * 1.1, Math.PI * 1.9);
   },
   surprised: (ctx, p) => {
+    const ry = 40 * p.s * p.squashY * (1 + 0.15 * p.wide);
     for (const x of [p.left, p.right]) {
-      arc(ctx, x, p.y, 40 * p.s, 0, Math.PI * 2);
       ctx.beginPath();
-      ctx.arc(x + p.lx * 10 * p.s, p.y + p.ly * 6 * p.s, 12 * p.s, 0, Math.PI * 2);
+      ctx.ellipse(x, p.y, 40 * p.s, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x + p.lx * 14 * p.s, p.y + p.ly * 10 * p.s, 12 * p.s, 0, Math.PI * 2);
       ctx.fill();
     }
   },
@@ -173,6 +224,21 @@ function drawFace(ctx: Ctx, layout: Layout, emotion: Emotion, p: Pose) {
   DRAW[emotion](ctx, p);
 }
 
+const quantise = (value: number, steps: number) => Math.round(value * steps) / steps;
+
+const NO_REACTIONS: EyeReactions = { wide: 0, squint: 0, blinkSeq: 0 };
+
+/** Quantised look and reactions; all zero while thinking (dots, not eyes). */
+function eyeInputs(look: { x: number; y: number }, eyes: EyeReactions, thinking: boolean) {
+  if (thinking) return { lx: 0, ly: 0, wide: 0, squint: 0 };
+  return {
+    lx: quantise(look.x, LOOK_STEPS),
+    ly: quantise(look.y, LOOK_STEPS),
+    wide: quantise(eyes.wide, REACT_STEPS),
+    squint: quantise(eyes.squint, REACT_STEPS),
+  };
+}
+
 export class FaceRenderer {
   readonly texture: THREE.CanvasTexture;
   private readonly ctx: Ctx | null;
@@ -180,6 +246,7 @@ export class FaceRenderer {
   private signature = '';
   private nextBlink = 2.5;
   private blinkUntil = 0;
+  private blinkSeq = 0;
 
   constructor(shape: FaceShape = 'wide') {
     this.layout = LAYOUTS[shape];
@@ -191,33 +258,56 @@ export class FaceRenderer {
     this.texture.colorSpace = THREE.SRGBColorSpace;
   }
 
-  /** Call once per frame. `time` is seconds; `look` is -1..1 per axis. */
-  update(time: number, emotion: Emotion, look: { x: number; y: number }, allowBlink = true) {
-    if (!this.ctx) return;
-
+  /** Random blinks, plus one immediately whenever `blinkSeq` changes. */
+  private updateBlink(time: number, allowBlink: boolean, blinkSeq: number) {
+    if (blinkSeq !== this.blinkSeq) {
+      this.blinkSeq = blinkSeq;
+      if (allowBlink) {
+        this.blinkUntil = time + BLINK_TIME;
+        this.nextBlink = time + 3 + Math.random() * 3;
+      }
+    }
     if (allowBlink && time >= this.nextBlink) {
-      this.blinkUntil = time + 0.14;
+      this.blinkUntil = time + BLINK_TIME;
       this.nextBlink = time + 3 + Math.random() * 3;
     }
+  }
+
+  /**
+   * Call once per frame. `time` is seconds; `look` is -1..1 per axis;
+   * `eyes` are the reactions from AssistantRig.
+   */
+  update(
+    time: number,
+    emotion: Emotion,
+    look: { x: number; y: number },
+    allowBlink = true,
+    eyes: EyeReactions = NO_REACTIONS,
+  ) {
+    if (!this.ctx) return;
+
     const thinking = emotion === 'think';
-    // Thinking shows dots, not eyes: no blink, no cursor follow.
+    this.updateBlink(time, allowBlink && !thinking, eyes.blinkSeq);
+    // Thinking shows dots, not eyes: no blink, no cursor follow, no reactions.
     const blink = !thinking && time < this.blinkUntil;
     const fps = emotion === 'talk' ? TALK_FPS : thinking ? THINK_FPS : 0;
     const frame = Math.floor(time * fps);
-    const lx = thinking ? 0 : Math.round(look.x * 4) / 4;
-    const ly = thinking ? 0 : Math.round(look.y * 4) / 4;
+    const { lx, ly, wide, squint } = eyeInputs(look, eyes, thinking);
 
-    const signature = `${emotion}|${blink ? 1 : 0}|${lx}|${ly}|${frame}`;
+    const signature = `${emotion}|${blink ? 1 : 0}|${lx}|${ly}|${wide}|${squint}|${frame}`;
     if (signature === this.signature) return;
     this.signature = signature;
 
-    const { left, right, eyeY, s } = this.layout;
+    const { left, right, eyeY, s, tx, ty } = this.layout;
     drawFace(this.ctx, this.layout, emotion, {
-      left: left + lx * 18 * s,
-      right: right + lx * 18 * s,
-      y: eyeY - ly * 10 * s,
+      left: left + reach(lx) * tx * s,
+      right: right + reach(lx) * tx * s,
+      y: eyeY - reach(ly) * ty * s - SQUINT.lift * s * squint,
       lx,
       ly,
+      squashY: 1 - SQUASH_Y * Math.abs(ly),
+      wide,
+      squint,
       blink,
       frame,
       s,

@@ -15,6 +15,7 @@
   grid-column: 9 / 12;
   align-self: stretch;
   min-height: 16rem;
+  translate: -10rem 0;
 }
 
 .heading {

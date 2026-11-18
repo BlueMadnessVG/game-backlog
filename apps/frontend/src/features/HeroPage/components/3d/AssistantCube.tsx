@@ -200,7 +200,7 @@ export function AssistantCube() {
 
   useFrame(({ clock }) => {
     const { emotion } = useAssistantStore.getState();
-    face.update(clock.elapsedTime, emotion, pose.look, emotion !== 'sleep');
+    face.update(clock.elapsedTime, emotion, pose.look, emotion !== 'sleep', pose.eyes);
   });
 
   return BODY === 'model' ? (

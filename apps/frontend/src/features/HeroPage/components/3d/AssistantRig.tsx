@@ -1,9 +1,10 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { pose } from './assistantPose';
+import { GazeReactions } from './gazeReactions';
 import { useAssistantStore, type AssistantScreen, type Emotion } from '../../store/assistant.Store';
 import {
   at,
@@ -39,6 +40,12 @@ const HERO_SCALE_DOCK = 1.15;
 const DOCKED_SCALE = 0.62;
 const CUBE_SIZE = 1.2;
 const DOCK_BLEND_START = 0.88;
+/** Dock scale per section; slots not listed use DOCKED_SCALE. */
+const SLOT_SCALE: Partial<Record<SectionId, number>> = { cta: HERO_SCALE_START };
+/** Gaze gain on the cube→pointer vector (NDC), before clamping to -1..1. */
+const LOOK_GAIN = 1;
+/** |NDC x| below this counts as the centre when detecting a left/right switch. */
+const SIDE_DEADZONE = 0.15;
 
 const FALLBACK_NDC = { x: 0.72, y: -0.62 };
 const PLATFORM_KEYS = DISPLAY_TIMELINE.map((d) => d.key);
@@ -73,6 +80,32 @@ function nearestSlot(slots: HTMLElement[]) {
     };
   }
   return best;
+}
+
+/** Eases the docked scale toward the current slot's size (jumps for reduced motion). */
+function nextDockScale(current: number, section: SectionId | null, still: boolean, dt: number) {
+  const target = (section && SLOT_SCALE[section]) ?? DOCKED_SCALE;
+  return still ? target : damp(current, target, 4, dt);
+}
+
+/** Screen side for an NDC x: -1 left, 0 centre (inside the dead-zone), 1 right. */
+function sideOf(x: number): -1 | 0 | 1 {
+  if (x > SIDE_DEADZONE) return 1;
+  if (x < -SIDE_DEADZONE) return -1;
+  return 0;
+}
+
+/**
+ * Target gaze (-1..1 per axis), measured from the cube's own screen position:
+ * toward `aim` (the pointer) or, with no aim, toward the screen centre.
+ */
+function lookTarget(aim: { x: number; y: number } | null, cube: { x: number; y: number }) {
+  const ax = aim ? aim.x : 0;
+  const ay = aim ? aim.y : 0;
+  return {
+    x: clamp((ax - cube.x) * LOOK_GAIN, -1, 1),
+    y: clamp((ay - cube.y) * LOOK_GAIN, -1, 1),
+  };
 }
 
 /** Idle sway (radians) and bob (world units); both zero for reduced motion. */
@@ -186,16 +219,23 @@ export function AssistantRig({ children }: { children: ReactNode }) {
   const motion = useRef<Motion>({ ...REST });
   const emotionSince = useRef(0);
   const shift = useRef(0);
+  const dockScale = useRef(DOCKED_SCALE);
+  /** True once the mouse moves; reset when the cube switches sides. */
+  const tracking = useRef(false);
+  const side = useRef<-1 | 0 | 1>(0);
+  const [gaze] = useState(() => new GazeReactions());
 
   useEffect(() => {
     reduced.current = prefersReducedMotion();
     const onMove = (e: PointerEvent) => {
       pointer.current.x = (e.clientX / window.innerWidth) * 2 - 1;
       pointer.current.y = -((e.clientY / window.innerHeight) * 2 - 1);
+      tracking.current = true;
+      gaze.onPointerMove(e.clientX, e.clientY, performance.now() / 1000);
     };
     window.addEventListener('pointermove', onMove, { passive: true });
     return () => window.removeEventListener('pointermove', onMove);
-  }, []);
+  }, [gaze]);
 
   /** Eases the docked target toward the nearest slot and returns that slot's id. */
   const updateDock = (dt: number): SectionId | null => {
@@ -208,6 +248,37 @@ export function AssistantRig({ children }: { children: ReactNode }) {
     docked.current.x = damp(docked.current.x, clamp(target.x, -0.85, 0.85), 6, dt);
     docked.current.y = damp(docked.current.y, clamp(target.y, -0.7, 0.7), 6, dt);
     return slot ? slot.id : null;
+  };
+
+  /**
+   * Eases `pose.look` toward the pointer as seen from the cube. When the cube
+   * heads to the other side of the screen it looks at the centre instead,
+   * until the mouse moves again. Also runs the eye reactions (GazeReactions);
+   * an idle glance offsets the aim for a moment.
+   */
+  const updateLook = (g: THREE.Group, headingX: number, halfW: number, halfH: number, dt: number) => {
+    const next = sideOf(headingX);
+    let lookJump = false;
+    if (next !== 0) {
+      lookJump = side.current !== 0 && next !== side.current;
+      if (lookJump) tracking.current = false;
+      side.current = next;
+    }
+    const { x, y, size } = lastScreen.current;
+    const glance = gaze.update(performance.now() / 1000, dt, {
+      cube: { x, y, size },
+      tracking: tracking.current,
+      reduced: reduced.current,
+      lookJump,
+    });
+    const aim = tracking.current
+      ? { x: pointer.current.x + (glance?.x ?? 0), y: pointer.current.y + (glance?.y ?? 0) }
+      : null;
+    const target = reduced.current
+      ? { x: 0, y: 0 }
+      : lookTarget(aim, { x: g.position.x / halfW, y: g.position.y / halfH });
+    pose.look.x = damp(pose.look.x, target.x, 5, dt);
+    pose.look.y = damp(pose.look.y, target.y, 5, dt);
   };
 
   /** Updates the emotion body motion for this frame (zero for reduced motion). */
@@ -262,13 +333,10 @@ export function AssistantRig({ children }: { children: ReactNode }) {
     for (const key of PLATFORM_KEYS) pose.active[key].current = platform === key ? 1 : 0;
     pose.spread = damp(pose.spread, beating ? (platform ? 0.7 : 0.25) : 0, 6, dt);
 
-    // Pointer look
-    pose.look.x = damp(pose.look.x, still ? 0 : pointer.current.x, 5, dt);
-    pose.look.y = damp(pose.look.y, still ? 0 : pointer.current.y, 5, dt);
-
     // Docking below the hero
     const dockBlend = smoothstep(DOCK_BLEND_START, 1, r);
     const section = dockBlend > 0 ? updateDock(dt) : null;
+    dockScale.current = nextDockScale(dockScale.current, section, still, dt);
 
     // Pose
     const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * CAMERA_Z;
@@ -279,12 +347,15 @@ export function AssistantRig({ children }: { children: ReactNode }) {
 
     const heroScale = lerp(HERO_SCALE_START, HERO_SCALE_DOCK, dock);
     const scale =
-      lerp(heroScale, DOCKED_SCALE, dockBlend) * (0.001 + 0.999 * entryEase) * m.scale;
+      lerp(heroScale, dockScale.current, dockBlend) * (0.001 + 0.999 * entryEase) * m.scale;
     const lift = (bob + m.dy) * (scale / HERO_SCALE_DOCK);
     const heroY = lerp(0, -0.1, dock) + lerp(-6, 0, entryEase) + lift;
 
     const shiftTarget = calloutShift(display, r, size.width < NARROW_WIDTH);
     shift.current = still ? shiftTarget : damp(shift.current, shiftTarget, 4, dt);
+
+    // Gaze, from where the cube is now (before it moves this frame)
+    updateLook(g, lerp(shiftTarget, docked.current.x, dockBlend), halfW, halfH, dt);
 
     g.position.set(
       lerp(shift.current * halfW, docked.current.x * halfW, dockBlend),
