@@ -88,6 +88,12 @@ const JOG = 12;
 const J1_PITCH = 22;
 const J1_HEIGHT = 20;
 const J1_MIN_ROUTE = 96;
+/**
+ * U2's side as a multiple of the dock box height. The rig renders the 3D cube
+ * about 1.19× the box height across (measured: 472px for a 396px box), so 1.3
+ * leaves a visible rim (~20px at 396px) for the socket outline and its pins.
+ */
+export const CUBE_SOCKET_SCALE = 1.3;
 
 const r = (n: number) => Math.round(n * 10) / 10;
 
@@ -196,16 +202,16 @@ function panelSocket(panel: Rect, b: Rect): Rect {
 }
 
 /**
- * The cube's socket: a square centred on its dock box. The assistant rig draws
- * the cube at the box's height (whatever its width), so the socket follows the
- * height too, shrunk only if it would cross the board edge.
+ * The cube's socket: a square centred on its dock box, sized off the box's
+ * height (the rig scales the cube by height, whatever the box's width) and
+ * shrunk only if it would cross the board edge.
  */
 function cubeSocket(cube: Rect | null, b: Rect): Rect | null {
   if (!cube || cube.w <= 0 || cube.h <= 0) return null;
   const cx = cube.x + cube.w / 2;
   const cy = cube.y + cube.h / 2;
   const maxHalf = Math.min(cx - b.x, rightOf(b) - cx, cy - b.y, bottomOf(b) - cy) - PIN;
-  const side = Math.max(0, Math.min(cube.h, maxHalf * 2));
+  const side = Math.max(0, Math.min(cube.h * CUBE_SOCKET_SCALE, maxHalf * 2));
   if (side === 0) return null;
   return { x: cx - side / 2, y: cy - side / 2, w: side, h: side };
 }
@@ -254,12 +260,21 @@ function routeBus({ s, c, busHorizontal, busVertical }: Ctx, sidePins: number[],
     });
     const start = clamp(k - 1, 0, Math.max(0, sidePins.length - 3));
     const chosen = sidePins.slice(start, start + 3);
-    const x1 = rightOf(s) + PIN + 24;
+    const targets = chosen.map((_, i) => cy + (i - (chosen.length - 1) / 2) * BUS_GAP);
+    const maxJog = Math.max(...chosen.map((py, i) => Math.abs(targets[i] - py)));
+    // Roomy: every jog starts just past U1. Tight: every jog ends just before U2
+    // (all diagonals finish at the same x, so they still can't cross). Too tight
+    // even for that: the jog steepens to fit, instead of overshooting U2.
+    const early = rightOf(s) + PIN + 24;
+    const late = c.x - 8;
     chosen.forEach((py, i) => {
       busPins.add(py);
-      const t = cy + (i - (chosen.length - 1) / 2) * BUS_GAP;
+      const t = targets[i];
+      const jog = Math.abs(t - py);
+      const from = early + maxJog <= late ? early : Math.max(rightOf(s) + PIN, late - jog);
+      const to = Math.min(from + jog, late);
       out.bus.push(
-        `M ${r(rightOf(s))} ${r(py)} H ${r(x1)} L ${r(x1 + Math.abs(t - py))} ${r(t)} H ${r(c.x)}`,
+        `M ${r(rightOf(s))} ${r(py)} H ${r(from)} L ${r(to)} ${r(t)} H ${r(c.x)}`,
       );
     });
   } else if (busVertical) {

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAuthCircuit, type AuthCircuitInput } from '../authCircuit';
+import { buildAuthCircuit, CUBE_SOCKET_SCALE, type AuthCircuitInput } from '../authCircuit';
+
+/** U2 for a dock box: a square of height × CUBE_SOCKET_SCALE, centred on the box. */
+const socketOf = ({ x, y, w, h }: { x: number; y: number; w: number; h: number }) => {
+  const side = h * CUBE_SOCKET_SCALE;
+  return { left: x + w / 2 - side / 2, top: y + h / 2 - side / 2 };
+};
 
 /** Every x/y point a path visits (paths use only M/H/V/L with absolute coordinates). */
 function points(d: string): [number, number][] {
@@ -48,8 +54,8 @@ describe('buildAuthCircuit', () => {
       const [startX] = pts[0];
       const [endX] = pts[pts.length - 1];
       expect(startX).toBeLessThan(endX);
-      // Lands on the cube socket's left edge (a 306px square centred in the dock box).
-      expect(endX).toBeCloseTo(921 + 3, 0);
+      // Lands on the cube socket's left edge (outside the rendered cube).
+      expect(endX).toBeCloseTo(socketOf(DESKTOP.cube!).left, 0);
     }
   });
 
@@ -59,7 +65,11 @@ describe('buildAuthCircuit', () => {
     for (const d of bus) {
       const pts = points(d);
       expect(pts[0][0]).toBe(pts[pts.length - 1][0]);
-      expect(pts[pts.length - 1][1]).toBe(630);
+      // Ends on U2's top edge: just above the 60px dock box (the board edge
+      // clamps the phone socket to ~62px, so it barely grows past the box).
+      const endY = pts[pts.length - 1][1];
+      expect(endY).toBeLessThanOrEqual(630);
+      expect(endY).toBeGreaterThan(620);
     }
   });
 
@@ -95,9 +105,9 @@ describe('buildAuthCircuit', () => {
       'playstation',
       'unified',
     ]);
-    const socketTop = 292; // 306px square centred in the 312×306 dock box
+    const socketTop = socketOf(DESKTOP.cube!).top;
     const ends = platformTraces.map((t) => points(t.d).at(-1)!);
-    for (const [, y] of ends) expect(y).toBe(socketTop);
+    for (const [, y] of ends) expect(y).toBeCloseTo(socketTop, 0);
     // Left to right, without crossing.
     const xs = ends.map(([x]) => x);
     expect([...xs].sort((a, b) => a - b)).toEqual(xs);
@@ -141,11 +151,9 @@ describe('buildAuthCircuit', () => {
     // narrower than tall, which is the case the bigger cube creates.
     const tall: AuthCircuitInput = { ...DESKTOP, cube: { x: 921, y: 252, w: 300, h: 396 } };
     const { platformTraces, bus } = buildAuthCircuit(tall);
-    const side = 396;
-    const left = 921 + 300 / 2 - side / 2;
-    const top = 252;
-    for (const t of platformTraces) expect(points(t.d).at(-1)![1]).toBe(top);
-    for (const d of bus) expect(points(d).at(-1)![0]).toBe(left);
+    const { left, top } = socketOf(tall.cube!);
+    for (const t of platformTraces) expect(points(t.d).at(-1)![1]).toBeCloseTo(top, 0);
+    for (const d of bus) expect(points(d).at(-1)![0]).toBeCloseTo(left, 0);
   });
 
   it('keeps the cube socket inside the board when the dock box nears the edge', () => {
@@ -153,6 +161,24 @@ describe('buildAuthCircuit', () => {
     const { edge, sockets } = buildAuthCircuit(edgy);
     const maxX = Math.max(...points(edge).map(([x]) => x));
     for (const [x] of sockets.flatMap(points)) expect(x).toBeLessThanOrEqual(maxX);
+  });
+
+  it('never routes a bus line backwards when U1 and U2 are close (1280px layout)', () => {
+    // Measured at 1280×800: ~61px between the panel socket and U2.
+    const tight: AuthCircuitInput = {
+      page: { w: 1216, h: 800 },
+      panel: { x: 129, y: 279, w: 413, h: 474 },
+      cube: { x: 715, y: 233, w: 274, h: 352 },
+    };
+    const { bus } = buildAuthCircuit(tight);
+    expect(bus).toHaveLength(3);
+    for (const d of bus) {
+      const xs = points(d).map(([x]) => x);
+      for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThanOrEqual(xs[i - 1]);
+    }
+    // Still ordered top to bottom where they land, so they don't cross.
+    const ends = bus.map((d) => points(d).at(-1)![1]);
+    expect([...ends].sort((a, b) => a - b)).toEqual(ends);
   });
 
   it('works without a cube', () => {

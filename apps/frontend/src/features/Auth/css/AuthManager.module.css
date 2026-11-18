@@ -62,8 +62,12 @@
 
 /* Assistant anchors: all three share one cell; only the active one has a box. */
 .slot {
-  /* Not 9 / 13: the cube renders ~1.2× its height wide, and a centre that far right runs it off-screen. */
-  grid-column: 9 / 12;
+  /*
+   * Right next to the copy (which ends at line 8), pulling the cube toward the
+   * middle. Its speech bubble opens on its left, over the gap, so the cube's
+   * lines in utils/authAssistant.ts stay short enough to clear the lede.
+   */
+  grid-column: 8 / 11;
   display: grid;
   /* The cube is drawn at this box's height: ~396px at 900px tall, capped both ways. */
   height: clamp(18rem, 44vh, 30rem);

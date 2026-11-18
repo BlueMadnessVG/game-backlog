@@ -5,17 +5,21 @@ import type { AnchorOptions } from '@/common/components/layout/Assistant';
  * that page's <AssistantAnchor>s. Only one anchor is shown at a time (see
  * AuthManager), so the cube switches lines without re-registering.
  *
+ * Keep each line short enough for one line (~26 characters): on desktop the
+ * bubble opens on the cube's left, between the panel and the cube, and a
+ * wrapped line grows to the full bubble width and covers the heading's lede.
+ *
  * Exports:
  *  - AUTH_SCRIPT: line + emotion per Auth anchor.
  */
 export const AUTH_SCRIPT = {
   login: {
-    line: 'Welcome back. Sign in and I will bring your library up.',
+    line: 'Welcome back.',
     emotion: 'happy',
     priority: 1,
   },
   register: {
-    line: 'Make an account, then connect a platform and I will pull your games in.',
+    line: "Let's set up your account.",
     emotion: 'happy',
     priority: 1,
   },
