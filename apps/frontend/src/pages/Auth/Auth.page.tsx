@@ -1,45 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import { useNavigate } from '@tanstack/react-router';
 
-import { AuthTabs } from './components/AuthTabs';
-import { LoginForm } from './components/LoginForm';
-import { RegisterForm } from './components/RegisterForm';
-import { SocialProviders } from './components/SocialProviders';
-import styles from './css/Auth.module.css';
-
-import type { AuthMode } from './Auth.types';
-
+import AuthManager from '@/features/Auth/AuthManager';
 import { useAuthStore } from '@/store/useAuth.store';
 
-export function AuthPage() {
+function AuthPage() {
   const navigate = useNavigate();
   const status = useAuthStore((state) => state.status);
-  const [mode, setMode] = useState<AuthMode>('login');
 
+  // Already signed in (e.g. session restored): the auth screen has nothing to offer.
   useEffect(() => {
     if (status === 'authenticated') {
       void navigate({ to: '/library', replace: true });
     }
   }, [navigate, status]);
 
-  return (
-    <div className={styles.page}>
-      <section className={styles.card}>
-        <header className={styles.header}>
-          <h1 className={styles.title}>Backlog</h1>
-          <p className={styles.subtitle}>Tu centro de mando de juegos pendientes.</p>
-        </header>
-
-        <AuthTabs mode={mode} onChange={setMode} />
-
-        <main className={styles.body}>
-          {mode === 'login' ? <LoginForm /> : <RegisterForm />}
-          <SocialProviders />
-        </main>
-      </section>
-    </div>
-  );
+  return <AuthManager />;
 }
 
 export default AuthPage;

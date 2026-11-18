@@ -17,7 +17,6 @@ const TABS: { id: AuthMode; label: string }[] = [
   { id: 'register', label: 'Crear cuenta' },
 ];
 
-
 /**
  * Arrow-key navigation comes from the native `focusgroup` attribute
  * (`tablist nomemory`: focus entering the group always lands on the selected tab).

@@ -1,0 +1,64 @@
+.social {
+  margin-top: 24px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--outline);
+  font-size: var(--font-label-caps);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.providers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px;
+  background: var(--social-bg);
+  border: 1px solid var(--border);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: var(--font-body-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.provider:hover {
+  box-shadow: var(--shadow);
+}
+
+.provider svg {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.provider_google:hover {
+  border-color: #4285f4;
+}
+
+.provider_discord:hover {
+  border-color: #5865f2;
+}

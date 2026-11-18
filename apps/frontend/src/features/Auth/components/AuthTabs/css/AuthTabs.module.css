@@ -1,0 +1,42 @@
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 24px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.tab {
+  position: relative;
+  padding: 10px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--font-label-caps);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* Styled from aria-selected so the visual and accessible state never disagree. */
+.tab[aria-selected='true'] {
+  background: var(--accent-bg);
+  color: var(--text-h);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+
+  /* Shape indicator that survives forced-colors mode (which drops background and box-shadow). */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0;
+    border-block-end: 2px solid var(--accent-border);
+  }
+}

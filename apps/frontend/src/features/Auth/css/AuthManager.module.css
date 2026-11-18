@@ -1,0 +1,44 @@
+.page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 32px 24px;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent-border);
+  box-shadow:
+    var(--shadow),
+    0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.title {
+  font-family: var(--heading);
+  font-size: var(--font-display-md);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.subtitle {
+  margin-top: 8px;
+  color: var(--outline);
+  font-size: var(--font-body-sm);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+}
+
