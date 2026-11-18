@@ -6,7 +6,6 @@ import {
   AuthPasswordSchema,
   AuthUsernameSchema,
 } from '@repo/shared';
-import { useNavigate } from '@tanstack/react-router';
 import { useForm, type Resolver } from 'react-hook-form';
 import { toast } from 'sonner';
 import * as v from 'valibot';
@@ -30,8 +29,11 @@ const RegisterFormSchema = v.object({
   confirmPassword: v.string(),
 });
 
-export const RegisterForm = () => {
-  const navigate = useNavigate();
+interface RegisterFormProps {
+  onSuccess: () => void;
+}
+
+export const RegisterForm = ({ onSuccess }: RegisterFormProps) => {
   const registerUser = useAuthStore((state) => state.actions.register);
   const [confirmError, setConfirmError] = useState<string | null>(null);
 
@@ -46,7 +48,7 @@ export const RegisterForm = () => {
 
   const onSubmit = handleSubmit(async ({ confirmPassword, ...values }) => {
     if (values.password !== confirmPassword) {
-      setConfirmError('Las contraseñas no coinciden');
+      setConfirmError('Passwords do not match');
       return;
     }
 
@@ -56,10 +58,10 @@ export const RegisterForm = () => {
         email: values.email,
         password: values.password,
       });
-      void navigate({ to: '/library', replace: true });
+      onSuccess();
     } catch (error) {
       toast.error(
-        getApiErrorMessage(error, 'No se pudo crear la cuenta. Intenta de nuevo.'),
+        getApiErrorMessage(error, 'Could not create the account. Try again.'),
       );
     }
   });
@@ -67,7 +69,7 @@ export const RegisterForm = () => {
   return (
     <form className={styles.form} onSubmit={onSubmit} noValidate>
       <label className={styles.field}>
-        <span className={styles.label}>Nombre de usuario</span>
+        <span className={styles.label}>Username</span>
         <input
           type="text"
           autoComplete="username"
@@ -97,7 +99,7 @@ export const RegisterForm = () => {
       </label>
 
       <label className={styles.field}>
-        <span className={styles.label}>Contraseña</span>
+        <span className={styles.label}>Password</span>
         <input
           type="password"
           autoComplete="new-password"
@@ -111,7 +113,7 @@ export const RegisterForm = () => {
       </label>
 
       <label className={styles.field}>
-        <span className={styles.label}>Confirmar contraseña</span>
+        <span className={styles.label}>Confirm password</span>
         <input
           type="password"
           autoComplete="new-password"
@@ -129,7 +131,7 @@ export const RegisterForm = () => {
       </label>
 
       <button type="submit" className={styles.submit} disabled={isSubmitting}>
-        {isSubmitting ? 'Creando cuenta…' : 'Crear cuenta'}
+        {isSubmitting ? 'Creating account…' : 'Create account'}
       </button>
     </form>
   );

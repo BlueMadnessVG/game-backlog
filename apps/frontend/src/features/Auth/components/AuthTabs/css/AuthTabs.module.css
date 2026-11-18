@@ -1,42 +1,48 @@
 .tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 4px;
-  margin-bottom: 24px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  display: flex;
+  gap: 1.75rem;
+  margin-bottom: 1.75rem;
+  border-bottom: 1px solid var(--dx-line);
 }
 
 .tab {
   position: relative;
-  padding: 10px 8px;
+  padding: 0.75rem 0;
+  border: 0;
   background: transparent;
-  border: none;
-  color: var(--text);
-  font-family: var(--sans);
-  font-size: var(--font-label-caps);
+  color: var(--dx-ink-3);
+  font: inherit;
+  font-size: 1rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   cursor: pointer;
-  transition:
-    background 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: color 0.2s ease;
 }
 
-/* Styled from aria-selected so the visual and accessible state never disagree. */
-.tab[aria-selected='true'] {
-  background: var(--accent-bg);
-  color: var(--text-h);
-  box-shadow: inset 0 0 0 1px var(--accent-border);
+.tab:hover {
+  color: var(--dx-ink-1);
+}
 
-  /* Shape indicator that survives forced-colors mode (which drops background and box-shadow). */
+.tab:focus-visible {
+  outline: 2px solid var(--dx-accent);
+  outline-offset: 4px;
+}
+
+/* Styled from aria-selected so the visual and accessible state never disagree.
+   Only color changes on the tab itself, so selecting never shifts its size. */
+.tab[aria-selected='true'] {
+  color: var(--dx-ink-1);
+
+  /* Shape indicator, drawn with a border so it survives forced-colors mode. */
   &::after {
     content: '';
     position: absolute;
-    inset: auto 0 0;
-    border-block-end: 2px solid var(--accent-border);
+    inset: auto 0 -1px;
+    border-block-end: 2px solid var(--dx-accent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab {
+    transition: none;
   }
 }

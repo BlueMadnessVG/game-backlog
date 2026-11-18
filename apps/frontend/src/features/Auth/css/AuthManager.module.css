@@ -1,44 +1,119 @@
+/*
+ * /auth screen in the shared dx language (see common/styles/dx.module.css):
+ * 12-column grid, heading + form on columns 2–7, assistant cube on 9–11.
+ */
 .page {
-  display: flex;
+  composes: dx from '../../../common/styles/dx.module.css';
+
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  column-gap: var(--dx-gap);
   align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  padding: 32px 24px;
+  /* The layout's <main> is 100vh; a % height has no sized parent to resolve against. */
+  min-height: 100vh;
+  /* Padding inside the 100vh, or the page scrolls by its own padding. */
+  box-sizing: border-box;
+  padding: var(--dx-section-pad) var(--dx-gutter);
+  /* Positioning context for the circuit board; isolate keeps its z-index local. */
+  position: relative;
+  isolation: isolate;
 }
 
-.card {
-  width: 100%;
-  max-width: 420px;
-  padding: 32px;
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--accent-border);
-  box-shadow:
-    var(--shadow),
-    0 24px 60px rgba(0, 0, 0, 0.45);
+/* Content above the circuit board layer. */
+.copy,
+.slot {
+  position: relative;
+  z-index: 1;
 }
 
-.header {
-  margin-bottom: 24px;
-  text-align: center;
+.copy {
+  grid-column: 2 / 8;
+  min-width: 0;
 }
 
-.title {
-  font-family: var(--heading);
-  font-size: var(--font-display-md);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0;
-}
-
-.subtitle {
-  margin-top: 8px;
-  color: var(--outline);
-  font-size: var(--font-body-sm);
-}
-
-.body {
+.heading {
   display: flex;
-  flex-direction: column;
+  align-items: flex-end;
+  max-width: 9ch;
+  /* Two lines of room in both modes, so switching tabs never moves the form. */
+  min-height: 1.84em;
+  margin: 0 0 1.25rem;
+  font-family: var(--dx-body);
+  font-size: clamp(2.5rem, 1rem + 5vw, 6rem);
+  font-stretch: 112%;
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  color: var(--dx-ink-1);
 }
 
+.lede {
+  max-width: 34ch;
+  margin: 0 0 2.5rem;
+  font-size: clamp(1rem, 0.9rem + 0.4vw, 1.25rem);
+  line-height: 1.5;
+  color: var(--dx-ink-2);
+}
+
+.panel {
+  max-width: 26rem;
+}
+
+/* Assistant anchors: all three share one cell; only the active one has a box. */
+.slot {
+  /* Not 9 / 13: the cube renders ~1.2× its height wide, and a centre that far right runs it off-screen. */
+  grid-column: 9 / 12;
+  display: grid;
+  /* The cube is drawn at this box's height: ~396px at 900px tall, capped both ways. */
+  height: clamp(18rem, 44vh, 30rem);
+}
+
+.anchor {
+  grid-area: 1 / 1;
+}
+
+.anchor_off {
+  display: none;
+}
+
+@media (max-width: 719px) {
+  .page {
+    grid-template-columns: 1fr;
+    align-items: start;
+    /* Pack rows at the top: stretched rows would push the cube's dock below the
+       band the assistant rig can reach (it clamps the cube to the upper 85%). */
+    align-content: start;
+    padding-block: calc(var(--dx-gutter) * 2);
+  }
+
+  .copy {
+    grid-column: 1;
+  }
+
+  .heading {
+    margin-bottom: 0.75rem;
+  }
+
+  .lede {
+    margin-bottom: 1.75rem;
+  }
+
+  .panel {
+    max-width: none;
+  }
+
+  /*
+   * Under the form, in flow: without a visible anchor the cube parks in a
+   * corner over the form. Small and at the start edge, so its speech bubble
+   * has the rest of the row to open into.
+   */
+  .slot {
+    grid-column: 1;
+    justify-self: start;
+    width: 4rem;
+    height: 4rem;
+    /* Room for the circuit bus between the panel's socket and the cube's. */
+    margin-top: 4rem;
+  }
+}

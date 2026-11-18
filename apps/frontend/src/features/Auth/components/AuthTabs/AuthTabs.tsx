@@ -13,8 +13,8 @@ interface AuthTabsProps {
 }
 
 const TABS: { id: AuthMode; label: string }[] = [
-  { id: 'login', label: 'Iniciar sesión' },
-  { id: 'register', label: 'Crear cuenta' },
+  { id: 'login', label: 'Sign in' },
+  { id: 'register', label: 'Create account' },
 ];
 
 /**
@@ -45,7 +45,7 @@ export const AuthTabs = ({ mode, onChange, idPrefix }: AuthTabsProps) => {
       ref={tablistRef}
       className={styles.tabs}
       role="tablist"
-      aria-label="Acceso"
+      aria-label="Account"
       {...({ focusgroup: 'tablist nomemory' } as object)}
     >
       {TABS.map((tab) => {

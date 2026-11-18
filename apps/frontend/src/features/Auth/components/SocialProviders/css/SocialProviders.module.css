@@ -1,64 +1,73 @@
 .social {
-  margin-top: 24px;
+  margin-top: 2.25rem;
 }
 
 .divider {
   display: flex;
   align-items: center;
-  gap: 12px;
-  color: var(--outline);
-  font-size: var(--font-label-caps);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: var(--dx-ink-3);
 }
 
 .divider::before,
 .divider::after {
   content: '';
   flex: 1;
-  height: 1px;
-  background: var(--border);
+  border-bottom: 1px solid var(--dx-line);
 }
 
 .providers {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
 }
 
+/* Hairline outline: the HeroPage intro CTA, quieter than the submit. */
 .provider {
-  display: flex;
+  flex: 1 1 11rem;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 11px;
-  background: var(--social-bg);
-  border: 1px solid var(--border);
-  color: var(--text-h);
-  font-family: var(--sans);
-  font-size: var(--font-body-md);
-  font-weight: 500;
+  gap: 0.625rem;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid var(--dx-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dx-ink-1);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
   cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    background 0.2s ease;
+  transition: border-color 0.2s ease;
 }
 
 .provider:hover {
-  box-shadow: var(--shadow);
+  border-color: var(--dx-ink-3);
+}
+
+.provider:focus-visible {
+  outline: 2px solid var(--dx-accent);
+  outline-offset: 4px;
 }
 
 .provider svg {
-  font-size: 18px;
-  flex-shrink: 0;
+  flex: none;
+  font-size: 1.125rem;
 }
 
+/* Brand classes come from common/auth/providers.ts (brandClass). */
 .provider_google:hover {
   border-color: #4285f4;
 }
 
 .provider_discord:hover {
   border-color: #5865f2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .provider {
+    transition: none;
+  }
 }

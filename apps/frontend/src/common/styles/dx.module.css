@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+/*
+ * The "dx" design language from the HeroPage redesign: Archivo + IBM Plex Mono,
+ * hairline lines, a single violet accent, a 12-column grid.
+ * A screen opts in with `composes: dx from '…/common/styles/dx.module.css';`
+ * on its root class, then uses the --dx-* tokens below.
+ */
+.dx {
+  /* The app shell leaves a 64px strip on the left; fixed layers start after it. */
+  --dx-shell-left: 64px;
+  --dx-gutter: clamp(1rem, 2.5vw, 2rem);
+  --dx-gap: clamp(0.75rem, 1.5vw, 1.5rem);
+  --dx-section-pad: clamp(4rem, 2vh, 7rem);
+
+  --dx-base: #12121d;
+  --dx-line: rgba(149, 142, 160, 0.3);
+  --dx-ink-1: #e4e1f0;
+  --dx-ink-2: #cbc3d7;
+  --dx-ink-3: #9a93a8;
+  --dx-accent: #d0bcff;
+
+  --dx-body: 'Archivo', system-ui, 'Segoe UI', sans-serif;
+  --dx-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+
+  font-family: var(--dx-body);
+  color: var(--dx-ink-2);
+  -webkit-font-smoothing: antialiased;
+}

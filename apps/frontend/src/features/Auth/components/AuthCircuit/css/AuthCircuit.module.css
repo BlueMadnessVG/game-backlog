@@ -1,0 +1,102 @@
+/*
+ * Same materials as the HeroPage CircuitBackdrop (stroke strengths, glow,
+ * scanlines), drawn from --dx-accent so it follows the shared tokens.
+ */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ─── Scanlines ─── */
+.backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dx-accent) 2.5%, transparent) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+.svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: visible;
+}
+
+.trace {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dx-accent) 7%, transparent);
+  stroke-width: 1;
+}
+
+.socket {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dx-accent) 16%, transparent);
+  stroke-width: 1;
+}
+
+/* The bus, unlit: a step brighter than the decorative traces, so it reads as the link. */
+.bus {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dx-accent) 20%, transparent);
+  stroke-width: 1;
+}
+
+/* The bus, lit up to the form's fill level. */
+.charge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dx-accent) 55%, transparent);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--dx-accent) 30%, transparent));
+
+  /* Final state always applies; only the travel is opt-in motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    transition: stroke-dashoffset 0.45s ease-out;
+  }
+}
+
+.node {
+  fill: color-mix(in srgb, var(--dx-accent) 22%, transparent);
+}
+
+/* ─── Board mark: PCB edge, mounting holes, silkscreen ─── */
+.edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dx-accent) 16%, transparent);
+  stroke-width: 1;
+}
+
+.holeRing {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dx-accent) 18%, transparent);
+  stroke-width: 1;
+}
+
+.holeDrill {
+  fill: color-mix(in srgb, var(--dx-accent) 10%, transparent);
+}
+
+/* Reference designators (U1, U2, J1): the board's silkscreen. */
+.label {
+  font-family: var(--dx-mono);
+  font-size: 10px;
+  fill: var(--dx-ink-3);
+  opacity: 0.5;
+}
+
+/* ─── J1: platform header. Colors come from --platform (Hero's platform palette). ─── */
+.platformPin {
+  fill: color-mix(in srgb, var(--platform) 70%, transparent);
+}
+
+.platformTrace {
+  fill: none;
+  stroke: color-mix(in srgb, var(--platform) 22%, transparent);
+  stroke-width: 1;
+}

@@ -22,7 +22,7 @@ export const SocialProviders = () => {
 
   return (
     <div className={styles.social}>
-      <div className={styles.divider}>o continúa con</div>
+      <div className={styles.divider}>or continue with</div>
 
       <div className={styles.providers}>
         {visible.map((provider) => (
@@ -33,7 +33,7 @@ export const SocialProviders = () => {
             onClick={() => authService.login(provider.id)}
           >
             {provider.id === 'google' ? <GoogleIcon /> : <LogIn size={16} />}
-            Continuar con {provider.label}
+            Continue with {provider.label}
           </button>
         ))}
       </div>

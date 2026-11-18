@@ -1,6 +1,5 @@
 import { valibotResolver } from '@hookform/resolvers/valibot';
 import { LoginSchema, type LoginInput } from '@repo/shared';
-import { useNavigate } from '@tanstack/react-router';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
@@ -9,8 +8,11 @@ import styles from '../../css/AuthForm.module.css';
 import { getApiErrorMessage } from '@/common/utils/ApiError/getApiErrorMessage';
 import { useAuthStore } from '@/store/useAuth.store';
 
-export const LoginForm = () => {
-  const navigate = useNavigate();
+interface LoginFormProps {
+  onSuccess: () => void;
+}
+
+export const LoginForm = ({ onSuccess }: LoginFormProps) => {
   const login = useAuthStore((state) => state.actions.login);
 
   const {
@@ -25,10 +27,10 @@ export const LoginForm = () => {
   const onSubmit = handleSubmit(async (values) => {
     try {
       await login(values);
-      void navigate({ to: '/library', replace: true });
+      onSuccess();
     } catch (error) {
       toast.error(
-        getApiErrorMessage(error, 'No se pudo iniciar sesión. Intenta de nuevo.'),
+        getApiErrorMessage(error, 'Could not sign in. Check your email and password, then try again.'),
       );
     }
   });
@@ -49,7 +51,7 @@ export const LoginForm = () => {
       </label>
 
       <label className={styles.field}>
-        <span className={styles.label}>Contraseña</span>
+        <span className={styles.label}>Password</span>
         <input
           type="password"
           autoComplete="current-password"
@@ -63,7 +65,7 @@ export const LoginForm = () => {
       </label>
 
       <button type="submit" className={styles.submit} disabled={isSubmitting}>
-        {isSubmitting ? 'Entrando…' : 'Iniciar sesión'}
+        {isSubmitting ? 'Signing in…' : 'Sign in'}
       </button>
     </form>
   );

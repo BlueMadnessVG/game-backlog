@@ -40,6 +40,8 @@
   overflow: visible;
   color: inherit;
   z-index: 17;
+  /* border-box: the 60vw cap includes padding + border, so the bubble fits on narrow screens. */
+  box-sizing: border-box;
   max-width: min(18rem, 60vw);
   padding: 0.75rem 1rem;
   border: 1px solid var(--as-line);
