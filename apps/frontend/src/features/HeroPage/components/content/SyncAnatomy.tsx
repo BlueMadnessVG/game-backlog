@@ -1,6 +1,9 @@
 import { useState, type CSSProperties } from 'react';
 
 import styles from './css/SyncAnatomy.module.css';
+import { SECTION_SCRIPT } from '../../utils/assistantScript';
+
+import { AssistantAnchor } from '@/common/components/layout/Assistant';
 
 /**
  * "Anatomy of a synced game": the six layers a game passes through between a
@@ -92,7 +95,7 @@ export function SyncAnatomy() {
         </div>
       </div>
 
-      <div className={styles.slot} data-assistant-slot="anatomy" aria-hidden />
+      <AssistantAnchor id="anatomy" className={styles.slot} {...SECTION_SCRIPT.anatomy} />
     </section>
   );
 }

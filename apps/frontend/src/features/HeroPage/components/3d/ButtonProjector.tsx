@@ -1,10 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
-import {
-  useButtonHotspotsStore,
-  type HeroButtonKey,
-} from '../../store/heroButtonHotspots.Store';
+import { useButtonHotspotsStore, type HeroButtonKey } from '../../store/heroButtonHotspots.Store';
 
 /**
  * Projects the four controller face buttons into DOM pixel coordinates.

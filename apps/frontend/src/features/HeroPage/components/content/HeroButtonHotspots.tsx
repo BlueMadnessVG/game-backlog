@@ -1,10 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 
 import styles from './css/HeroButtonHotspots.module.css';
-import {
-  useButtonHotspotsStore,
-  type HeroButtonKey,
-} from '../../store/heroButtonHotspots.Store';
+import { useButtonHotspotsStore, type HeroButtonKey } from '../../store/heroButtonHotspots.Store';
 import { PLATFORM_COLORS } from '../../utils/platformColors';
 
 /**

@@ -1,4 +1,9 @@
-import { catalogRowsSample, ownedGameSample, rateLimitErrorSample, statsSample } from './sampleData';
+import {
+  catalogRowsSample,
+  ownedGameSample,
+  rateLimitErrorSample,
+  statsSample,
+} from './sampleData';
 
 import type { Chapter, ChapterId } from './sections';
 

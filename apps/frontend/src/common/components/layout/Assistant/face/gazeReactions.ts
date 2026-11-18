@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import { pose } from './assistantPose';
+import { pose } from './pose';
 
 /**
  * Eye reactions to the mouse, computed once per frame by AssistantRig and

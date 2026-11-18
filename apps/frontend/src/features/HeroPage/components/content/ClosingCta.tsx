@@ -1,6 +1,9 @@
 import { Link } from '@tanstack/react-router';
 
 import styles from './css/ClosingCta.module.css';
+import { SECTION_SCRIPT } from '../../utils/assistantScript';
+
+import { AssistantAnchor } from '@/common/components/layout/Assistant';
 
 /**
  * Last screen: one sentence and one action. The assistant cube docks in the
@@ -30,7 +33,7 @@ export function ClosingCta() {
           </a>
         </p>
       </div>
-      <div className={styles.slot} data-assistant-slot="cta" aria-hidden />
+      <AssistantAnchor id="cta" className={styles.slot} {...SECTION_SCRIPT.cta} />
     </section>
   );
 }

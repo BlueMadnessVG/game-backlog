@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 
 import styles from './css/MainLayout.module.css';
 import { MainScrollProvider } from './MainScrollContext';
+import { AssistantHost } from '../Assistant/AssistantHost';
 /* import Sidebar from '../Sidebar/Sidebar';
  */
 interface MainLayoutProps {
@@ -22,6 +23,8 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         <div className={styles.main_layout}>
           {/*           <Sidebar />
            */}
+          {/* App-wide assistant cube: fixed canvas behind the content + its overlay. */}
+          <AssistantHost />
           <main ref={mainRef} className={isGameDetail ? styles.main_horizontal : undefined}>
             <div className={styles.content_wrapper}>{children}</div>
           </main>

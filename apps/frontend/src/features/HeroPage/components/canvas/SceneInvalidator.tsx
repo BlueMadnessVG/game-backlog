@@ -2,9 +2,10 @@ import { useEffect } from 'react';
 
 import { useThree } from '@react-three/fiber';
 
-import { useAssistantStore } from '../../store/assistant.Store';
 import { useButtonHotspotsStore } from '../../store/heroButtonHotspots.Store';
 import { heroProgress } from '../../timeline';
+
+import { useAssistantStore } from '@/common/components/layout/Assistant';
 
 /**
  * Requests frames for the demand-driven canvas when something outside the

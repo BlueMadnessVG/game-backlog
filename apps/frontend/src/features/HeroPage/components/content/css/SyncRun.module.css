@@ -8,8 +8,9 @@
 
 .slot {
   grid-column: 2 / 5;
-  align-self: stretch;
-  min-height: 16rem;
+  /* Assistant anchor: the cube centres on this box and matches its height (cube size while docked here). */
+  align-self: center;
+  height: 24vh;
 }
 
 .copy {

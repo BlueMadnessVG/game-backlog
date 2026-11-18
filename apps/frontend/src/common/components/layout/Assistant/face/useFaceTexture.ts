@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 
 import * as THREE from 'three';
 
-import type { EyeReactions } from './assistantPose';
-import type { Emotion } from '../../store/assistant.Store';
+import type { EyeReactions } from './pose';
+import type { Emotion } from '../store/assistant.Store';
 
 /**
  * The assistant's face: a small 2D canvas drawn per emotion and uploaded as a

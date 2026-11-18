@@ -1,4 +1,7 @@
 import styles from './css/TrustLedger.module.css';
+import { SECTION_SCRIPT } from '../../utils/assistantScript';
+
+import { AssistantAnchor } from '@/common/components/layout/Assistant';
 
 /**
  * "What we keep": a spec sheet of everything the backend stores about a
@@ -59,7 +62,9 @@ export function TrustLedger() {
         <h2 id="trust-heading" className={styles.heading}>
           What we keep
         </h2>
-        <p className={styles.note}>Only what a sync needs. Everything else stays with the platform.</p>
+        <p className={styles.note}>
+          Only what a sync needs. Everything else stays with the platform.
+        </p>
 
         <table className={styles.table}>
           <thead>
@@ -92,7 +97,7 @@ export function TrustLedger() {
         </div>
       </div>
 
-      <div className={styles.slot} data-assistant-slot="trust" aria-hidden />
+      <AssistantAnchor id="trust" className={styles.slot} {...SECTION_SCRIPT.trust} />
     </section>
   );
 }

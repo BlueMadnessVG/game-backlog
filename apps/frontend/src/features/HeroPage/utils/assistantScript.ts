@@ -1,4 +1,4 @@
-import type { Emotion } from '../store/assistant.Store';
+import type { Emotion } from '@/common/components/layout/Assistant';
 
 /**
  * What the assistant cube says and how it feels about each moment of the
@@ -6,12 +6,11 @@ import type { Emotion } from '../store/assistant.Store';
  * section lines (platform beats are explained by the part callouts).
  *
  * Exports:
- *  - SECTION_SCRIPT: line + emotion per below-the-hero section id.
- *  - IDLE_HINT: what the cube says when clicked with nothing to add.
+ *  - SECTION_SCRIPT: line + emotion per below-the-hero section, spread onto
+ *    that section's <AssistantAnchor>.
+ *  (The click hint with no line lives in the shared assistant store.)
  */
-export type SectionId = 'stock' | 'anatomy' | 'sync' | 'trust' | 'cta';
-
-export const SECTION_SCRIPT: Record<SectionId, { line: string; emotion: Emotion }> = {
+export const SECTION_SCRIPT = {
   stock: {
     line: 'This is a sample library. Connect your platforms and these numbers become yours.',
     emotion: 'happy',
@@ -32,6 +31,4 @@ export const SECTION_SCRIPT: Record<SectionId, { line: string; emotion: Emotion 
     line: 'Your library is ready when you are.',
     emotion: 'happy',
   },
-};
-
-export const IDLE_HINT = 'Soon you will be able to ask me about your library.';
+} satisfies Record<string, { line: string; emotion: Emotion }>;

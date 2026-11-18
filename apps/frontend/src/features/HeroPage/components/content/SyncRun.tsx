@@ -3,9 +3,11 @@ import { useState, type CSSProperties } from 'react';
 import { motion, type Variants } from 'framer-motion';
 
 import styles from './css/SyncRun.module.css';
+import { SECTION_SCRIPT } from '../../utils/assistantScript';
 import { prefersReducedMotion } from '../../utils/motion';
 import { PLATFORM_COLORS } from '../../utils/platformColors';
 
+import { AssistantAnchor } from '@/common/components/layout/Assistant';
 import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
 /**
@@ -81,7 +83,7 @@ export function SyncRun() {
       aria-labelledby="sync-heading"
       style={{ '--background': PLATFORM_COLORS.xbox } as CSSProperties}
     >
-      <div className={styles.slot} data-assistant-slot="sync" aria-hidden />
+      <AssistantAnchor id="sync" className={styles.slot} {...SECTION_SCRIPT.sync} />
 
       <div className={styles.copy}>
         <h2 id="sync-heading" className={styles.heading}>
@@ -100,7 +102,12 @@ export function SyncRun() {
           viewport={{ root: mainRef, once: true, amount: 0.4 }}
         >
           {STEPS.map((step) => (
-            <motion.li key={step.command} className={styles.step} data-kind={step.kind} variants={row}>
+            <motion.li
+              key={step.command}
+              className={styles.step}
+              data-kind={step.kind}
+              variants={row}
+            >
               <span className={styles.glyph} aria-hidden>
                 {GLYPH[step.kind]}
               </span>

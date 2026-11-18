@@ -81,7 +81,8 @@ export function Viewfinder() {
     raf = requestAnimationFrame(tick);
 
     const onResize = () => {
-      if (sizeRef.current) sizeRef.current.textContent = `${window.innerWidth}×${window.innerHeight}`;
+      if (sizeRef.current)
+        sizeRef.current.textContent = `${window.innerWidth}×${window.innerHeight}`;
     };
     onResize();
     window.addEventListener('resize', onResize);

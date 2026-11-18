@@ -1,8 +1,11 @@
 import type { CSSProperties } from 'react';
 
 import styles from './css/StockList.module.css';
+import { SECTION_SCRIPT } from '../../utils/assistantScript';
 import { PLATFORM_COLORS, type PlatformKey } from '../../utils/platformColors';
 import { statsSample } from '../../utils/sampleData';
+
+import { AssistantAnchor } from '@/common/components/layout/Assistant';
 
 /**
  * Spec-sheet list of what a connected library looks like: one row per
@@ -79,7 +82,7 @@ export function StockList() {
         </table>
       </div>
 
-      <div className={styles.slot} data-assistant-slot="stock" aria-hidden />
+      <AssistantAnchor id="stock" className={styles.slot} {...SECTION_SCRIPT.stock} />
     </section>
   );
 }

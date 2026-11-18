@@ -12,8 +12,7 @@ import { pageProgress, useProgressNumber } from '../../timeline';
  * Exports:
  *  - CircuitBackdrop (default export too).
  */
-const FRAME_PATH =
-  'M 1 2 H 76 L 82 8 H 99 V 58 L 94 64 V 98 H 24 L 18 92 H 1 V 36 L 5 30 V 2';
+const FRAME_PATH = 'M 1 2 H 76 L 82 8 H 99 V 58 L 94 64 V 98 H 24 L 18 92 H 1 V 36 L 5 30 V 2';
 
 const BRANCH_PATHS = [
   'M 20 2 V 7',

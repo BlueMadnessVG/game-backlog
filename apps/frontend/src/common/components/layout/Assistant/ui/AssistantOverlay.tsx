@@ -1,39 +1,46 @@
 import { useEffect, useRef, useState } from 'react';
 
-import styles from './css/AssistantBubble.module.css';
-import { useAssistantStore } from '../../store/assistant.Store';
-import { IDLE_HINT } from '../../utils/assistantScript';
+import styles from './css/AssistantOverlay.module.css';
+import { useWheelForward } from './useWheelForward';
+import { useAssistantStore, type AssistantScreen } from '../store/assistant.Store';
+
+import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
 /**
- * DOM companion of the 3D cube: a focusable button laid over the cube (so the
- * assistant can be reached by keyboard and clicked) and the speech bubble
- * beside it. Both follow the cube's projected viewport position, applied
- * straight to the elements — the store updates every frame and React never
- * re-renders for it.
+ * DOM companion of the 3D cube, mounted once by AssistantHost: a focusable
+ * button laid over the cube (so the assistant can be reached by keyboard and
+ * clicked) and the speech bubble beside it. Both follow the cube's projected
+ * viewport position, applied straight to the elements — the store updates
+ * every frame and React never re-renders for it.
  *
- * Clicking the cube toggles the bubble. The AI chat will replace the bubble's
- * hint text later.
+ * Clicking the cube toggles the bubble: the page's current line, or the
+ * store's `hint` when there is none. The AI chat will replace the hint later.
+ * The wheel over the (fixed) cube button is forwarded to the page scroller.
  *
  * Exports:
- *  - AssistantBubble (default export too).
+ *  - AssistantOverlay (default export too).
  */
-export function AssistantBubble() {
+export function AssistantOverlay() {
+  const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
+  const mainRef = useMainScroll();
+  useWheelForward(rootRef, mainRef);
 
   const line = useAssistantStore((s) => s.line);
+  const hint = useAssistantStore((s) => s.hint);
   const open = useAssistantStore((s) => s.bubbleOpen);
   const toggle = useAssistantStore((s) => s.toggleBubble);
-  const [hint, setHint] = useState(false);
+  const [hintShown, setHintShown] = useState(false);
 
   useEffect(() => {
-    if (!hint) return;
-    const id = window.setTimeout(() => setHint(false), 4000);
+    if (!hintShown) return;
+    const id = window.setTimeout(() => setHintShown(false), 4000);
     return () => window.clearTimeout(id);
-  }, [hint]);
+  }, [hintShown]);
 
   useEffect(() => {
-    const apply = (screen: ReturnType<typeof useAssistantStore.getState>['screen']) => {
+    const apply = (screen: AssistantScreen) => {
       const button = buttonRef.current;
       const bubble = bubbleRef.current;
       if (button) {
@@ -57,11 +64,11 @@ export function AssistantBubble() {
     });
   }, []);
 
-  const shown = line ? open : hint;
-  const text = line ?? IDLE_HINT;
+  const shown = line ? open : hintShown;
+  const text = line ?? hint;
 
   return (
-    <>
+    <div ref={rootRef} className={styles.overlay}>
       <button
         ref={buttonRef}
         type="button"
@@ -69,7 +76,7 @@ export function AssistantBubble() {
         aria-label="Assistant"
         data-wheel-forward
         aria-expanded={shown}
-        onClick={() => (line ? toggle() : setHint((h) => !h))}
+        onClick={() => (line ? toggle() : setHintShown((h) => !h))}
       />
       <div
         ref={bubbleRef}
@@ -80,8 +87,8 @@ export function AssistantBubble() {
       >
         <p className={styles.text}>{shown ? text : ''}</p>
       </div>
-    </>
+    </div>
   );
 }
 
-export default AssistantBubble;
+export default AssistantOverlay;

@@ -4,8 +4,9 @@ import { useProgress } from '@react-three/drei';
 import { AnimatePresence, animate, motion } from 'framer-motion';
 
 import styles from './css/LoadCounter.module.css';
-import { useAssistantStore } from '../../store/assistant.Store';
 import { prefersReducedMotion } from '../../utils/motion';
+
+import { useAssistantStore } from '@/common/components/layout/Assistant';
 
 /**
  * Full-screen percentage counter shown while the scene wakes up. It counts to

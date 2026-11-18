@@ -1,3 +1,14 @@
+/* Overlay root: no box of its own; defines the tokens the cube button and
+   bubble use, so they look the same on any page (values match the hero). */
+.overlay {
+  --as-base: #12121d;
+  --as-line: rgba(149, 142, 160, 0.3);
+  --as-ink-1: #e4e1f0;
+  --as-accent: #d0bcff;
+
+  display: contents;
+}
+
 .cube {
   position: fixed;
   top: 0;
@@ -12,7 +23,7 @@
 }
 
 .cube:focus-visible {
-  outline: 2px solid var(--dx-accent);
+  outline: 2px solid var(--as-accent);
   outline-offset: 4px;
 }
 
@@ -23,8 +34,8 @@
   z-index: 17;
   max-width: min(18rem, 60vw);
   padding: 0.75rem 1rem;
-  border: 1px solid var(--dx-line);
-  background: color-mix(in srgb, var(--dx-base) 92%, transparent);
+  border: 1px solid var(--as-line);
+  background: color-mix(in srgb, var(--as-base) 92%, transparent);
   backdrop-filter: blur(8px);
   pointer-events: none;
   visibility: hidden;
@@ -47,9 +58,11 @@
 
 .text {
   margin: 0;
+  /* Archivo where a page has loaded it (the hero), the system font elsewhere. */
+  font-family: 'Archivo', system-ui, sans-serif;
   font-size: 0.875rem;
   line-height: 1.5;
-  color: var(--dx-ink-1);
+  color: var(--as-ink-1);
 }
 
 @media (prefers-reduced-motion: reduce) {

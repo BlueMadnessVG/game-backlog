@@ -3,7 +3,6 @@ import { useRef } from 'react';
 import { motion, useTransform } from 'framer-motion';
 
 import { HeroScene } from './components/canvas/HeroScene';
-import { AssistantBubble } from './components/content/AssistantBubble';
 import { CircuitBackdrop } from './components/content/CircuitBackdrop';
 import { ClosingCta } from './components/content/ClosingCta';
 import { HeroButtonHotspots } from './components/content/HeroButtonHotspots';
@@ -17,8 +16,8 @@ import { TrustLedger } from './components/content/TrustLedger';
 import { Viewfinder } from './components/content/Viewfinder';
 import styles from './css/HeroPageManager.module.css';
 import { HUD_FADE_END, HUD_FADE_START, heroProgress, useHeroTimeline } from './timeline';
-import { useWheelForward } from './utils/useWheelForward';
 
+import { useWheelForward } from '@/common/components/layout/Assistant';
 import { useMainScroll } from '@/common/components/layout/MainLayout/MainScrollContext';
 
 /**
@@ -51,9 +50,8 @@ export function HeroPageManager() {
       <LoadCounter />
       <CircuitBackdrop />
 
-      <div className={styles.sceneLayer}>
-        <HeroScene />
-      </div>
+      {/* 3D content for the app-wide assistant canvas (renders no DOM). */}
+      <HeroScene />
 
       <motion.div
         style={{ opacity: hudOpacity, visibility: hudVisibility }}
@@ -64,7 +62,6 @@ export function HeroPageManager() {
         <HeroButtonHotspots />
       </motion.div>
 
-      <AssistantBubble />
       <Viewfinder />
 
       {/* Empty spacer: its scroll progress drives the hero timeline. */}

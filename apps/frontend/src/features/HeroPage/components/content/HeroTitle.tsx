@@ -2,9 +2,10 @@ import { Link } from '@tanstack/react-router';
 import { motion, useTransform } from 'framer-motion';
 
 import styles from './css/HeroTitle.module.css';
-import { useAssistantStore } from '../../store/assistant.Store';
 import { heroProgress } from '../../timeline';
 import { prefersReducedMotion } from '../../utils/motion';
+
+import { useAssistantStore } from '@/common/components/layout/Assistant';
 
 /**
  * The page's opening: "Back" and "log" start joined, then (once the load
@@ -27,10 +28,7 @@ export function HeroTitle() {
 
   return (
     <motion.div className={styles.hero} style={{ opacity, y, visibility }}>
-      <h1
-        className={`${styles.title} ${ready ? styles.split : ''}`}
-        aria-label="Backlog"
-      >
+      <h1 className={`${styles.title} ${ready ? styles.split : ''}`} aria-label="Backlog">
         <motion.span layout="position" transition={reduced ? { duration: 0 } : SPLIT} aria-hidden>
           Back
         </motion.span>
