@@ -1,6 +1,7 @@
 import { LogIn } from 'lucide-react';
 
 import styles from './css/SocialProviders.module.css';
+import { DiscordIcon } from './icons/DiscordIcon';
 import { GoogleIcon } from './icons/GoogleIcon';
 
 import { useAuthProviders } from '@/api/auth/auth.queries';
@@ -32,7 +33,13 @@ export const SocialProviders = () => {
             className={`${styles.provider} ${provider.brandClass ? styles[provider.brandClass] : ''}`}
             onClick={() => authService.login(provider.id)}
           >
-            {provider.id === 'google' ? <GoogleIcon /> : <LogIn size={16} />}
+            {provider.id === 'google' ? (
+              <GoogleIcon />
+            ) : provider.id === 'discord' ? (
+              <DiscordIcon />
+            ) : (
+              <LogIn size={16} />
+            )}
             Continue with {provider.label}
           </button>
         ))}

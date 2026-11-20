@@ -58,7 +58,7 @@
 
 /* Filled accent, inverts on hover: the HeroPage closing CTA. */
 .submit {
-  align-self: flex-start;
+  align-self: center;
   margin-top: 0.5rem;
   padding: 0.875rem 1.75rem;
   border: 1px solid var(--dx-accent);

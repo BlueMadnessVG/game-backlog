@@ -19,13 +19,11 @@ export const AUTH_PROVIDERS: Record<OAuthProvider, ProviderMeta> = {
   },
   discord: {
     label: 'Discord',
-    isEnabled: false,
+    isEnabled: true,
     brandClass: 'provider_discord',
   },
 };
 
-export const ENABLED_AUTH_PROVIDERS = (
-  Object.keys(AUTH_PROVIDERS) as OAuthProvider[]
-)
+export const ENABLED_AUTH_PROVIDERS = (Object.keys(AUTH_PROVIDERS) as OAuthProvider[])
   .filter((id) => AUTH_PROVIDERS[id].isEnabled)
   .map((id) => ({ id, ...AUTH_PROVIDERS[id] }));
