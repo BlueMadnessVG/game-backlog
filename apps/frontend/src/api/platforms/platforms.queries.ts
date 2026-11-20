@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 
 import { platformsService, type PlatformSyncMap } from './platforms.service';
+import { accountKeys } from '../accounts/accounts.queries';
 import { libraryKeys } from '../library/library.queries';
 import { flattenPages, nextOffset } from '../queryClient/offsetPaging';
 
@@ -72,6 +73,7 @@ export function useSyncPlatform<P extends PlatformRoute>(platform: P) {
       Promise.all([
         queryClient.invalidateQueries({ queryKey: libraryKeys.all }),
         queryClient.invalidateQueries({ queryKey: platformKeys.platform(platform) }),
+        queryClient.invalidateQueries({ queryKey: accountKeys.all }),
       ]),
   });
 }

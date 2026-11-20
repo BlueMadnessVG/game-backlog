@@ -55,7 +55,11 @@ const EMPTY_PLATFORM_STATS: PlatformStats = {
 
 interface UseLibraryGamesReturn {
   games: Game[];
+  /** The backend's game count (`meta.total`), not just the loaded rows. 0 until loaded. */
+  total: number;
   isLoading: boolean;
+  /** The first page arrived with a 200. */
+  isSuccess: boolean;
   isError: boolean;
   error: Error | null;
   refetch: () => void;
@@ -68,6 +72,7 @@ export function useLibraryGames(): UseLibraryGamesReturn {
   const {
     data,
     isLoading,
+    isSuccess,
     isError,
     error,
     refetch,
@@ -92,7 +97,9 @@ export function useLibraryGames(): UseLibraryGamesReturn {
 
   return {
     games,
+    total: data?.pages[0]?.meta.total ?? 0,
     isLoading,
+    isSuccess,
     isError,
     error,
     // eslint-disable-next-line @typescript-eslint/no-misused-promises

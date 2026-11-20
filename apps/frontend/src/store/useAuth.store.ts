@@ -16,12 +16,19 @@ export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 interface AuthState {
   user: AuthUser | null;
   status: AuthStatus;
+  /**
+   * The user chose "Skip for now" on /accounts, so an empty library shows its
+   * empty state instead of sending them back there. In memory only: it resets
+   * on reload and on sign-out.
+   */
+  accountsPromptDismissed: boolean;
 
   actions: {
     login: (input: LoginInput) => Promise<AuthSession>;
     register: (input: RegisterInput) => Promise<AuthSession>;
     logout: () => Promise<void>;
     hydrate: () => Promise<void>;
+    dismissAccountsPrompt: () => void;
   };
 }
 
@@ -33,8 +40,11 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       status: 'loading',
+      accountsPromptDismissed: false,
 
       actions: {
+        dismissAccountsPrompt: () => set({ accountsPromptDismissed: true }),
+
         login: async (input) => {
           const session = await authService.loginWithPassword(input);
           set({ user: session.user, status: 'authenticated' });
@@ -82,7 +92,7 @@ export const useAuthStore = create<AuthState>()(
 
 /** Drops the user and every cache that belonged to them. */
 function endSession(): void {
-  useAuthStore.setState({ user: null, status: 'unauthenticated' });
+  useAuthStore.setState({ user: null, status: 'unauthenticated', accountsPromptDismissed: false });
   queryClient.clear();
 }
 

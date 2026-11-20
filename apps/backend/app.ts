@@ -16,6 +16,8 @@ import { LibraryService } from "./modules/library/library.services";
 import { createLibraryController } from "./modules/library/library.controller";
 import { AuthService } from "./modules/auth/auth.services";
 import { createAuthController } from "./modules/auth/auth.controller";
+import { AccountsService } from "./modules/accounts/accounts.services";
+import { createAccountsController } from "./modules/accounts/accounts.controller";
 
 /**
  * Everything the app talks to that lives outside this process. Production
@@ -65,6 +67,8 @@ export function createApp({ db, providers, lock }: AppDeps) {
     discord: providers.discord,
   });
 
+  const accountsService = new AccountsService(db);
+
   const app = new Hono<{
     Variables: {
       userId: string;
@@ -104,6 +108,7 @@ export function createApp({ db, providers, lock }: AppDeps) {
 
   apiV1.route("/library", createLibraryController(libraryService, authService));
   apiV1.route("/auth", createAuthController(authService));
+  apiV1.route("/accounts", createAccountsController(accountsService, authService));
 
   app.route("/api/v1", apiV1);
 
